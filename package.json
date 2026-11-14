@@ -1,0 +1,45 @@
+{
+  "name": "reading-assistant",
+  "private": true,
+  "version": "0.0.1",
+  "description": "AI 阅读助手扩展（Chrome / Edge，Manifest V3）",
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@12.18.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "postinstall": "wxt prepare",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "check:deps": "node scripts/check-deps.ts",
+    "check:size": "node scripts/check-size.ts",
+    "check:manifest": "node scripts/check-manifest.ts",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "mock-relay": "node tests/mock-relay/server.mjs",
+    "verify": "pnpm lint && pnpm typecheck && pnpm check:deps && pnpm test && pnpm build && pnpm check:size && pnpm check:manifest"
+  },
+  "dependencies": {
+    "@preact/signals": "2.11.4",
+    "idb": "8.0.4",
+    "preact": "11.2.0"
+  },
+  "devDependencies": {
+    "@babel/core": "7.29.13",
+    "@biomejs/biome": "2.6.7",
+    "@playwright/test": "1.65.1",
+    "@preact/preset-vite": "2.10.6",
+    "@types/node": "24.19.2",
+    "happy-dom": "21.0.4",
+    "typescript": "5.9.3",
+    "vite": "8.3.8",
+    "vitest": "5.1.0",
+    "wxt": "0.21.5"
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "permissions": ["storage", "unlimitedStorage", "sidePanel", "contextMenus", "scripting", "webRequest"],
+  "host_permissions": ["<all_urls>"]
+}

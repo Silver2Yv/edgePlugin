@@ -1,0 +1,23 @@
+# 依赖与构建产物
+node_modules/
+.output/
+.wxt/
+dist/
+coverage/
+test-results/
+playwright-report/
+*.zip
+*.log
+
+# 参考项目：不属于本仓库，不发布
+# sidebar-copilot-main 无许可证；selectlingo-v1.1.0 为第三方构建产物
+sidebar-copilot-main/
+selectlingo-v1.1.0/
+
+# 本机配置与秘密
+.claude/settings.local.json
+.env
+.env.*
+!.env.example
+prototypes/**/.secrets/
+prototypes/**/results-raw/

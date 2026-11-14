@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: 启用 pnpm
+        run: corepack enable pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 格式与 lint
+        run: pnpm lint
+      - name: 类型检查
+        run: pnpm typecheck
+      - name: 依赖方向
+        run: pnpm check:deps
+      - name: 单元测试
+        run: pnpm test
+      - name: 生产构建
+        run: pnpm build
+      - name: 体积预算
+        run: pnpm check:size
+      - name: 清单权限差异
+        run: pnpm check:manifest
+      - name: 安装 Playwright Chromium
+        run: pnpm exec playwright install chromium --with-deps
+      - name: 端到端测试
+        run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extension-chrome-mv3
+          path: .output/chrome-mv3/
+          retention-days: 14
