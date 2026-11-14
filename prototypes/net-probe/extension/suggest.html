@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>问题建议命中测试 · 阅读助手原型</title>
+<style>
+  body { font: 15px/1.7 system-ui, "Microsoft YaHei", sans-serif; max-width: 860px; margin: 24px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 20px; }
+  .note { color: #666; font-size: 13px; }
+  #article { border: 1px solid #ddd; border-radius: 6px; padding: 12px 16px; max-height: 360px; overflow: auto; white-space: pre-wrap; }
+  mark { background: #cfe3ff; }
+  #askBox, #reveal { margin-top: 12px; padding: 12px 16px; background: #f7f7f7; border-radius: 6px; }
+  textarea { width: 100%; height: 60px; font: inherit; }
+  button { padding: 6px 14px; margin: 6px 6px 0 0; cursor: pointer; }
+  #ready { font-size: 13px; color: #888; }
+  #ready.on { color: #137333; }
+  ol li { margin: 4px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 12px; }
+  th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; }
+</style>
+</head>
+<body>
+<h1>问题建议命中测试（V-11）</h1>
+<p class="note">先在<a href="diag.html" target="_blank">诊断页</a>保存连接。每篇材料里蓝色是“划选”的文字。读完后点「问」，按自己真实想问的写下问题并提交，然后看三条建议里有没有你想问的。建议在你提交前是遮住的，只显示是否已就绪。</p>
+<div id="progress"></div>
+<h2 id="title"></h2>
+<div id="article"></div>
+<button id="ask">问</button>
+<div id="askBox" hidden>
+  <div id="ready">建议生成中…</div>
+  <textarea id="q" placeholder="写下你真实想问的问题"></textarea>
+  <button id="submit">提交我的问题</button>
+</div>
+<div id="reveal" hidden>
+  <div>三条建议：</div>
+  <ol id="sugs"></ol>
+  <div>有没有你想问的（意思相同即可）？
+    <button data-hit="0">都没有</button><button data-hit="1">第 1 条</button><button data-hit="2">第 2 条</button><button data-hit="3">第 3 条</button>
+  </div>
+  <input id="remark" type="text" placeholder="备注（可不填）" style="width:100%;margin-top:6px">
+</div>
+<hr>
+<button id="copyMd">复制 Markdown</button>
+<button id="copyJson">复制 JSON</button>
+<button id="reset">从头再来</button>
+<table id="log"></table>
+<script type="module" src="suggest.js"></script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+{
+  "note": "每格抽样 20% 的裁判条目 idx，对应 results-raw/judge-XXXX.json，供人工复核",
+  "humanReviewSampleByCell": {
+    "bracket-id__relay": [
+      27,
+      23,
+      2,
+      31,
+      14,
+      15,
+      29
+    ],
+    "bracket-id__deepseek": [
+      62,
+      47,
+      37,
+      60,
+      36,
+      39,
+      68
+    ],
+    "fullwidth-bracket__relay": [
+      73,
+      83,
+      97,
+      95,
+      92,
+      72,
+      75
+    ],
+    "fullwidth-bracket__deepseek": [
+      137,
+      127,
+      130,
+      109,
+      111,
+      119,
+      118
+    ],
+    "cite-tag__relay": [
+      150,
+      145,
+      147,
+      151,
+      154
+    ],
+    "cite-tag__deepseek": [
+      166,
+      178,
+      193,
+      186,
+      181,
+      194,
+      191
+    ],
+    "caret-id__relay": [
+      226,
+      201,
+      202,
+      225,
+      218,
+      224,
+      207
+    ],
+    "caret-id__deepseek": [
+      247,
+      250,
+      248,
+      249,
+      243,
+      240,
+      251
+    ]
+  }
+}

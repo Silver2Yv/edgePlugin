@@ -1,0 +1,23 @@
+{
+  "A": {
+    "totalChars": 12001,
+    "noiseChars": 574,
+    "errorClasses": [
+      "none"
+    ]
+  },
+  "B": {
+    "totalChars": 3059,
+    "noiseChars": 13,
+    "errorClasses": [
+      "under-extraction"
+    ]
+  },
+  "C": {
+    "totalChars": 10439,
+    "noiseChars": 481,
+    "errorClasses": [
+      "none"
+    ]
+  }
+}

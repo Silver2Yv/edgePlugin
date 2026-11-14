@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>本地构造：只读 textarea 代码页（V-08 反例样本）</title>
+<style>
+  body { font-family: sans-serif; margin: 2rem; }
+  nav { background: #eee; padding: 8px; }
+  textarea { width: 100%; height: 420px; font-family: monospace; font-size: 13px; }
+  footer { color: #888; margin-top: 2rem; }
+</style>
+</head>
+<body>
+<nav><a href="#">首页</a> | <a href="#">文档</a> | <a href="#">关于</a></nav>
+<h1>示例：view-source.py</h1>
+<p>下面是这个文件的只读代码视图。这个页面模拟的是老式"代码片段展示"组件的实现方式——
+把文件内容整体放进一个 <code>&lt;textarea readonly&gt;</code> 里，依赖浏览器原生滚动条和
+全选复制，而不是用语义化的 <code>&lt;pre&gt;&lt;code&gt;</code>。这类页面常见于一些历史悠久的
+代码片段分享站、在线编辑器的降级展示模式，或内嵌 iframe 小工具。</p>
+<p>正文的关键证据块都写在 textarea 的内容里，用于测试三种抽取方案是否会把表单输入值
+当作正文读出来——按架构要求，正确答案必须是「否」，但正确的「否」应该表现为
+「完全没有抽到这段内容」，而不是「抽到了但声称不是输入值」。</p>
+<textarea readonly spellcheck="false">
+"""view_source.py —— 示例文件，用于 V-08 反例样本。
+
+这里包含三条用于人工标注的关键证据：
+1. 常量 MAGIC_YEAR_A 的值是 1927。
+2. 常量 MAGIC_YEAR_B 的值是 1934，在文件末尾的 summarize() 函数里被重新引用，
+   用来测试"远处指代"能否被抽取方案在前后距离较远时仍然关联上。
+3. 函数 load_config() 读取的默认路径是 "/etc/example/config.yaml"。
+"""
+
+MAGIC_YEAR_A = 1927
+MAGIC_YEAR_B = 1934
+
+
+def load_config(path="/etc/example/config.yaml"):
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def compute(a, b):
+    return a + b
+
+
+def summarize():
+    # 远处指代测试点：这里再次用到最早定义的 MAGIC_YEAR_B（1934），
+    # 距离上面的定义已经隔了十几行代码。
+    return f"两个标志性年份分别是 {MAGIC_YEAR_A} 和 {MAGIC_YEAR_B}"
+
+
+if __name__ == "__main__":
+    print(summarize())
+</textarea>
+<footer>本页面为本地构造的最小复现样本，不代表真实网络上该场景的典型分布，仅用于 V-08 边界测试。</footer>
+</body>
+</html>

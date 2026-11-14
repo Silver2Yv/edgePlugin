@@ -1,0 +1,1425 @@
+{
+  "summary": {
+    "A": {
+      "scheme": "A",
+      "samplesWithTiming": 28,
+      "timingP50Ms": 3.199999999254942,
+      "timingP95Ms": 23.40000000037253,
+      "meanMappingRate": 1,
+      "meanEvidenceRecall": 0.8571428571428571,
+      "distantReferenceRecall": 0.8421052631578947,
+      "distantReferenceSamples": 19
+    },
+    "B": {
+      "scheme": "B",
+      "samplesWithTiming": 28,
+      "timingP50Ms": 29.5,
+      "timingP95Ms": 220.30000000074506,
+      "meanMappingRate": 1,
+      "meanEvidenceRecall": 0.7261904761904762,
+      "distantReferenceRecall": 0.6842105263157895,
+      "distantReferenceSamples": 19
+    },
+    "C": {
+      "scheme": "C",
+      "samplesWithTiming": 28,
+      "timingP50Ms": 81.09999999962747,
+      "timingP95Ms": 528.7999999988824,
+      "meanMappingRate": 0.7451477211588271,
+      "meanEvidenceRecall": 0.9404761904761906,
+      "distantReferenceRecall": 0.9473684210526315,
+      "distantReferenceSamples": 19
+    },
+    "formLeakObservedInC": false
+  },
+  "perSample": [
+    {
+      "id": "accordion-govuk",
+      "category": "折叠内容（手风琴）",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 75,
+          "timingMs": 2,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 65,
+          "timingMs": 10,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 66,
+          "timingMs": 45,
+          "mappingRate": 0.7727272727272727,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "adv-forum-thread",
+      "category": "反例：论坛串",
+      "adversarial": true,
+      "schemes": {
+        "A": {
+          "blockCount": 3,
+          "timingMs": 3,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 0,
+          "timingMs": 26,
+          "mappingRate": 1,
+          "evidenceFound": 0,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "total-extraction-failure"
+          ]
+        },
+        "C": {
+          "blockCount": 2,
+          "timingMs": 95,
+          "mappingRate": 0.5,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "adv-login-wall",
+      "category": "反例：登录墙",
+      "adversarial": true,
+      "schemes": {
+        "A": {
+          "blockCount": 4,
+          "timingMs": 1,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.21311475409836064,
+          "errorClasses": [
+            "boilerplate-noise"
+          ]
+        },
+        "B": {
+          "blockCount": 4,
+          "timingMs": 5,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.21311475409836064,
+          "errorClasses": [
+            "boilerplate-noise"
+          ]
+        },
+        "C": {
+          "blockCount": 4,
+          "timingMs": 33,
+          "mappingRate": 0.75,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.21311475409836064,
+          "errorClasses": [
+            "boilerplate-noise"
+          ]
+        }
+      }
+    },
+    {
+      "id": "adv-readonly-textarea",
+      "category": "反例：只读 textarea 代码页",
+      "adversarial": true,
+      "schemes": {
+        "A": {
+          "blockCount": 3,
+          "timingMs": 1,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 3,
+          "timingMs": 4,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 3,
+          "timingMs": 15,
+          "mappingRate": 0.6666666666666666,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "adv-spa-empty",
+      "category": "反例：SPA 首页",
+      "adversarial": true,
+      "schemes": {
+        "A": {
+          "blockCount": 5,
+          "timingMs": 1,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 5,
+          "timingMs": 11,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 6,
+          "timingMs": 39,
+          "mappingRate": 0.8333333333333334,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "arxiv-abs",
+      "category": "文献页",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 30,
+          "timingMs": 2,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.14136581122227054,
+          "errorClasses": [
+            "boilerplate-noise"
+          ]
+        },
+        "B": {
+          "blockCount": 7,
+          "timingMs": 9,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.04485645933014354,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 6,
+          "timingMs": 29,
+          "mappingRate": 0.5,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.05344494526722473,
+          "errorClasses": [
+            "boilerplate-noise"
+          ]
+        }
+      }
+    },
+    {
+      "id": "arxiv-html",
+      "category": "文献页",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 116,
+          "timingMs": 7,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 116,
+          "timingMs": 63,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 116,
+          "timingMs": 129,
+          "mappingRate": 0.7241379310344828,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "doc-mdn-en",
+      "category": "技术文档",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 56,
+          "timingMs": 3,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.026330532212885154,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 50,
+          "timingMs": 16,
+          "mappingRate": 1,
+          "evidenceFound": 2,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.028290529695024078,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 49,
+          "timingMs": 34,
+          "mappingRate": 0.6938775510204082,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "doc-mdn-zh",
+      "category": "技术文档（中文）",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 55,
+          "timingMs": 5,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.03305377405032067,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 51,
+          "timingMs": 16,
+          "mappingRate": 1,
+          "evidenceFound": 2,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.03537486800422387,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 51,
+          "timingMs": 37,
+          "mappingRate": 0.6666666666666666,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "doc-python",
+      "category": "技术文档",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 186,
+          "timingMs": 7,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.0002537498590278561,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 186,
+          "timingMs": 93,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.0002537498590278561,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 184,
+          "timingMs": 97,
+          "mappingRate": 0.5760869565217391,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.0002551599002041279,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "doc-react",
+      "category": "技术文档",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 78,
+          "timingMs": 12,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 74,
+          "timingMs": 61,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 74,
+          "timingMs": 86,
+          "mappingRate": 0.7432432432432432,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "doc-vue-tabs",
+      "category": "技术文档+标签页",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 103,
+          "timingMs": 3,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 102,
+          "timingMs": 43,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 124,
+          "timingMs": 58,
+          "mappingRate": 0.5887096774193549,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "visibility-violation"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-longform-pearlharbor",
+      "category": "英文长文",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 117,
+          "timingMs": 3,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.04782934755437047,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 19,
+          "timingMs": 11,
+          "mappingRate": 1,
+          "evidenceFound": 2,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 0,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.004249754821837201,
+          "errorClasses": [
+            "under-extraction"
+          ]
+        },
+        "C": {
+          "blockCount": 93,
+          "timingMs": 55,
+          "mappingRate": 0.8817204301075269,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.0460772104607721,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "en-longform-pg",
+      "category": "英文长文",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 1,
+          "timingMs": 2,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "granularity-collapse"
+          ]
+        },
+        "B": {
+          "blockCount": 1,
+          "timingMs": 5,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "granularity-collapse"
+          ]
+        },
+        "C": {
+          "blockCount": 0,
+          "timingMs": 19,
+          "mappingRate": 0,
+          "evidenceFound": 0,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 0,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "total-extraction-failure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "formula-en",
+      "category": "带公式",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 7,
+          "timingMs": 10,
+          "mappingRate": 1,
+          "evidenceFound": 0,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 0,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "root-mis-selection",
+            "total-extraction-failure"
+          ]
+        },
+        "B": {
+          "blockCount": 7,
+          "timingMs": 30,
+          "mappingRate": 1,
+          "evidenceFound": 0,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 0,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "root-mis-selection",
+            "total-extraction-failure"
+          ]
+        },
+        "C": {
+          "blockCount": 85,
+          "timingMs": 81,
+          "mappingRate": 0.8470588235294118,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "formula-zh",
+      "category": "带公式（中文）",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 178,
+          "timingMs": 14,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.02661836509686565,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 107,
+          "timingMs": 37,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 159,
+          "timingMs": 97,
+          "mappingRate": 0.8553459119496856,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.00829737802854298,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "github-code-argparse",
+      "category": "GitHub 代码文件页+长代码",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 9,
+          "timingMs": 4,
+          "mappingRate": 1,
+          "evidenceFound": 0,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 0,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 1,
+          "errorClasses": [
+            "boilerplate-noise",
+            "root-mis-selection",
+            "total-extraction-failure"
+          ]
+        },
+        "B": {
+          "blockCount": 5,
+          "timingMs": 138,
+          "mappingRate": 1,
+          "evidenceFound": 0,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 0,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 1,
+          "errorClasses": [
+            "boilerplate-noise",
+            "root-mis-selection",
+            "total-extraction-failure"
+          ]
+        },
+        "C": {
+          "blockCount": 1248,
+          "timingMs": 529,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "atomicity-violation"
+          ]
+        }
+      }
+    },
+    {
+      "id": "github-code-ref",
+      "category": "GitHub 代码文件页",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 10,
+          "timingMs": 3,
+          "mappingRate": 1,
+          "evidenceFound": 0,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 0,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 1,
+          "errorClasses": [
+            "boilerplate-noise",
+            "root-mis-selection",
+            "total-extraction-failure"
+          ]
+        },
+        "B": {
+          "blockCount": 6,
+          "timingMs": 66,
+          "mappingRate": 1,
+          "evidenceFound": 0,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 0,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 1,
+          "errorClasses": [
+            "boilerplate-noise",
+            "root-mis-selection",
+            "total-extraction-failure"
+          ]
+        },
+        "C": {
+          "blockCount": 366,
+          "timingMs": 191,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "atomicity-violation"
+          ]
+        }
+      }
+    },
+    {
+      "id": "github-readme",
+      "category": "GitHub README",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 61,
+          "timingMs": 4,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.6731307907778497,
+          "errorClasses": [
+            "boilerplate-noise",
+            "root-mis-selection"
+          ]
+        },
+        "B": {
+          "blockCount": 21,
+          "timingMs": 14,
+          "mappingRate": 1,
+          "evidenceFound": 2,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 21,
+          "timingMs": 67,
+          "mappingRate": 0.5238095238095238,
+          "evidenceFound": 2,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "iframe-cross-origin",
+      "category": "跨源 iframe 嵌入",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 2,
+          "timingMs": 3,
+          "mappingRate": 1,
+          "evidenceFound": 0,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 1,
+          "errorClasses": [
+            "boilerplate-noise",
+            "root-mis-selection",
+            "total-extraction-failure"
+          ]
+        },
+        "B": {
+          "blockCount": 36,
+          "timingMs": 50,
+          "mappingRate": 1,
+          "evidenceFound": 2,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "under-extraction"
+          ]
+        },
+        "C": {
+          "blockCount": 77,
+          "timingMs": 100,
+          "mappingRate": 0.6493506493506493,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "katex-docs",
+      "category": "带公式（KaTeX）",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 144,
+          "timingMs": 23,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 144,
+          "timingMs": 1020,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 143,
+          "timingMs": 973,
+          "mappingRate": 0.8181818181818182,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "listing-hn",
+      "category": "重复布局（列表页）",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 1,
+          "timingMs": 2,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "granularity-collapse"
+          ]
+        },
+        "B": {
+          "blockCount": 1,
+          "timingMs": 26,
+          "mappingRate": 1,
+          "evidenceFound": 0,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 1,
+          "errorClasses": [
+            "boilerplate-noise",
+            "total-extraction-failure",
+            "under-extraction"
+          ]
+        },
+        "C": {
+          "blockCount": 1,
+          "timingMs": 31,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "granularity-collapse",
+            "under-extraction"
+          ]
+        }
+      }
+    },
+    {
+      "id": "listing-ruanyifeng-index",
+      "category": "重复布局（目录页）",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 12,
+          "timingMs": 1,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.05555555555555555,
+          "errorClasses": [
+            "boilerplate-noise"
+          ]
+        },
+        "B": {
+          "blockCount": 12,
+          "timingMs": 8,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.05555555555555555,
+          "errorClasses": [
+            "boilerplate-noise"
+          ]
+        },
+        "C": {
+          "blockCount": 2,
+          "timingMs": 30,
+          "mappingRate": 1,
+          "evidenceFound": 2,
+          "evidenceTotal": 3,
+          "distantReferenceOk": null,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "under-extraction"
+          ]
+        }
+      }
+    },
+    {
+      "id": "table-heavy",
+      "category": "表格密集页",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 13,
+          "timingMs": 14,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "granularity-collapse"
+          ]
+        },
+        "B": {
+          "blockCount": 13,
+          "timingMs": 109,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "granularity-collapse"
+          ]
+        },
+        "C": {
+          "blockCount": 9,
+          "timingMs": 158,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "granularity-collapse"
+          ]
+        }
+      }
+    },
+    {
+      "id": "tabs-bootstrap",
+      "category": "折叠内容（标签页）",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 122,
+          "timingMs": 9,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.002792570463696584,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 118,
+          "timingMs": 220,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 110,
+          "timingMs": 126,
+          "mappingRate": 0.509090909090909,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-article-918",
+      "category": "中文文章",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 264,
+          "timingMs": 21,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.005208333333333333,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 185,
+          "timingMs": 76,
+          "mappingRate": 1,
+          "evidenceFound": 2,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 0,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 248,
+          "timingMs": 242,
+          "mappingRate": 0.9556451612903226,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.0013715670951484802,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-article-ruanyifeng",
+      "category": "中文文章",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 145,
+          "timingMs": 2,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 140,
+          "timingMs": 10,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 140,
+          "timingMs": 33,
+          "mappingRate": 0.9142857142857143,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    },
+    {
+      "id": "zh-article-xian",
+      "category": "中文文章",
+      "adversarial": false,
+      "schemes": {
+        "A": {
+          "blockCount": 311,
+          "timingMs": 41,
+          "mappingRate": 1,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.0028587993042921973,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "B": {
+          "blockCount": 262,
+          "timingMs": 69,
+          "mappingRate": 1,
+          "evidenceFound": 1,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 0,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0,
+          "errorClasses": [
+            "none"
+          ]
+        },
+        "C": {
+          "blockCount": 293,
+          "timingMs": 196,
+          "mappingRate": 0.89419795221843,
+          "evidenceFound": 3,
+          "evidenceTotal": 3,
+          "distantReferenceOk": 1,
+          "error": null,
+          "leakedFormValue": false,
+          "noiseRatio": 0.00014121444422029452,
+          "errorClasses": [
+            "none"
+          ]
+        }
+      }
+    }
+  ]
+}

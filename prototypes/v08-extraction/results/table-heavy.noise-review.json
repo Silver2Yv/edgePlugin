@@ -1,0 +1,23 @@
+{
+  "A": {
+    "totalChars": 82214,
+    "noiseChars": 0,
+    "errorClasses": [
+      "granularity-collapse"
+    ]
+  },
+  "B": {
+    "totalChars": 82214,
+    "noiseChars": 0,
+    "errorClasses": [
+      "granularity-collapse"
+    ]
+  },
+  "C": {
+    "totalChars": 78322,
+    "noiseChars": 0,
+    "errorClasses": [
+      "granularity-collapse"
+    ]
+  }
+}

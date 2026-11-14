@@ -1,0 +1,23 @@
+{
+  "note": "对 results/human-review-sample.json 抽取的 20% 裁判条目做人工复核，比较人工判断与裁判模型 verdict 是否一致。",
+  "sampleSize": 54,
+  "disagreements": [
+    {
+      "cell": "bracket-id__relay",
+      "judgeRawIdx": 29,
+      "judgeVerdict": "not-support",
+      "humanVerdict": "support",
+      "reason": "被引用片段"用户留存率在前三个月出现明显下滑"正是年报里对下滑现象的原始描述，足以回答"最初是如何描述的"，裁判判过严。"
+    },
+    {
+      "cell": "cite-tag__deepseek",
+      "judgeRawIdx": 193,
+      "judgeVerdict": "uncertain",
+      "humanVerdict": "support",
+      "reason": "被引用片段直接给出重新检索的触发条件（相似度低于阈值），已能直接回答问题，裁判判过严。"
+    }
+  ],
+  "agreementRate": 0.9629629629629629,
+  "agreementCount": 52,
+  "conclusion": "裁判模型与人工复核在 54 条抽样上一致率约 96.3%，两处分歧都是裁判偏严格（把足够支持的片段判成不确定/不支持），未发现裁判偏宽松（把不支持判成支持）的情况，可作为裁判方法可用性的佐证，但仍建议正式阶段保留人工抽样复核环节。"
+}

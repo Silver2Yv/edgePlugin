@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>网络诊断 · 阅读助手原型</title>
+<style>
+  body { font: 14px/1.6 system-ui, "Microsoft YaHei", sans-serif; max-width: 980px; margin: 24px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 20px; } h2 { font-size: 16px; margin-top: 28px; }
+  fieldset { border: 1px solid #ccc; border-radius: 6px; padding: 12px 16px; }
+  label { display: block; margin: 6px 0; }
+  label span { display: inline-block; width: 120px; color: #555; }
+  input[type=text], input[type=password], select { width: 420px; padding: 4px 6px; }
+  button { padding: 6px 14px; margin: 6px 6px 0 0; cursor: pointer; }
+  .note { color: #666; font-size: 13px; }
+  .warn { background: #fff7e0; border-left: 3px solid #e0a000; padding: 6px 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid #ddd; padding: 4px 6px; text-align: left; vertical-align: top; }
+  th { background: #f4f4f4; }
+  .ok { color: #137333; } .bad { color: #c5221f; }
+  #status { margin-top: 8px; font-weight: 600; }
+  pre { background: #f6f6f6; padding: 8px; overflow: auto; max-height: 240px; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>网络诊断包</h1>
+<p class="warn">Key 只保存在浏览器内存里（关闭浏览器即清除），导出的结果已自动把 Key 和服务器地址替换掉。<b>不要把 Key 发到任何聊天或邮件里。</b></p>
+
+<fieldset>
+  <legend>1. 连接</legend>
+  <label><span>接口地址</span><input id="baseUrl" type="text" placeholder="例如 https://服务器:端口/v1"></label>
+  <label><span>Key</span><input id="key" type="password" autocomplete="off"></label>
+  <label><span>模型名</span><input id="model" type="text" placeholder="例如 deepseek-flash"></label>
+  <label><span></span><input id="disableThinking" type="checkbox"> 关闭思考（模型支持时）</label>
+  <button id="save">保存连接</button>
+</fieldset>
+
+<fieldset>
+  <legend>2. 本次测试环境</legend>
+  <label><span>网络</span><select id="network">
+    <option value="">请选择</option>
+    <option>公司 WiFi</option><option>公司有线</option><option>UniVPN</option><option>家庭网络</option><option>其他</option>
+  </select></label>
+  <label><span>开发者工具</span><select id="devtools">
+    <option value="closed">没开</option><option value="open">开着（会让后台不被回收，长任务结果偏乐观）</option>
+  </select></label>
+  <label><span>浏览器</span><input id="browser" type="text" readonly></label>
+</fieldset>
+
+<fieldset>
+  <legend>3. 运行</legend>
+  <button id="runQuick">快速测试（约 30 秒）</button>
+  <button id="runLong">长任务测试</button>
+  <label><span></span><input id="keepalive" type="checkbox" checked> 长任务期间保活（每 20 秒唤醒一次后台）</label>
+  <p class="note">长任务测试：点击后<b>立刻关掉本页</b>，等 3 分钟再点扩展图标重新打开本页查看结果。建议保活开、关各做一次。</p>
+  <div id="status">空闲</div>
+</fieldset>
+
+<h2>4. 结果</h2>
+<div id="results"></div>
+<button id="copyMd">复制 Markdown（贴进回填表）</button>
+<button id="copyJson">复制 JSON（完整脱敏记录）</button>
+<button id="clear">清空记录</button>
+<p class="note">另有<a href="suggest.html" target="_blank">问题建议命中测试页</a>（V-11）。</p>
+<script type="module" src="diag.js"></script>
+</body>
+</html>

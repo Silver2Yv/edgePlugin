@@ -1,0 +1,27 @@
+{
+  "A": {
+    "totalChars": 194,
+    "noiseChars": 194,
+    "errorClasses": [
+      "boilerplate-noise",
+      "root-mis-selection",
+      "total-extraction-failure"
+    ]
+  },
+  "B": {
+    "totalChars": 116,
+    "noiseChars": 116,
+    "errorClasses": [
+      "boilerplate-noise",
+      "root-mis-selection",
+      "total-extraction-failure"
+    ]
+  },
+  "C": {
+    "totalChars": 47864,
+    "noiseChars": 0,
+    "errorClasses": [
+      "atomicity-violation"
+    ]
+  }
+}

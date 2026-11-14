@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8" />
+<title>V-10 选区与阅读位置保护 — 最小复现页</title>
+<style>
+  body { font-family: system-ui, sans-serif; padding: 16px; }
+  .ra-block { margin: 0 0 12px; padding: 8px; border: 1px solid #ccc; }
+  #spacer { height: 2000px; background: linear-gradient(#fafafa, #eee); }
+  #focus-target { display: block; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+  <p>这是模拟"界面上已有一段很长正文，模型仍在流式追加新内容"的最小复现页。
+  已完成块（id 以 finalized- 开头）在后续更新中节点不会被替换；
+  只有 open 块（id="block-open"）的内容会被追加。</p>
+
+  <input id="focus-target" placeholder="模拟用户正在别处输入" />
+
+  <div id="container">
+    <div class="ra-block" id="finalized-1" data-key="1">已完成块一：可被选中的一段文字 ALPHA。</div>
+    <div class="ra-block" id="finalized-2" data-key="2">已完成块二：可被选中的一段文字 BETA。</div>
+    <div class="ra-block" id="block-open" data-key="3">生成中……</div>
+  </div>
+
+  <div id="spacer"></div>
+
+  <script>
+    // 模拟"按块增量渲染"：已完成块的 DOM 节点引用保持不变（不重新 createElement，
+    // 不替换 innerHTML），只有最后一块（open）在每次 tick 里被追加新文本。
+    // 不调用 scrollIntoView/focus/scrollTo，验证"不自动滚动、不抢焦点"。
+    window.__v10TickCount = 0;
+    window.__v10Tick = function () {
+      const openBlock = document.getElementById('block-open');
+      window.__v10TickCount += 1;
+      openBlock.textContent = '生成中……已追加第 ' + window.__v10TickCount + ' 次增量文本。';
+      // 故意不调用任何会移动视口或焦点的 API。
+    };
+    window.__v10RunStream = function (times) {
+      for (let i = 0; i < times; i++) window.__v10Tick();
+    };
+  </script>
+</body>
+</html>

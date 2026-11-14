@@ -1,0 +1,21 @@
+{
+  "name": "v09-citation",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "V-09 原型：引用标记写法遵守率实测（format/）与锚点匹配/降级算法（anchor/）。只用于本地验证，不随主仓库发布。",
+  "scripts": {
+    "smoke": "node smoke-test.mjs",
+    "format:run": "node format/src/run-experiment.mjs",
+    "anchor:test": "vitest run --config anchor/vitest.config.ts",
+    "anchor:bench": "tsx anchor/src/bench.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "tsx": "^4.19.0"
+  },
+  "dependencies": {
+    "approx-string-match": "^2.0.1"
+  }
+}

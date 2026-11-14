@@ -1,0 +1,15 @@
+{
+  "name": "suggest-hit",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "I9 提问前的模型问题建议 - 延迟与命中率验证原型",
+  "scripts": {
+    "models:list": "node scripts/list-models.mjs",
+    "test:connect": "node scripts/test-connect.mjs",
+    "measure:latency": "node scripts/measure-latency.mjs",
+    "measure:warmup": "node scripts/measure-warmup.mjs",
+    "eval:proxy": "node scripts/proxy-hit-eval.mjs",
+    "report": "node scripts/build-report.mjs"
+  }
+}

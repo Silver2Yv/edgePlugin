@@ -1,0 +1,24 @@
+{
+  "A": {
+    "totalChars": 4641,
+    "noiseChars": 3124,
+    "errorClasses": [
+      "boilerplate-noise",
+      "root-mis-selection"
+    ]
+  },
+  "B": {
+    "totalChars": 1194,
+    "noiseChars": 0,
+    "errorClasses": [
+      "none"
+    ]
+  },
+  "C": {
+    "totalChars": 1193,
+    "noiseChars": 0,
+    "errorClasses": [
+      "none"
+    ]
+  }
+}

@@ -21,3 +21,13 @@ selectlingo-v1.1.0/
 !.env.example
 prototypes/**/.secrets/
 prototypes/**/results-raw/
+
+# 原型里受版权保护的材料与整页样本：只提交索引/清单，原文不进仓库
+prototypes/suggest-hit/materials.json
+prototypes/net-probe/extension/materials.json
+prototypes/v08-extraction/samples/
+# 抽取结果含页面原文；只提交指标与噪声复核（metrics-summary.json、*.noise-review.json）
+prototypes/v08-extraction/results/*.digest.txt
+prototypes/v08-extraction/results/*.extraction.json
+# 打包产物（含第三方库），由 src/build-bundle.mjs 重新生成
+prototypes/v08-extraction/src/extractor-bundle.js

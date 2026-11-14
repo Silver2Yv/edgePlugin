@@ -1,0 +1,25 @@
+{
+  "A": {
+    "totalChars": 507,
+    "noiseChars": 0,
+    "errorClasses": [
+      "root-mis-selection",
+      "total-extraction-failure"
+    ]
+  },
+  "B": {
+    "totalChars": 507,
+    "noiseChars": 0,
+    "errorClasses": [
+      "root-mis-selection",
+      "total-extraction-failure"
+    ]
+  },
+  "C": {
+    "totalChars": 11765,
+    "noiseChars": 0,
+    "errorClasses": [
+      "none"
+    ]
+  }
+}

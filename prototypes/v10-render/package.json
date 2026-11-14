@@ -1,0 +1,24 @@
+{
+  "name": "v10-render",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "V-10 原型：安全渲染与流式语法（markdown-it + KaTeX + highlight.js 的按块增量渲染）。只用于本地验证，不随主仓库发布。",
+  "scripts": {
+    "test": "vitest run",
+    "bench": "tsx src/bench.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "highlight.js": "11.12.0",
+    "katex": "0.19.1",
+    "markdown-it": "15.0.3"
+  },
+  "devDependencies": {
+    "happy-dom": "21.0.4",
+    "playwright-core": "1.65.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.1.0"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "A": {
+    "totalChars": 13988,
+    "noiseChars": 0,
+    "errorClasses": [
+      "granularity-collapse"
+    ]
+  },
+  "B": {
+    "totalChars": 13988,
+    "noiseChars": 0,
+    "errorClasses": [
+      "granularity-collapse"
+    ]
+  },
+  "C": {
+    "totalChars": 0,
+    "noiseChars": 0,
+    "errorClasses": [
+      "total-extraction-failure"
+    ]
+  }
+}

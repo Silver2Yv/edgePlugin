@@ -1,0 +1,20 @@
+{
+  "byVariant": {
+    "selection_only": {
+      "totalQuestions": 40,
+      "hitQuestions": 23,
+      "rate": 0.575
+    },
+    "selection_context": {
+      "totalQuestions": 40,
+      "hitQuestions": 31,
+      "rate": 0.775
+    }
+  },
+  "overall": {
+    "totalQuestions": 80,
+    "hitQuestions": 54,
+    "rate": 0.675
+  },
+  "judgeTaskCount": 40
+}

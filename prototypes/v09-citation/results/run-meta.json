@@ -1,0 +1,11 @@
+{
+  "repsPerTaskPerCell": 18,
+  "concurrency": 3,
+  "totalGenCalls": 288,
+  "totalJudgeCalls": 273,
+  "genCallFailures": 0,
+  "judgeCallFailures": 0,
+  "samplesUsed": 10,
+  "qaPairsUsed": 22,
+  "timestamp": "2026-11-14T10:14:56.988Z"
+}

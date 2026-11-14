@@ -1,0 +1,26 @@
+{
+  "bracket-id": {
+    "sampledResponses": 12,
+    "trialsRun": 72,
+    "totalFlips": 0,
+    "allFinalMatchAlways": true
+  },
+  "fullwidth-bracket": {
+    "sampledResponses": 12,
+    "trialsRun": 72,
+    "totalFlips": 0,
+    "allFinalMatchAlways": true
+  },
+  "cite-tag": {
+    "sampledResponses": 12,
+    "trialsRun": 72,
+    "totalFlips": 0,
+    "allFinalMatchAlways": true
+  },
+  "caret-id": {
+    "sampledResponses": 12,
+    "trialsRun": 72,
+    "totalFlips": 0,
+    "allFinalMatchAlways": true
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "A": {
+    "totalChars": 504,
+    "noiseChars": 28,
+    "errorClasses": [
+      "boilerplate-noise"
+    ]
+  },
+  "B": {
+    "totalChars": 504,
+    "noiseChars": 28,
+    "errorClasses": [
+      "boilerplate-noise"
+    ]
+  },
+  "C": {
+    "totalChars": 29,
+    "noiseChars": 0,
+    "errorClasses": [
+      "under-extraction"
+    ]
+  }
+}
