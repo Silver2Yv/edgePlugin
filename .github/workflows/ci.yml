@@ -13,11 +13,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # pnpm 要先于 setup-node 就位：setup-node 会按 packageManager 字段找 pnpm 做缓存
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-      - name: 启用 pnpm
-        run: corepack enable pnpm
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: 格式与 lint
         run: pnpm lint
