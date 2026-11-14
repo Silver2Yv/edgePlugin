@@ -22,7 +22,7 @@
     "check:manifest": "node scripts/check-manifest.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "mock-relay": "node tests/mock-relay/server.mjs",
+    "mock-relay": "node tests/mock-relay/server.ts",
     "verify": "pnpm lint && pnpm typecheck && pnpm check:deps && pnpm test && pnpm build && pnpm check:size && pnpm check:manifest"
   },
   "dependencies": {
