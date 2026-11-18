@@ -203,9 +203,19 @@ export const clientToBackground = tagged({
    * 握手。角色只取自 sender（见 SenderRole），消息里不报角色；握手前其他消息一律拒绝。
    * 小窗：令牌必填。后台核对令牌绑定的 tabId 等于 sender.tab.id，并在同一个同步段里读出即删（原子消费）。
    *   令牌里的 documentId 是宿主页面的，只用于宿主导航后作废令牌，不与 sender.documentId 比较。
+   *   成功后记下小窗绑定（FloatBinding），供断线重连。
    */
   'conv/helloFloat': obj({ type: lit('conv/helloFloat'), token: str({ pattern: TOKEN_PATTERN }) }),
-  /** 侧边栏：windowId 只作提示，后台用 runtime.getContexts 按 sender.documentId 反查真实窗口 */
+  /**
+   * 小窗断线重连。后台空闲约 30 秒会被浏览器回收，长连接随之断开（网络诊断包真机复现），而令牌已在首次握手时消费。
+   * 不带任何字段：后台核对 sender 的 tabId、frameId、documentId 与绑定一致即恢复握手，之后照常 conv/subscribe（带 resume）。
+   * 绑定不存在或对不上时回 conv/rejected（badToken），小窗请宿主重建（换新令牌）。
+   */
+  'conv/resumeFloat': obj({ type: lit('conv/resumeFloat') }),
+  /**
+   * 侧边栏：windowId 只作提示，后台用 runtime.getContexts 按 sender.documentId 反查真实窗口。
+   * 不需要令牌，断线重连时再发一次即可
+   */
   'conv/helloSidepanel': obj({ type: lit('conv/helloSidepanel'), windowId: opt(int({ min: 0 })) }),
   /** 订阅：小窗只能订阅令牌绑定标签页的对话；侧边栏只能订阅本窗口的标签页 */
   'conv/subscribe': obj({
@@ -356,7 +366,7 @@ const CONV_COMMON: readonly ClientType[] = [
 
 const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
   content: new Set(Object.keys(contentToBackground.variants)),
-  float: new Set<ClientType>([...CONV_COMMON, 'conv/helloFloat', 'handoff/start']),
+  float: new Set<ClientType>([...CONV_COMMON, 'conv/helloFloat', 'conv/resumeFloat', 'handoff/start']),
   sidepanel: new Set<ClientType>([
     ...CONV_COMMON,
     'conv/helloSidepanel',

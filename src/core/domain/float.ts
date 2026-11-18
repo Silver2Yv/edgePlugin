@@ -41,6 +41,35 @@ export const TOKEN_TTL_MS = 60_000;
 /** 128 位 = 32 个十六进制字符 */
 export const TOKEN_PATTERN = /^[0-9a-f]{32}$/;
 
+/**
+ * 小窗绑定（断线重连，conv/resumeFloat）：helloFloat 成功后记下小窗文档，存 storage.session，每个标签页一份。
+ * documentId 由浏览器给出，网页伪造不了；小窗 iframe 重新加载会换 documentId，绑定随之失效，需要新令牌。
+ * 宿主导航、标签页关闭、预热 iframe 销毁时删除。
+ */
+export interface FloatBinding {
+  tabId: number;
+  frameId: number;
+  /** 小窗自身的文档（sender.documentId） */
+  floatDocumentId: string;
+  /** 宿主页面的文档（取自令牌），宿主导航后作废 */
+  hostDocumentId: string;
+  boundAt: number;
+}
+
+/** 重连核对：三项都要对上；sender 没给 documentId 时一律拒绝（是否总会给出待 V-05 实测） */
+export function bindingMatches(
+  b: FloatBinding | undefined,
+  sender: { tabId?: number; frameId?: number; documentId?: string },
+): boolean {
+  return (
+    b !== undefined &&
+    sender.documentId !== undefined &&
+    b.tabId === sender.tabId &&
+    b.frameId === sender.frameId &&
+    b.floatDocumentId === sender.documentId
+  );
+}
+
 /** 转到侧边栏：侧边栏订阅成功后才收起小窗（AR-19） */
 export interface Handoff {
   handoffId: string;

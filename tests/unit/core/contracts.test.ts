@@ -4,7 +4,7 @@ import type { PageDocReport } from '@/core/context/page-doc';
 import { toPageKey } from '@/core/context/page-key';
 import { defaultBudget, estimateTokens } from '@/core/context/plan';
 import { jsonStringBytes, splitByJsonBytes, truncateByJsonBytes } from '@/core/domain/bytes';
-import { routeOnAsk } from '@/core/domain/float';
+import { bindingMatches, routeOnAsk } from '@/core/domain/float';
 import { canRetry, canTransition, isTerminal, JOB_LIMITS } from '@/core/domain/job';
 import {
   type anchorSchema,
@@ -176,6 +176,19 @@ describe('消息协议', () => {
     expect(parseFrom('unknown', clientToBackground, hf)).toMatchObject({ ok: false, reason: 'notAllowed' });
   });
 
+  it('小窗重连：只有小窗能发，不带任何字段', () => {
+    const r = { type: 'conv/resumeFloat' };
+    expect(parseFrom('float', clientToBackground, r).ok).toBe(true);
+    expect(parseFrom('float', clientToBackground, { ...r, token: TOKEN })).toMatchObject({
+      ok: false,
+      reason: 'invalid',
+    });
+    expect(parseFrom('float', clientToBackground, { ...r, documentId: 'x' }).ok).toBe(false);
+    for (const role of ['sidepanel', 'content', 'options', 'unknown'] as const) {
+      expect(parseFrom(role, clientToBackground, r)).toMatchObject({ ok: false, reason: 'notAllowed' });
+    }
+  });
+
   it('内容脚本不能发对话流消息；设置页消息只有设置页能发', () => {
     const r = parseFrom('content', clientToBackground, { type: 'conv/stop', jobId: ID });
     expect(r).toMatchObject({ ok: false, reason: 'notAllowed' });
@@ -309,6 +322,16 @@ describe('小窗路由', () => {
   it('失败状态走侧边栏', () => {
     expect(routeOnAsk('unknown')).toBe('float');
     expect(routeOnAsk('failedUnsupported')).toBe('sidepanel');
+  });
+
+  it('重连核对：标签页、框架、小窗文档都要对上，缺 documentId 一律拒绝', () => {
+    const b = { tabId: 7, frameId: 3, floatDocumentId: 'doc-a', hostDocumentId: 'host-a', boundAt: 1 };
+    expect(bindingMatches(b, { tabId: 7, frameId: 3, documentId: 'doc-a' })).toBe(true);
+    expect(bindingMatches(b, { tabId: 7, frameId: 3, documentId: 'doc-b' })).toBe(false);
+    expect(bindingMatches(b, { tabId: 8, frameId: 3, documentId: 'doc-a' })).toBe(false);
+    expect(bindingMatches(b, { tabId: 7, frameId: 4, documentId: 'doc-a' })).toBe(false);
+    expect(bindingMatches(b, { tabId: 7, frameId: 3 })).toBe(false);
+    expect(bindingMatches(undefined, { tabId: 7, frameId: 3, documentId: 'doc-a' })).toBe(false);
   });
 });
 

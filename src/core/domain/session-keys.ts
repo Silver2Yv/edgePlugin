@@ -11,6 +11,8 @@ export const SESSION_KEYS = {
   selection: (tabId: number) => `selection:${tabId}`,
   /** 标签页的小窗就绪状态（FloatReadiness） */
   float: (tabId: number) => `float:${tabId}`,
+  /** 标签页的小窗绑定（FloatBinding），断线重连用 */
+  floatBinding: (tabId: number) => `floatBinding:${tabId}`,
   /** 小窗转侧边栏（Handoff） */
   handoff: (id: HandoffId) => `handoff:${id}`,
   /** 本次后台进程的编号；启动扫描用它判断任务是否属于已结束的进程 */
