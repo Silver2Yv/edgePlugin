@@ -1,7 +1,25 @@
 import { buildPrompt } from './prompt.js';
 
 const $ = (id) => document.getElementById(id);
-const port = chrome.runtime.connect({ name: 'suggest' });
+// 后台空闲约 30 秒会被浏览器回收，端口随之断开；发消息前按需重连（connect 会唤醒后台）
+let port;
+function connect() {
+  const p = chrome.runtime.connect({ name: 'suggest' });
+  p.onMessage.addListener(onMessage);
+  p.onDisconnect.addListener(() => {
+    if (port === p) port = undefined;
+  });
+  return p;
+}
+function send(msg) {
+  try {
+    (port ??= connect()).postMessage(msg);
+  } catch {
+    // 断开事件还没送到时端口已失效
+    port = connect();
+    port.postMessage(msg);
+  }
+}
 const materials = await (await fetch('materials.json')).json();
 
 let idx = 0;
@@ -28,10 +46,10 @@ function show() {
   $('ready').className = '';
   cur = { id: m.id, title: m.title, tShow: Date.now() };
   const { system, user } = buildPrompt(m, 'selection_context');
-  port.postMessage({ type: 'suggest', id: m.id, system, user });
+  send({ type: 'suggest', id: m.id, system, user });
 }
 
-port.onMessage.addListener((msg) => {
+function onMessage(msg) {
   if (!cur || msg.id !== cur.id) return;
   if (msg.type === 'first' || (msg.type === 'done' && cur.tReady === undefined)) {
     cur.tReady = msg.type === 'first' ? msg.at : msg.firstAt;
@@ -43,7 +61,7 @@ port.onMessage.addListener((msg) => {
     cur.failed = msg.message;
     $('ready').textContent = `建议生成失败：${msg.message}`;
   }
-});
+}
 
 $('ask').onclick = () => {
   cur.tAsk = Date.now();
@@ -147,7 +165,16 @@ $('reset').onclick = async () => {
 };
 
 const saved = await chrome.storage.local.get(['suggestLog', 'suggestIdx']);
+let log = saved.suggestLog ?? [];
 idx = saved.suggestIdx ?? 0;
-renderLog(saved.suggestLog ?? []);
+// 旧版页面在后台被回收后就再也拿不到建议：从第一条没拿到建议的记录起作废，从那一篇接着做
+const bad = log.findIndex((r) => !r.suggestions?.length);
+if (bad >= 0) {
+  log = log.slice(0, bad);
+  idx = bad;
+  await chrome.storage.local.set({ suggestLog: log, suggestIdx: idx });
+}
+renderLog(log);
 if (idx < materials.length) show();
 else $('progress').textContent = '全部完成，请复制结果。';
+if (bad >= 0) $('progress').textContent += `（第 ${bad + 1} 篇起没拿到建议的记录已清除，从这里继续）`;

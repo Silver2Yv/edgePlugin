@@ -1,5 +1,24 @@
 const $ = (id) => document.getElementById(id);
-const port = chrome.runtime.connect({ name: 'probe' });
+// 后台空闲约 30 秒会被浏览器回收，端口随之断开；发消息前按需重连（connect 会唤醒后台）
+let port;
+function connect() {
+  const p = chrome.runtime.connect({ name: 'probe' });
+  p.onMessage.addListener(onMessage);
+  p.onDisconnect.addListener(() => {
+    if (port === p) port = undefined;
+  });
+  return p;
+}
+function send(msg) {
+  try {
+    (port ??= connect()).postMessage(msg);
+  } catch {
+    // 断开事件还没送到时端口已失效
+    port = connect();
+    port.postMessage(msg);
+  }
+}
+port = connect();
 
 const LABEL = {
   models: 'T1 模型列表',
@@ -128,8 +147,8 @@ $('save').onclick = async () => {
   $('status').textContent = '连接已保存（只在内存中）';
 };
 const meta = () => ({ network: $('network').value, devtools: $('devtools').value, keepalive: $('keepalive').checked, browser: $('browser').value });
-$('runQuick').onclick = () => port.postMessage({ type: 'run', suite: 'quick', meta: meta() });
-$('runLong').onclick = () => port.postMessage({ type: 'run', suite: 'long', meta: meta() });
+$('runQuick').onclick = () => send({ type: 'run', suite: 'quick', meta: meta() });
+$('runLong').onclick = () => send({ type: 'run', suite: 'long', meta: meta() });
 $('copyMd').onclick = async () => {
   await navigator.clipboard.writeText(toMarkdown((await allRuns()).list));
   $('status').textContent = '已复制 Markdown';
@@ -144,11 +163,11 @@ $('clear').onclick = async () => {
   render();
 };
 
-port.onMessage.addListener((m) => {
+function onMessage(m) {
   if (m.type === 'progress') $('status').textContent = `正在运行：${LABEL[m.name] ?? m.name}`;
   if (m.type === 'error') $('status').textContent = m.message;
   if (m.type === 'finished') $('status').textContent = '完成';
-});
+}
 chrome.storage.onChanged.addListener((_, area) => area === 'local' && render());
 
 (async () => {
