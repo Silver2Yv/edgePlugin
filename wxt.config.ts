@@ -22,6 +22,15 @@ export default defineConfig({
     key: MANIFEST_KEY,
     permissions: ['storage', 'unlimitedStorage', 'sidePanel', 'contextMenus', 'scripting', 'webRequest'],
     host_permissions: ['<all_urls>'],
+    // 5.10 CSP：在 MV3 默认值（script-src 'self' 'wasm-unsafe-eval'; object-src 'self';）
+    // 基础上加 img-src 'self'（回答渲染不抓取外链图片，连本地资源都不该例外）。
+    // 不加 connect-src（后台要向用户登记的中转站地址发请求）、不加 style-src（小窗用了
+    // style 属性）。pnpm dev 下 WXT 的 addDevModeCsp 会在这份字符串基础上自动追加
+    // script-src <dev server origin>（node_modules/wxt/dist/internal/manifest.mjs），
+    // 不需要我们自己处理开发模式。
+    content_security_policy: {
+      extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; img-src 'self';",
+    },
     action: { default_title: '打开阅读助手侧边栏' },
     commands: {
       'open-float': { suggested_key: { default: 'Alt+Shift+S' }, description: '打开小窗' },

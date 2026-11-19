@@ -27,7 +27,10 @@
   },
   "dependencies": {
     "@preact/signals": "2.11.4",
+    "highlight.js": "11.12.0",
     "idb": "8.0.4",
+    "katex": "0.19.1",
+    "markdown-it": "15.0.3",
     "preact": "11.2.0"
   },
   "devDependencies": {

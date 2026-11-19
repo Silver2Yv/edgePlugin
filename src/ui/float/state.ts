@@ -16,6 +16,7 @@ export function parseTokenFromHash(hash: string): string | null {
 
 type DeltaMsg = Extract<BackgroundToClient, { type: 'conv/delta' }>;
 type JobStateMsg = Extract<BackgroundToClient, { type: 'conv/jobState' }>;
+type PlanMsg = Extract<BackgroundToClient, { type: 'conv/plan' }>;
 type RejectedMsg = Extract<BackgroundToClient, { type: 'conv/rejected' }>;
 
 // ───────────── 任务视图：增量合并（规则见 job.ts 文件头注释） ─────────────
@@ -33,6 +34,11 @@ export interface JobView {
   text: string;
   reasoning: string;
   error?: { kind: ModelErrorKind; message: string };
+  /**
+   * 本次请求实际发送的块编号（5.9/5.10 的 sentBlockIds，取自 conv/plan）；回答渲染的
+   * 引用只在这个集合内生效。收到 conv/plan 之前为空数组，等于不替换任何引用标记。
+   */
+  sentBlockIds: readonly string[];
 }
 
 /** conv/accepted 落定后创建；attemptId 留空，第一条 jobState / delta 会补上（见 applyJobState / applyDelta） */
@@ -46,6 +52,7 @@ export function createJobView(jobId: string, messageId: string, resumeLastSeq = 
     lastSeq: resumeLastSeq,
     text: '',
     reasoning: '',
+    sentBlockIds: [],
   };
 }
 
@@ -85,6 +92,12 @@ export function applyJobState(view: JobView, msg: JobStateMsg): JobView {
     state: msg.state,
   };
   return msg.error === undefined ? base : { ...base, error: msg.error };
+}
+
+/** 收到本次请求的发送计划（5.9）：取出引用渲染要用的 allowedIds（sentBlockIds） */
+export function applyPlan(view: JobView, msg: PlanMsg): JobView {
+  if (msg.jobId !== view.jobId) return view;
+  return { ...view, sentBlockIds: msg.plan.sentBlockIds };
 }
 
 // ───────────── 握手与重连状态机（5.3 握手令牌、5.5 断线重连） ─────────────
@@ -240,14 +253,15 @@ function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatSt
       return state.job ? { ...state, job: applyDelta(state.job, msg) } : state;
     case 'conv/jobState':
       return state.job ? { ...state, job: applyJobState(state.job, msg) } : state;
+    case 'conv/plan':
+      return state.job ? { ...state, job: applyPlan(state.job, msg) } : state;
     case 'conv/snapshot':
       // 空对话，当前版本不渲染历史；只记一下「这次订阅的初始推送完了」，
       // 触发 FloatApp 把 queuedAsk（若有）用这时最新的 quote 发出
       return msg.done ? { ...state, snapshotSeq: state.snapshotSeq + 1 } : state;
     case 'conv/rejected':
       return applyRejected(state, msg);
-    // conv/plan（先忽略，按任务说明）、以及侧边栏专属的
-    // handoff/* history/* favorite/* citation/*：小窗不处理
+    // 侧边栏专属的 handoff/* history/* favorite/* citation/*：小窗不处理
     default:
       return state;
   }

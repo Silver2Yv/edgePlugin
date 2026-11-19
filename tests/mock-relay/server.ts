@@ -15,6 +15,7 @@
 // | streamError | 输出几段后在流里给出 error 对象 |
 // | disconnect | 输出几段后直接断开连接 |
 // | html200 | 200 加网页（漏写 /v1 的真实表现） |
+// | markdown | 分约 20 段流式输出一份含标题/列表/代码/表格/公式/链接/原始 HTML 的 Markdown（V-10） |
 // | 401 / 403 / 404 / 405 | 对应错误（401 用 new_api_error，其他用 invalid_request_error） |
 // | param400 | 400，报某个参数不支持 |
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -33,6 +34,7 @@ export const MODES = [
   'streamError',
   'disconnect',
   'html200',
+  'markdown',
   '401',
   '403',
   '404',
@@ -52,6 +54,76 @@ export interface LogEntry {
 
 const ANSWER = ['这是', '模拟中转站', '的回答。', '它分多段', '流式返回。'];
 const REASONING = ['先想', '一想。'];
+
+/**
+ * V-10 markdown 模式的完整正文：标题、有序/无序列表、ts 代码围栏、表格、行内/块级公式、
+ * http 链接、javascript: 链接（协议不在白名单内）、外链图片（不应被抓取显示）、
+ * 原始 <script>/<img onerror> HTML（html:false 下应被当纯文本转义）。
+ * 按大致相等的字符数切成约 20 段，交给调用方逐段流式写出。
+ */
+const MARKDOWN_DOC = `# 流式渲染测试文档
+
+## 列表
+
+### 无序
+
+- 无序项一
+- 无序项二
+  - 嵌套项
+
+### 有序
+
+1. 有序项一
+2. 有序项二
+
+## 代码
+
+\`\`\`ts
+function greet(name: string): string {
+  return \`你好，\${name}\`;
+}
+\`\`\`
+
+## 表格
+
+| 姓名 | 分数 |
+| --- | --- |
+| 张三 | 90 |
+| 李四 | 85 |
+
+## 公式
+
+行内公式 $E = mc^2$，块级公式：
+
+$$
+\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}
+$$
+
+## 链接与图片
+
+安全链接：[示例网站](http://example.com)
+
+危险链接：[点我](javascript:alert(1))
+
+外链图片：![示例图片](https://example.com/pic.png)
+
+## 原始 HTML（应被转义，不执行）
+
+<script>window.__pwned = 1;</script>
+<img src="x" onerror="window.__pwned = 2">
+
+正文结束。
+`;
+
+/** 把一段文本按近似等长切成 n 段（不在多字节字符中间切开） */
+function splitEvenly(text: string, n: number): string[] {
+  const chars = Array.from(text);
+  const per = Math.ceil(chars.length / n);
+  const parts: string[] = [];
+  for (let i = 0; i < chars.length; i += per) parts.push(chars.slice(i, i + per).join(''));
+  return parts;
+}
+const MARKDOWN_CHUNKS = splitEvenly(MARKDOWN_DOC, 20);
 
 const ERRORS: Partial<Record<Mode, { status: number; type: string; message: string; param?: string }>> = {
   '401': { status: 401, type: 'new_api_error', message: '无效的令牌' },
@@ -175,6 +247,12 @@ export async function startMockRelay(
       for (let i = 1; Date.now() < until && !res.destroyed; i++) {
         await write(chunk({ content: `第 ${i} 段。` }));
         await sleep(1000);
+      }
+    } else if (mode === 'markdown') {
+      for (const piece of MARKDOWN_CHUNKS) {
+        if (res.destroyed) break;
+        await write(chunk({ content: piece }));
+        await sleep(100);
       }
     } else {
       for (const [i, piece] of ANSWER.entries()) {

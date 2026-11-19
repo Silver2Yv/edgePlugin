@@ -1,8 +1,10 @@
 // 小窗（5.3）：从地址片段取令牌握手、订阅对话、发问、逐字渲染增量，断线后自动重连（5.5）。
-// 对话内容只用文本节点渲染（规则 5）；只和后台通信，不做数据库写入。
-import { useEffect, useReducer, useRef, useState } from 'preact/hooks';
+// 回答区的 Markdown/公式/高亮/引用渲染交给 src/ui/render（5.10）；对话内容只用文本节点或
+// 该模块产出的 DOM 渲染，不经过 window.postMessage（规则 4、5）。
+import { useEffect, useMemo, useReducer, useRef, useState } from 'preact/hooks';
 import type { Browser } from 'wxt/browser';
 import { browser } from 'wxt/browser';
+import { isTerminal } from '@/core/domain/job';
 import { type BackgroundToClient, type ClientToBackground, CONV_PORT } from '@/core/domain/messages';
 import { loadSettings } from '@/platform/settings-store';
 import { ERROR_LABEL } from './error-labels';
@@ -16,6 +18,7 @@ import {
   shouldSendOnEnter,
   subscribeMessage,
 } from './float/state';
+import { type AnswerRenderer, createAnswerRenderer } from './render';
 
 type Port = Browser.runtime.Port;
 
@@ -45,6 +48,16 @@ export function FloatApp() {
   const stateRef = useRef(state);
   stateRef.current = state;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const answerRef = useRef<HTMLDivElement | null>(null);
+  const answerRendererRef = useRef<AnswerRenderer | null>(null);
+
+  /** 回答容器挂载后才能创建渲染器；懒创建，同一个容器只创建一次 */
+  const getAnswerRenderer = (): AnswerRenderer | null => {
+    if (answerRendererRef.current) return answerRendererRef.current;
+    if (!answerRef.current) return null;
+    answerRendererRef.current = createAnswerRenderer(answerRef.current);
+    return answerRendererRef.current;
+  };
 
   // 建端口：helloFloat（首次）或 resumeFloat（重连）
   const connect = (hello: ClientToBackground) => {
@@ -102,6 +115,28 @@ export function FloatApp() {
   }, []);
 
   const generating = isGenerating(state.job);
+  const job = state.job;
+  const allowedCitationIds = useMemo(() => new Set(job?.sentBlockIds ?? []), [job?.sentBlockIds]);
+
+  // 新任务 / 新尝试：清空回答区重新开始（job.jobId 或 attemptId 变化）
+  useEffect(() => {
+    getAnswerRenderer()?.reset();
+  }, [job?.jobId, job?.attemptId]);
+
+  // 增量更新：走节流调度（rAF 合并同帧更新；超长回答降到至少 200ms 一次），终态交给下面那条 finalize
+  useEffect(() => {
+    if (!job || isTerminal(job.state)) return;
+    getAnswerRenderer()?.scheduleUpdate(job.text, allowedCitationIds);
+  }, [job?.text, job?.state, allowedCitationIds]);
+
+  // 到达终态：立即做一次完整校正（流式阶段可能遗留的前向引用等在这里被纠正）
+  useEffect(() => {
+    if (!job || !isTerminal(job.state)) return;
+    getAnswerRenderer()?.finalize(job.text, allowedCitationIds);
+  }, [job?.state, job?.text, allowedCitationIds]);
+
+  // 组件卸载：移除渲染器的 selectionchange 监听
+  useEffect(() => () => answerRendererRef.current?.destroy(), []);
 
   const handleSend = async () => {
     const text = question.trim();
@@ -159,7 +194,6 @@ export function FloatApp() {
   // 下用户可以照常打字、点发送，连接没就绪时会先存成待发（见 handleSend）
   const canType =
     state.connPhase !== 'noToken' && state.connPhase !== 'expired' && state.connPhase !== 'versionMismatch';
-  const job = state.job;
 
   return (
     <main style={{ width: 380, boxSizing: 'border-box', padding: 8, fontSize: 13 }}>
@@ -225,9 +259,9 @@ export function FloatApp() {
               <div style={{ whiteSpace: 'pre-wrap', color: '#777' }}>{job.reasoning}</div>
             </details>
           )}
-          <div data-testid="answer" style={{ whiteSpace: 'pre-wrap', marginTop: 4 }}>
-            {job.text}
-          </div>
+          {/* 子节点完全由 src/ui/render（createAnswerRenderer）管理，这里不写 children，
+              Preact 不会对它做子节点 diff（见模块顶部注释与 render/mount.ts） */}
+          <div ref={answerRef} data-testid="answer" style={{ marginTop: 4 }} />
           {job.state === 'failed' && job.error && (
             <p style={{ margin: '4px 0 0', color: '#c33' }}>
               {ERROR_LABEL[job.error.kind]}

@@ -62,6 +62,23 @@ describe('模拟中转站', () => {
     expect(await (await ask('heartbeat')).text()).toContain(': ping');
   });
 
+  it('markdown：分段流式输出含标题/列表/代码/表格/公式/链接/原始 HTML 的完整正文', async () => {
+    const text = await (await ask('markdown')).text();
+    const contents = [...text.matchAll(/"content":"((?:[^"\\]|\\.)*)"/g)].map((m) => JSON.parse(`"${m[1]}"`));
+    const full = contents.join('');
+    expect(full).toContain('# 流式渲染测试文档');
+    expect(full).toContain('```ts');
+    expect(full).toContain('| 姓名 | 分数 |');
+    expect(full).toContain('$E = mc^2$');
+    expect(full).toContain('[点我](javascript:alert(1))');
+    expect(full).toContain('![示例图片](https://example.com/pic.png)');
+    expect(full).toContain('<script>window.__pwned = 1;</script>');
+    // 分段数大致为 20 段（按字符近似等分，允许因多字节字符切分产生的浮动）
+    expect(contents.length).toBeGreaterThanOrEqual(18);
+    expect(contents.length).toBeLessThanOrEqual(21);
+    expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true);
+  });
+
   it('slowJson 与非流式返回整段 JSON', async () => {
     const r = await ask('slowJson');
     expect(r.headers.get('content-type')).toContain('application/json');
