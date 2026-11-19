@@ -116,7 +116,14 @@ export const fakeAdapter: ModelAdapter = {
 
 let instances = 0;
 
-export function makeHarness(opts: { session?: ReturnType<typeof fakeSession>; status?: number } = {}) {
+export function makeHarness(
+  opts: {
+    session?: ReturnType<typeof fakeSession>;
+    status?: number;
+    /** 让 lockStorage（收紧 storage.local）每次调用都失败，用于测 settings/ensureLocked 的失败分支 */
+    lockStorageFails?: boolean;
+  } = {},
+) {
   const instance = ++instances;
   const session = opts.session ?? fakeSession();
   let clock = 1_000_000;
@@ -187,6 +194,9 @@ export function makeHarness(opts: { session?: ReturnType<typeof fakeSession>; st
     newId: () => `id-${instance}-${String(++ids).padStart(8, '0')}`,
     newToken: () => (instance * 1_000_000 + ++tokens).toString(16).padStart(32, '0'),
     log: (event, detail) => logs.push({ event, ...(detail ? { detail } : {}) }),
+    lockStorage: vi.fn(async () => {
+      if (opts.lockStorageFails) throw new Error('锁定失败');
+    }),
   };
   const app = createBackground(deps);
 
@@ -205,6 +215,12 @@ export function makeHarness(opts: { session?: ReturnType<typeof fakeSession>; st
     tab: { id: tabId },
     frameId: 3,
     documentId,
+  });
+  /** 设置页 / 欢迎页：按路径判定，不要求在标签页里 */
+  const optionsSender = (path: '/options.html' | '/welcome.html' = '/options.html'): SenderLike => ({
+    id: EXT_ID,
+    url: `chrome-extension://${EXT_ID}${path}`,
+    origin: `chrome-extension://${EXT_ID}`,
   });
 
   function connect(sender: SenderLike = floatSender()) {
@@ -248,6 +264,7 @@ export function makeHarness(opts: { session?: ReturnType<typeof fakeSession>; st
     injected,
     contentSender,
     floatSender,
+    optionsSender,
     connect,
     message: (raw: unknown, sender: SenderLike = contentSender()) => app.onMessage(raw, sender),
     advance: (ms: number) => {

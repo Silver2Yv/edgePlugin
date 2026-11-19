@@ -199,6 +199,16 @@ test('划词 → 问 → 小窗流式回答：后台只发一次请求，带着�
   const own = await frame.evaluate(() => ({ url: location.href.split('#')[0], origin: location.origin }));
   console.log('[V-05] 小窗 location', JSON.stringify(own));
   for (const l of senderLogs) console.log('[V-05]', l);
+
+  // 点网页别处收起小窗（隐藏，不销毁）；再选词点「问」又出现
+  const openPopovers = () =>
+    page.evaluate(
+      () => [...document.documentElement.children].filter((el) => el.matches(':popover-open')).length,
+    );
+  expect(await openPopovers()).toBeGreaterThan(0);
+  await page.mouse.click(5, 5);
+  await expect.poll(openPopovers).toBe(0);
+  expect(page.frames().some(isFloat)).toBe(true);
 });
 
 test('答完后停掉后台：小窗用 resumeFloat 重连，接着问仍能答完', async ({ page, serviceWorker, context }) => {

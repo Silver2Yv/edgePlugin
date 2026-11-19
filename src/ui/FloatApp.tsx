@@ -4,8 +4,8 @@ import { useEffect, useReducer, useRef, useState } from 'preact/hooks';
 import type { Browser } from 'wxt/browser';
 import { browser } from 'wxt/browser';
 import { type BackgroundToClient, type ClientToBackground, CONV_PORT } from '@/core/domain/messages';
-import type { ModelErrorKind } from '@/core/llm/adapter';
 import { loadSettings } from '@/platform/settings-store';
+import { ERROR_LABEL } from './error-labels';
 import {
   buildAskMessage,
   type FloatState,
@@ -34,24 +34,6 @@ const CONN_MESSAGE: Readonly<Record<FloatState['connPhase'], string | null>> = {
   reconnecting: '连接已断开，正在重连…',
   idle: null,
   expired: '连接已失效，请关闭小窗后重新点「问」',
-};
-
-/** 错误分类的界面文案（H9）；Record 保证新增分类时这里不会漏 */
-const ERROR_LABEL: Readonly<Record<ModelErrorKind, string>> = {
-  htmlInsteadOfJson: '地址可能不对（返回的是网页，多半缺 /v1）',
-  auth: 'Key 无效或被拒绝',
-  notFound: '接口路径或接口类型不对',
-  paramRejected: '有参数不被支持',
-  redirected: '接口地址发生了重定向',
-  network: '网络连接失败',
-  streamBroken: '回答中途断开',
-  server: '模型服务出错',
-  rateLimited: '请求太频繁，被限流',
-  badResponse: '模型服务返回了无法识别的内容',
-  timeout: '等待超时',
-  noContent: '模型没有返回正文',
-  contextOverflow: '内容超出模型上下文长度',
-  aborted: '已中止',
 };
 
 export function FloatApp() {
@@ -218,7 +200,20 @@ export function FloatApp() {
           </div>
         </>
       )}
-      {state.actionError && <p style={{ margin: '6px 0 0', color: '#c33' }}>{state.actionError}</p>}
+      {state.actionError && (
+        <p style={{ margin: '6px 0 0', color: '#c33' }}>
+          {state.actionError}
+          {state.actionError === '请先在设置里添加连接' && (
+            <button
+              type="button"
+              style={{ marginLeft: 6 }}
+              onClick={() => void browser.runtime.openOptionsPage()}
+            >
+              打开设置
+            </button>
+          )}
+        </p>
+      )}
       {job && (
         <div style={{ marginTop: 8 }}>
           <div data-testid="job-state" style={{ color: '#999' }}>

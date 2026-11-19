@@ -58,5 +58,6 @@ export function browserDeps(): BackgroundDeps {
     newId: () => crypto.randomUUID(),
     newToken: () => hex(crypto.getRandomValues(new Uint8Array(16))),
     log: (event, detail) => console.info(`[后台] ${event}${detail ? ` ${JSON.stringify(detail)}` : ''}`),
+    lockStorage: () => browser.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }),
   };
 }

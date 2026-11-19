@@ -56,4 +56,10 @@ export interface BackgroundDeps {
   newToken(): string;
   /** 本地诊断日志：只记事件与字段名、原因，不记内容、令牌、Key */
   log(event: string, detail?: Record<string, unknown>): void;
+  /** 收紧 storage.local 访问级别为仅扩展自身（5.11、AR-18）；失败抛错，不当作安全保证 */
+  lockStorage(): Promise<void>;
+  /** 测试连接的总超时（毫秒），默认 30 秒；单测用它调小，不必真的等 30 秒 */
+  connectionTestTimeoutMs?: number;
+  /** 拉取模型列表（含 /v1 探测）的超时（毫秒），默认 15 秒 */
+  listModelsTimeoutMs?: number;
 }
