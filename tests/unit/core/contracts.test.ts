@@ -192,8 +192,10 @@ describe('消息协议', () => {
   it('内容脚本不能发对话流消息；设置页消息只有设置页能发', () => {
     const r = parseFrom('content', clientToBackground, { type: 'conv/stop', jobId: ID });
     expect(r).toMatchObject({ ok: false, reason: 'notAllowed' });
-    const t = { type: 'connection/test', connectionId: ID };
+    const t = { type: 'connection/test', connectionId: ID, model: 'deepseek-flash' };
     expect(parseFrom('options', optionsToBackground, t).ok).toBe(true);
+    // 测试连接必须选定模型（5.8）
+    expect(parseFrom('options', optionsToBackground, { ...t, model: undefined }).ok).toBe(false);
     expect(parseFrom('sidepanel', optionsToBackground, t)).toMatchObject({ ok: false, reason: 'notAllowed' });
   });
 

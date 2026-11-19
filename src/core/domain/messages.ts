@@ -16,7 +16,7 @@
 // 每条消息的字段上限之和都小于 64 KB，所以「字段合法」就一定「不超限」（单测逐条核对）。
 import { BLOCK_KINDS } from '../context/page-doc';
 import type { RequestContextPlan } from '../context/plan';
-import type { ModelErrorKind } from '../llm/adapter';
+import type { ModelError, ModelErrorKind } from '../llm/adapter';
 import { BUILTIN_ACTION_IDS } from './actions';
 import type { AskRoute } from './float';
 import { TOKEN_PATTERN } from './float';
@@ -324,12 +324,33 @@ export type BackgroundToClient =
 export const optionsToBackground = tagged({
   /** 写 Key 之前确认 storage.local 已收紧为仅扩展自身（5.11、AR-18）；应答 { locked: boolean } */
   'settings/ensureLocked': obj({ type: lit('settings/ensureLocked') }),
-  /** 测试已保存的连接；请求由后台发出（规则 1）。应答 { ok: true } 或脱敏后的 ModelError */
-  'connection/test': obj({ type: lit('connection/test'), connectionId: id }),
-  /** 拉取模型列表；应答 { models: string[] } 或 ModelError */
+  /**
+   * 测试已保存的连接：用所选模型发一条最小对话（5.8「先选定或手填一个模型」）。请求由后台发出（规则 1），
+   * Key 由后台从设置里读，不经消息。应答 ConnectionTestResult
+   */
+  'connection/test': obj({
+    type: lit('connection/test'),
+    connectionId: id,
+    model: str({ min: 1, max: 200 }),
+  }),
+  /** 拉取模型列表；失败不否定已成功的对话测试，界面允许手填。应答 ListModelsResult */
   'connection/listModels': obj({ type: lit('connection/listModels'), connectionId: id }),
 });
 export type OptionsToBackground = Infer<typeof optionsToBackground>;
+
+export interface EnsureLockedResult {
+  locked: boolean;
+}
+/**
+ * suggestedBaseUrl：返回网页（htmlInsteadOfJson）时，后台补上 /v1 再探测一次模型列表，
+ * 探测成功就给出改正后的地址，界面提供「改成这个地址并重测」（5.8 响应校验链）
+ */
+export type ConnectionTestResult =
+  | { ok: true; model: string; reply: string; elapsedMs: number; reasoning: boolean }
+  | { ok: false; error: ModelError; elapsedMs: number; suggestedBaseUrl?: string };
+export type ListModelsResult =
+  | { ok: true; models: readonly string[] }
+  | { ok: false; error: ModelError; suggestedBaseUrl?: string };
 
 // ───────────── 小窗私有端口：小窗 ↔ 阅读器（FLOAT_PORT） ─────────────
 
