@@ -9,7 +9,12 @@ import { setLastSelectionRect } from './selection-bus';
 import { evaluateSelection, lastLineRect, type SelectionDecision } from './selection-policy';
 import { createToolbar, type ToolbarHost } from './toolbar';
 
+/** 同一框架里只留一个哨兵：后台在安装或更新时会向已开网页再注入一次（L5） */
+const INSTANCE = Symbol.for('readingAssistant.sentinel');
+
 export function startSentinel(): void {
+  const g = globalThis as unknown as Record<symbol, { dispose(): void } | undefined>;
+  g[INSTANCE]?.dispose();
   let selectionRevision = 0;
   let pendingText = '';
   let pendingInCode = false;
@@ -60,6 +65,11 @@ export function startSentinel(): void {
   }
 
   function onSelectionChange(): void {
+    // 扩展被更新或重新加载后，旧哨兵和后台的联系就断了（runtime.id 变为 undefined）：退出，让新注入的接手
+    if (!browser.runtime?.id) {
+      dispose();
+      return;
+    }
     const sel = window.getSelection();
     const decision = evaluateSelection(sel);
     if (!decision.show || sel === null) {
@@ -76,30 +86,34 @@ export function startSentinel(): void {
     getToolbar().show(rect);
   }
 
-  // 只挂 3 个被动监听：松开鼠标 / 键盘改变选区，Esc 隐藏，点别处隐藏
-  document.addEventListener(
-    'mouseup',
-    (e) => {
-      if (e.isTrusted) onSelectionChange();
-    },
-    { passive: true },
-  );
+  const onMouseUp = (e: MouseEvent) => {
+    if (e.isTrusted) onSelectionChange();
+  };
+  const onKeyUp = (e: KeyboardEvent) => {
+    if (!e.isTrusted) return;
+    if (e.key === 'Escape') clearSelection();
+    else onSelectionChange();
+  };
+  const onMouseDown = (e: MouseEvent) => {
+    if (e.isTrusted && toolbar !== undefined && !toolbar.el.contains(e.target as Node)) clearSelection();
+  };
 
-  document.addEventListener(
-    'keyup',
-    (e) => {
-      if (!e.isTrusted) return;
-      if (e.key === 'Escape') clearSelection();
-      else onSelectionChange();
-    },
-    { passive: true },
-  );
+  // 只挂 3 个被动监听：松开鼠标 / 键盘改变选区，Esc 隐藏，点别处隐藏。
+  // 挂在 window 的捕获阶段：不少网页在冒泡阶段拦截 mouseup（stopPropagation），挂在 document 上就收不到
+  const opts = { capture: true, passive: true } as const;
+  window.addEventListener('mouseup', onMouseUp, opts);
+  window.addEventListener('keyup', onKeyUp, opts);
+  window.addEventListener('mousedown', onMouseDown, opts);
 
-  document.addEventListener(
-    'mousedown',
-    (e) => {
-      if (e.isTrusted && toolbar !== undefined && !toolbar.el.contains(e.target as Node)) clearSelection();
-    },
-    { passive: true },
-  );
+  function dispose(): void {
+    window.removeEventListener('mouseup', onMouseUp, opts);
+    window.removeEventListener('keyup', onKeyUp, opts);
+    window.removeEventListener('mousedown', onMouseDown, opts);
+    toolbar?.el.remove();
+    toolbar = undefined;
+    setLastSelectionRect(null);
+    if (g[INSTANCE] === instance) g[INSTANCE] = undefined;
+  }
+  const instance = { dispose };
+  g[INSTANCE] = instance;
 }

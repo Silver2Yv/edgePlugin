@@ -18,3 +18,21 @@ export async function reconcileSentinel(): Promise<void> {
     },
   ]);
 }
+
+/**
+ * 安装或更新时，向已经打开的普通网页注入哨兵（5.1、L5）：动态注册只对之后加载的网页生效，
+ * 不注入的话用户得刷新网页才能划词。注入失败的页面（商店页、PDF 查看器等）跳过；
+ * 网页里已有的旧哨兵由新哨兵替换（见 page/sentinel.ts）
+ */
+export async function injectSentinelIntoOpenTabs(): Promise<void> {
+  const tabs = await browser.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+  await Promise.all(
+    tabs.map((tab) =>
+      tab.id === undefined
+        ? undefined
+        : browser.scripting
+            .executeScript({ target: { tabId: tab.id, allFrames: true }, files: [`/${SENTINEL_FILE}`] })
+            .catch(() => undefined),
+    ),
+  );
+}
