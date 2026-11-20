@@ -187,6 +187,56 @@ export function createPages(deps: BackgroundDeps) {
     return found.ids;
   }
 
+  /** 注入阅读器、读取、核对地址、缓存、定位选区；结果写进 ctx */
+  async function readInto(
+    ctx: PageContext,
+    tabId: number,
+    selection: StoredSelection | undefined,
+  ): Promise<void> {
+    const { topUrl } = ctx;
+    let documentId: string;
+    try {
+      documentId = await deps.injectReader(tabId);
+    } catch {
+      ctx.notes.push(NOTE.inject);
+      return;
+    }
+    const cached = cache.get(tabId);
+    const known = cached?.doc.documentId === documentId ? cached : undefined;
+    const r = await read(tabId, documentId, known);
+    if (!r.ok) {
+      ctx.notes.push(r.error === 'timeout' ? NOTE.timeout : NOTE.failed);
+      return;
+    }
+    // 地址以标签页为准（V-06 实测：hash 路由、pushState 之后 sender.url 仍是文档创建时的地址，
+    // 而标签页地址跟着变）。读取前后标签页地址必须一致、且与 sender 同源，否则说明读取期间换了页，不用这份正文
+    const afterUrl = deps.getTabUrl ? await deps.getTabUrl(tabId).catch(() => undefined) : r.doc.url;
+    const docUrl = afterUrl ?? r.doc.url;
+    const pageKey = toPageKey(docUrl);
+    if (
+      afterUrl !== topUrl ||
+      pageKey === undefined ||
+      new URL(docUrl).origin !== new URL(r.doc.url).origin
+    ) {
+      deps.log('page/read', { result: 'navigatedDuringRead' });
+      ctx.notes.push(NOTE.navigated);
+      return;
+    }
+    const doc: PageDoc = { ...r.doc, url: docUrl, pageKey };
+    cache.set(tabId, { doc, bytes: r.bytes, at: deps.now() });
+    evict();
+    ctx.page = {
+      pageKey: doc.pageKey,
+      documentId: doc.documentId,
+      contentVersion: doc.contentVersion,
+      title: doc.title,
+      blocks: doc.blocks,
+      textLength: doc.textLength,
+      notes: doc.notes,
+    };
+    if (selection) ctx.selectionBlockIds = selectionBlocks(tabId, doc, selection, ctx.notes);
+  }
+
   return {
     /** 阅读器回传的正文分片；收齐后校验、核对指纹、盖章 */
     onDocPart(msg: DocPart, s: PageSender): RejectReason | undefined {
@@ -282,53 +332,15 @@ export function createPages(deps: BackgroundDeps) {
         ctx.notes.push(NOTE.subframe);
         return ctx;
       }
-      let documentId: string;
+      // 读取出任何意外都只当作没读成：这次只发选区，不让任务卡在已接单
       try {
-        documentId = await deps.injectReader(tabId);
-      } catch {
-        ctx.notes.push(NOTE.inject);
-        return ctx;
+        await readInto(ctx, tabId, selection);
+      } catch (e) {
+        deps.log('page/read', { result: 'error', error: e instanceof Error ? e.name : 'unknown' });
+        delete ctx.page;
+        ctx.selectionBlockIds = [];
+        ctx.notes.push(NOTE.failed);
       }
-      const cached = cache.get(tabId);
-      const known = cached?.doc.documentId === documentId ? cached : undefined;
-      const r = await read(tabId, documentId, known);
-      if (!r.ok) {
-        ctx.notes.push(r.error === 'timeout' ? NOTE.timeout : NOTE.failed);
-        return ctx;
-      }
-      // 地址以标签页为准（V-06 实测：hash 路由、pushState 之后 sender.url 仍是文档创建时的地址，
-      // 而标签页地址跟着变）。读取前后标签页地址必须一致、且与 sender 同源，否则说明读取期间换了页，不用这份正文
-      const afterUrl = deps.getTabUrl ? await deps.getTabUrl(tabId).catch(() => undefined) : r.doc.url;
-      const docUrl = afterUrl ?? r.doc.url;
-      const pageKey = toPageKey(docUrl);
-      if (
-        afterUrl !== topUrl ||
-        pageKey === undefined ||
-        new URL(docUrl).origin !== new URL(r.doc.url).origin
-      ) {
-        deps.log('page/read', { result: 'navigatedDuringRead' });
-        ctx.notes.push(NOTE.navigated);
-        return ctx;
-      }
-      const doc: PageDoc = { ...r.doc, url: docUrl, pageKey };
-      // 读取期间页面导航到了「不读取」站点：丢弃，不缓存（读取前的判定基于标签页地址，存在竞态）
-      if (siteLevelForUrl(doc.url, settings.sites) === 'noRead') {
-        ctx.siteNoRead = true;
-        cache.delete(tabId);
-        return ctx;
-      }
-      cache.set(tabId, { doc, bytes: r.bytes, at: deps.now() });
-      evict();
-      ctx.page = {
-        pageKey: doc.pageKey,
-        documentId: doc.documentId,
-        contentVersion: doc.contentVersion,
-        title: doc.title,
-        blocks: doc.blocks,
-        textLength: doc.textLength,
-        notes: doc.notes,
-      };
-      if (selection) ctx.selectionBlockIds = selectionBlocks(tabId, doc, selection, ctx.notes);
       return ctx;
     },
 
