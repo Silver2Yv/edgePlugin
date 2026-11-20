@@ -1,20 +1,34 @@
 // 小窗（5.3）：从地址片段取令牌握手、订阅对话、发问、逐字渲染增量，断线后自动重连（5.5）。
 // 回答区的 Markdown/公式/高亮/引用渲染交给 src/ui/render（5.10）；对话内容只用文本节点或
 // 该模块产出的 DOM 渲染，不经过 window.postMessage（规则 4、5）。
+//
+// 拖动 / 缩放不在这里处理：V-12 实测发现 iframe 内指针捕获一旦移出 iframe 渲染区域（缩放拖出、
+// 大幅拖动都会立刻发生）就收不到后续 pointermove，这是 pointer capture 跨 iframe 边界的已知限制
+// （不是实现 bug），按 5.3 原文的退路改为宿主侧不可见把手直接处理（page/float-host.ts）。
+// 这里只做两件事：连接时按持久化设置回放一次记忆的位置/尺寸；收到手势结束后的最终 rect 时落盘。
 import { useEffect, useMemo, useReducer, useRef, useState } from 'preact/hooks';
 import type { Browser } from 'wxt/browser';
 import { browser } from 'wxt/browser';
 import { isTerminal } from '@/core/domain/job';
-import { type BackgroundToClient, type ClientToBackground, CONV_PORT } from '@/core/domain/messages';
-import { loadSettings } from '@/platform/settings-store';
+import {
+  type BackgroundToClient,
+  type ClientToBackground,
+  CONV_PORT,
+  FLOAT_PORT,
+  type FloatToReader,
+  type ReaderToFloat,
+} from '@/core/domain/messages';
+import { loadSettings, SETTINGS_KEY } from '@/platform/settings-store';
 import { ERROR_LABEL } from './error-labels';
 import {
   buildAskMessage,
+  type FloatRectValue,
   type FloatState,
   floatReducer,
   initialFloatState,
   isGenerating,
   parseTokenFromHash,
+  restoreCommandsOnConnect,
   shouldSendOnEnter,
   subscribeMessage,
 } from './float/state';
@@ -50,6 +64,8 @@ export function FloatApp() {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const answerRef = useRef<HTMLDivElement | null>(null);
   const answerRendererRef = useRef<AnswerRenderer | null>(null);
+  // 小窗私有端口（恢复位置尺寸 / 收起，5.3）；与所在标签页的阅读器直连，不经后台
+  const floatPortRef = useRef<Port | null>(null);
 
   /** 回答容器挂载后才能创建渲染器；懒创建，同一个容器只创建一次 */
   const getAnswerRenderer = (): AnswerRenderer | null => {
@@ -74,6 +90,69 @@ export function FloatApp() {
   useEffect(() => {
     if (token !== null) connect({ type: 'conv/helloFloat', token });
     // 只在挂载时建立首次连接；重连由下面按 connPhase 变化触发
+  }, []);
+
+  /** 手势结束后的最终 rect（settled: true）落盘到 settings.float.rect */
+  async function persistRect(rect: FloatRectValue): Promise<void> {
+    const loaded = await loadSettings();
+    if (!loaded.ok) return;
+    const next = { ...loaded.settings, float: { ...loaded.settings.float, rect } };
+    await browser.storage.local.set({ [SETTINGS_KEY]: next });
+  }
+
+  // 小窗私有端口：连上所在标签页的阅读器（5.3）。tabs.getCurrent() 在扩展页面的 iframe 里能拿到
+  // 宿主所在的标签页（浏览器按帧树判定，不是“当前激活标签页”那个概念），frameId: 0 精确指向顶层
+  // 框架的阅读器——同一时刻只会有一个。连接后先收一次当前 rect，再按持久化设置决定要不要恢复；
+  // 之后每次收到 settled: true 的 rect（宿主侧把手完成一次拖动/缩放手势）就落盘。
+  useEffect(() => {
+    if (token === null) return;
+    let disposed = false;
+    let port: Port | null = null;
+    let settingsLoaded: Parameters<typeof restoreCommandsOnConnect>[1] | null = null;
+    let restored = false;
+    let lastRect: FloatRectValue | null = null;
+
+    const tryRestore = () => {
+      if (restored || settingsLoaded === null || lastRect === null || port === null) return;
+      restored = true;
+      for (const cmd of restoreCommandsOnConnect(lastRect, settingsLoaded)) port.postMessage(cmd);
+    };
+
+    void loadSettings().then((r) => {
+      if (disposed) return;
+      settingsLoaded = r.ok ? r.settings.float : { placement: 'nearSelection' };
+      tryRestore();
+    });
+
+    void browser.tabs.getCurrent().then((tab) => {
+      if (disposed || tab?.id === undefined) return;
+      const p = browser.tabs.connect(tab.id, { name: FLOAT_PORT, frameId: 0 });
+      port = p;
+      floatPortRef.current = p;
+      p.onMessage.addListener((raw: ReaderToFloat) => {
+        if (raw.type !== 'float/rect') return;
+        lastRect = { x: raw.x, y: raw.y, w: raw.w, h: raw.h };
+        tryRestore();
+        if (raw.settled) void persistRect(lastRect);
+      });
+    });
+
+    return () => {
+      disposed = true;
+      port?.disconnect();
+      floatPortRef.current = null;
+    };
+  }, [token]);
+
+  // 焦点在小窗里时按 Esc 收起（经私有端口；焦点在网页别处时由阅读器自己的 keydown 监听处理）
+  useEffect(() => {
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.isTrusted && e.key === 'Escape') {
+        floatPortRef.current?.postMessage({ type: 'float/collapse' } satisfies FloatToReader);
+      }
+    };
+    document.addEventListener('keydown', onEscape);
+    return () => document.removeEventListener('keydown', onEscape);
   }, []);
 
   useEffect(() => {
@@ -196,11 +275,11 @@ export function FloatApp() {
     state.connPhase !== 'noToken' && state.connPhase !== 'expired' && state.connPhase !== 'versionMismatch';
 
   return (
-    <main style={{ width: 380, boxSizing: 'border-box', padding: 8, fontSize: 13 }}>
+    <main style={{ width: '100%', boxSizing: 'border-box', padding: '8px', fontSize: '13px' }}>
       {connMessage && <p style={{ margin: '0 0 8px', color: '#666' }}>{connMessage}</p>}
       {state.quote && (
-        <div style={{ margin: '0 0 8px', padding: 6, background: '#f5f5f5', borderRadius: 4 }}>
-          <div style={{ maxHeight: 80, overflow: 'auto', whiteSpace: 'pre-wrap', color: '#555' }}>
+        <div style={{ margin: '0 0 8px', padding: '6px', background: '#f5f5f5', borderRadius: '4px' }}>
+          <div style={{ maxHeight: '80px', overflow: 'auto', whiteSpace: 'pre-wrap', color: '#555' }}>
             {state.quote.text}
           </div>
           {state.quote.truncated && (
@@ -219,9 +298,9 @@ export function FloatApp() {
             onInput={(e) => setQuestion((e.target as HTMLTextAreaElement).value)}
             onKeyDown={onKeyDown}
             onFocus={wake}
-            style={{ width: '100%', boxSizing: 'border-box', minHeight: 60, resize: 'vertical' }}
+            style={{ width: '100%', boxSizing: 'border-box', minHeight: '60px', resize: 'vertical' }}
           />
-          <div style={{ marginTop: 6, textAlign: 'right' }}>
+          <div style={{ marginTop: '6px', textAlign: 'right' }}>
             {generating ? (
               <button type="button" onClick={handleStop}>
                 停止
@@ -240,7 +319,7 @@ export function FloatApp() {
           {state.actionError === '请先在设置里添加连接' && (
             <button
               type="button"
-              style={{ marginLeft: 6 }}
+              style={{ marginLeft: '6px' }}
               onClick={() => void browser.runtime.openOptionsPage()}
             >
               打开设置
@@ -249,19 +328,19 @@ export function FloatApp() {
         </p>
       )}
       {job && (
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: '8px' }}>
           <div data-testid="job-state" style={{ color: '#999' }}>
             {job.state}
           </div>
           {job.reasoning && (
-            <details style={{ marginTop: 4 }}>
+            <details style={{ marginTop: '4px' }}>
               <summary>思考过程</summary>
               <div style={{ whiteSpace: 'pre-wrap', color: '#777' }}>{job.reasoning}</div>
             </details>
           )}
           {/* 子节点完全由 src/ui/render（createAnswerRenderer）管理，这里不写 children，
               Preact 不会对它做子节点 diff（见模块顶部注释与 render/mount.ts） */}
-          <div ref={answerRef} data-testid="answer" style={{ marginTop: 4 }} />
+          <div ref={answerRef} data-testid="answer" style={{ marginTop: '4px' }} />
           {job.state === 'failed' && job.error && (
             <p style={{ margin: '4px 0 0', color: '#c33' }}>
               {ERROR_LABEL[job.error.kind]}

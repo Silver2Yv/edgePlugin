@@ -3,6 +3,7 @@
 import { browser } from 'wxt/browser';
 import { backgroundToContent } from '@/core/domain/messages';
 import { createFloatHost } from './float-host';
+import { attachFloatPort } from './float-port';
 
 const INJECTED = Symbol.for('readingAssistant.readerInjected');
 
@@ -18,6 +19,7 @@ export function startReader(): void {
     };
     void browser.runtime.sendMessage(msg);
   });
+  attachFloatPort(floatHost);
 
   // 点网页别处或在网页里按 Esc 收起小窗（6.1：隐藏，不销毁）。小窗内部的事件发生在 iframe 自己的文档里，
   // 不会传到网页文档，所以这里收到的都是「别处」。焦点在小窗里时按 Esc 收不到，留给小窗私有端口（5.3）

@@ -25,6 +25,7 @@
 import type { MarkdownIt as MarkdownItInstance, Token } from 'markdown-it';
 import { type BlockGroup, normalizeForMarkdownIt, splitTopLevelBlocks } from './block-splitter';
 import { applyCitations } from './citation';
+import { addCopyButtons } from './code-copy';
 import { escapeHtml } from './highlight';
 
 export const MAX_TOTAL_LENGTH = 300_000;
@@ -81,6 +82,7 @@ function renderGroup(
   const rawHtml = md.renderer.render(tokensSlice, md.options, {});
   container.innerHTML = rawHtml;
   applyCitations(container, allowedIds, doc);
+  addCopyButtons(container, doc);
   return { rawHtml, node: container, truncated: false };
 }
 

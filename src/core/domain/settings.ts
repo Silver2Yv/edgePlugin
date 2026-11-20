@@ -4,6 +4,7 @@
 import type { LengthTier, ThinkingLevel } from '../context/plan';
 import type { Connection, ModelRef } from '../llm/adapter';
 import { type ActionDef, type ActionId, BUILTIN_ACTION_IDS, DEFAULT_TOOLBAR } from './actions';
+import { FLOAT_LIMITS } from './float';
 import { ID_PATTERN } from './ids';
 import { arr, bool, int, jsonValue, lit, num, obj, oneOf, opt, rec, type Schema, str } from './schema';
 import type { SiteRule } from './site-policy';
@@ -115,7 +116,14 @@ const settingsSchema = obj({
   }),
   float: obj({
     placement: oneOf(['nearSelection', 'remembered']),
-    rect: opt(obj({ x: num(), y: num(), w: num({ min: 0 }), h: num({ min: 0 }) })),
+    rect: opt(
+      obj({
+        x: num(),
+        y: num(),
+        w: num({ min: FLOAT_LIMITS.minWidth }),
+        h: num({ min: FLOAT_LIMITS.minHeight }),
+      }),
+    ),
   }),
   suggestions: obj({ model: bool, rules: bool }),
   updates: obj({ autoCheck: bool }),

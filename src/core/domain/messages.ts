@@ -19,7 +19,7 @@ import type { RequestContextPlan } from '../context/plan';
 import type { ModelError, ModelErrorKind } from '../llm/adapter';
 import { BUILTIN_ACTION_IDS } from './actions';
 import type { AskRoute } from './float';
-import { TOKEN_PATTERN } from './float';
+import { FLOAT_LIMITS, TOKEN_PATTERN } from './float';
 import { ID_PATTERN } from './ids';
 import { JOB_LIMITS, type JobState } from './job';
 import type { ConversationRecord, MessageRecord } from './records';
@@ -354,14 +354,42 @@ export type ListModelsResult =
 
 // ───────────── 小窗私有端口：小窗 ↔ 阅读器（FLOAT_PORT） ─────────────
 
+/**
+ * 小窗 → 阅读器。实时拖动 / 缩放不走这个端口——V-12 实测发现 iframe 内指针捕获一旦移出 iframe
+ * 渲染区域（缩放拖出、大幅拖动都会立刻发生）就收不到 pointermove，这是 pointer capture 跨
+ * iframe 边界的已知限制（不是实现 bug），按 5.3 原文的退路改成宿主侧不可见把手直接处理（见
+ * page/float-host.ts）。这里只保留连接时的一次性恢复（按 settings.float 回放记忆的尺寸/位置）
+ * 与 Esc 收起。
+ */
 export const floatToReader = tagged({
-  'float/move': obj({ type: lit('float/move'), dx: num(), dy: num() }),
-  'float/resize': obj({ type: lit('float/resize'), w: num({ min: 200 }), h: num({ min: 160 }) }),
+  'float/resize': obj({
+    type: lit('float/resize'),
+    w: num({ min: FLOAT_LIMITS.minWidth }),
+    h: num({ min: FLOAT_LIMITS.minHeight }),
+  }),
+  /** 恢复记忆位置（settings.float.placement === 'remembered'）：绝对坐标，仅连接后用一次 */
+  'float/reposition': obj({ type: lit('float/reposition'), x: num(), y: num() }),
   'float/collapse': obj({ type: lit('float/collapse') }),
   'anchor/jump': obj({ type: lit('anchor/jump'), anchor: anchorSchema }),
   'anchor/back': obj({ type: lit('anchor/back') }),
 });
 export type FloatToReader = Infer<typeof floatToReader>;
+
+/**
+ * 阅读器 → 小窗（同一个 FLOAT_PORT，反方向）。阅读器自己产出，不做运行时校验，只用类型约束
+ * （与 BackgroundToClient 同例）：连接建立、以及 float/resize、float/reposition 生效后各回发一次
+ * （`settled: false`，小窗只更新本地记忆，不落盘）；宿主侧把手完成一次拖动/缩放手势（pointerup）
+ * 后也回发一次（`settled: true`），小窗据此把最终位置尺寸落盘到 settings.float.rect——写入必须
+ * 由小窗（扩展页面，可信上下文）做，阅读器所在的内容脚本收紧后读不到也写不了 storage.local（5.11）。
+ */
+export type ReaderToFloat = {
+  type: 'float/rect';
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  settled: boolean;
+};
 
 // ───────────── 角色与授权（5.12） ─────────────
 

@@ -74,6 +74,29 @@
   white-space: pre;
 }
 
+.ra-code-wrap {
+  position: relative;
+}
+.ra-code-wrap .ra-code {
+  margin: 0 0 8px;
+}
+.ra-code-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #555;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.ra-code-copy:hover {
+  background: #eee;
+}
+
 .ra-block table {
   display: block;
   overflow-x: auto;
