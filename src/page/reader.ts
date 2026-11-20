@@ -1,8 +1,9 @@
 // 阅读器（ARCHITECTURE 4.3 规则 1-5、5.3）：只在顶层框架，由后台注入。
-// 页面读取、定位高亮、截图框选（4.2）这轮不做；只接小窗相关指令。不发网络请求，不持有对话内容。
+// 接小窗相关指令与页面读取（page/read）；定位高亮、截图框选（4.2）这轮不做。不发网络请求，不持有对话内容。
 import { browser } from 'wxt/browser';
 import { backgroundToContent } from '@/core/domain/messages';
 import { createFloatHost } from './float-host';
+import { createPageReader } from './page-read';
 
 const INJECTED = Symbol.for('readingAssistant.readerInjected');
 
@@ -29,6 +30,8 @@ export function startReader(): void {
     capture: true,
   });
 
+  const pageReader = createPageReader((msg) => browser.runtime.sendMessage(msg));
+
   browser.runtime.onMessage.addListener((raw, sender) => {
     // 只认来自后台的指令：sender.id 是本扩展，且没有 sender.tab（内容脚本发的消息都带 tab）
     if (sender.id !== browser.runtime.id || sender.tab !== undefined) return;
@@ -44,8 +47,12 @@ export function startReader(): void {
       case 'float/hide':
         floatHost.hide();
         break;
+      case 'page/read':
+        // 页面读取（5.6）：抽取在时间片里做，结果经 page/docPart / page/docUnchanged 回传
+        void pageReader.read(r.value.readId, r.value.knownContentVersion).catch(() => undefined);
+        break;
       default:
-        // page/read、page/locate、capture/* 这轮不实现
+        // page/locate、capture/* 这轮不实现
         break;
     }
   });

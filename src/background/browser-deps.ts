@@ -49,6 +49,7 @@ export function browserDeps(): BackgroundDeps {
     },
     loadSettings,
     injectReader,
+    getTabUrl: async (tabId) => (await browser.tabs.get(tabId)).url,
     sendToFrame: async (tabId, frameId, documentId, msg) => {
       await browser.tabs.sendMessage(tabId, msg, { frameId, documentId });
     },

@@ -93,6 +93,7 @@ export function FloatApp() {
         lengthTier: ask.lengthTier,
         thinking: ask.thinking,
         model: ask.model,
+        ...(ask.contextTier ? { contextTier: ask.contextTier } : {}),
       }),
     );
     dispatch({ kind: 'askSent', clientRequestId: ask.clientRequestId });
@@ -156,6 +157,7 @@ export function FloatApp() {
       return;
     }
     const { lengthTier, thinking } = settings.reply;
+    const contextTier = settings.context.defaultTier;
     const model = settings.defaultModel;
     const clientRequestId = crypto.randomUUID();
     if (stateRef.current.connPhase === 'ready') {
@@ -167,12 +169,16 @@ export function FloatApp() {
           lengthTier,
           thinking,
           model,
+          contextTier,
         }),
       );
       dispatch({ kind: 'askSent', clientRequestId });
     } else {
       // 没就绪：先存成待发，等重连、订阅、收到这次 conv/snapshot 后再用当时最新的引用发出
-      dispatch({ kind: 'queueAsk', ask: { clientRequestId, text, lengthTier, thinking, model } });
+      dispatch({
+        kind: 'queueAsk',
+        ask: { clientRequestId, text, lengthTier, thinking, model, contextTier },
+      });
       wake();
     }
     setQuestion('');

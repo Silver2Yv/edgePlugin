@@ -3,8 +3,10 @@
 // storage.local 的写入遵守 5.11 的顺序：先确认已收紧，再基于最新设置合并，整份 Settings 写回。
 import { useEffect, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
+import type { ContextTier } from '@/core/context/plan';
 import type { OptionsToBackground } from '@/core/domain/messages';
 import type { Settings } from '@/core/domain/settings';
+import { normalizeSiteRule, type SiteRule } from '@/core/domain/site-policy';
 import type { Connection, ModelError, ModelRef } from '@/core/llm/adapter';
 import { loadSettings, SETTINGS_KEY } from '@/platform/settings-store';
 import { ERROR_LABEL } from './error-labels';
@@ -143,6 +145,29 @@ function modelOptions(
   return options;
 }
 
+/** 加一条站点规则：主机名先归一（normalizeSiteRule），同一主机已有规则就改级别；不合法返回 undefined */
+function upsertSiteRule(
+  sites: readonly SiteRule[],
+  input: string,
+  level: SiteRule['level'],
+): SiteRule[] | undefined {
+  const host = normalizeSiteRule(input);
+  if (host === undefined) return undefined;
+  const rest = sites.filter((r) => normalizeSiteRule(r.host) !== host);
+  return [...rest, { host, level }];
+}
+
+const SITE_LEVEL_LABEL: Readonly<Record<SiteRule['level'], string>> = {
+  noToolbar: '不弹工具栏',
+  noRead: '不读取页面内容',
+};
+
+const TIER_LABEL: Readonly<Record<ContextTier, string>> = {
+  selection: '只发选中的文字',
+  nearby: '选中文字 + 前后几段',
+  fullPage: '整页正文（放不下时以选区为中心截取）',
+};
+
 type TestView =
   | { kind: 'success'; text: string }
   | { kind: 'error'; text: string; suggestedBaseUrl?: string };
@@ -166,6 +191,9 @@ export function OptionsApp() {
   const [modelsMessage, setModelsMessage] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testState, setTestState] = useState<TestView | null>(null);
+  const [siteInput, setSiteInput] = useState('');
+  const [siteLevel, setSiteLevel] = useState<SiteRule['level']>('noRead');
+  const [siteError, setSiteError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -331,6 +359,33 @@ export function OptionsApp() {
       setTesting(false);
     }
   }
+
+  async function handleAddSite(): Promise<void> {
+    if (upsertSiteRule([], siteInput, siteLevel) === undefined) {
+      setSiteError('不是有效的站点，例如 example.com 或 https://example.com/page');
+      return;
+    }
+    const ok = await persistSettings((base) => {
+      const sites = upsertSiteRule(base.sites, siteInput, siteLevel) ?? base.sites;
+      return { settings: { ...base, sites }, result: true as const };
+    });
+    if (ok) {
+      setSiteInput('');
+      setSiteError(null);
+    }
+  }
+
+  const removeSite = (host: string) =>
+    persistSettings((base) => ({
+      settings: { ...base, sites: base.sites.filter((r) => r.host !== host) },
+      result: true as const,
+    }));
+
+  const setDefaultTier = (tier: ContextTier) =>
+    persistSettings((base) => ({
+      settings: { ...base, context: { ...base.context, defaultTier: tier } },
+      result: true as const,
+    }));
 
   async function handleListModels(): Promise<void> {
     if (!editing) return;
@@ -529,6 +584,69 @@ export function OptionsApp() {
             </option>
           ))}
         </select>
+      </section>
+
+      <section style={{ marginTop: 16 }}>
+        <h2 style={{ fontSize: 14 }}>提问时附带的页面内容</h2>
+        <select
+          aria-label="默认档位"
+          style={{ width: '100%', maxWidth: 320 }}
+          value={settings.context.defaultTier}
+          onChange={(e) => void setDefaultTier((e.target as HTMLSelectElement).value as ContextTier)}
+        >
+          {(Object.keys(TIER_LABEL) as ContextTier[]).map((t) => (
+            <option key={t} value={t}>
+              {TIER_LABEL[t]}
+            </option>
+          ))}
+        </select>
+      </section>
+
+      <section style={{ marginTop: 16 }}>
+        <h2 style={{ fontSize: 14 }}>站点</h2>
+        <p style={{ color: '#999', margin: '4px 0' }}>
+          「不弹工具栏」：选中文字不再自动弹出工具栏，页面内容仍可读取。「不读取页面内容」：不读正文、不缓存，
+          提问时只发送你选中的文字。改动立即生效；已打开的网页里的工具栏在刷新后才消失。包含子域名。
+        </p>
+        {settings.sites.length === 0 && <p style={{ color: '#999' }}>没有站点规则</p>}
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          {settings.sites.map((r) => (
+            <li key={r.host} style={{ padding: '6px 0', borderBottom: '1px solid #eee' }}>
+              <span>{r.host}</span>
+              <span style={{ color: '#999', marginLeft: 8 }}>{SITE_LEVEL_LABEL[r.level]}</span>
+              <button
+                type="button"
+                style={{ marginLeft: 8 }}
+                aria-label={`删除站点 ${r.host}`}
+                onClick={() => void removeSite(r.host)}
+              >
+                删除
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div style={{ marginTop: 8 }}>
+          <input
+            aria-label="站点"
+            placeholder="example.com"
+            style={{ width: 220 }}
+            value={siteInput}
+            onInput={(e) => setSiteInput((e.target as HTMLInputElement).value)}
+          />
+          <select
+            aria-label="站点级别"
+            style={{ marginLeft: 6 }}
+            value={siteLevel}
+            onChange={(e) => setSiteLevel((e.target as HTMLSelectElement).value as SiteRule['level'])}
+          >
+            <option value="noRead">{SITE_LEVEL_LABEL.noRead}</option>
+            <option value="noToolbar">{SITE_LEVEL_LABEL.noToolbar}</option>
+          </select>
+          <button type="button" style={{ marginLeft: 6 }} onClick={() => void handleAddSite()}>
+            添加站点
+          </button>
+        </div>
+        {siteError && <p style={{ color: '#c33' }}>{siteError}</p>}
       </section>
     </main>
   );

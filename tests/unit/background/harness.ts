@@ -138,13 +138,15 @@ export function makeHarness(
   }[] = [];
   const logs: { event: string; detail?: Record<string, unknown> }[] = [];
   let topDoc = TOP_DOC;
+  let tabUrl: string | undefined = 'https://example.test/article';
+  let settings: Settings = structuredClone(SETTINGS);
   const marked = new Set<string>();
   const injected: string[] = [];
 
   const deps: BackgroundDeps = {
     self: { runtimeId: EXT_ID, protocol: 'chrome-extension:' },
     session,
-    loadSettings: async () => ({ ok: true, settings: structuredClone(SETTINGS), migratedFrom: 1 }),
+    loadSettings: async () => ({ ok: true, settings: structuredClone(settings), migratedFrom: 1 }),
     injectReader: vi.fn(async () => {
       await Promise.resolve();
       // 模拟隔离环境里的标记：同一文档只注入一次
@@ -154,6 +156,7 @@ export function makeHarness(
       }
       return topDoc;
     }),
+    getTabUrl: vi.fn(async () => tabUrl),
     sendToFrame: vi.fn(async (tabId, frameId, documentId, msg) => {
       if (documentId !== topDoc) throw new Error('No document');
       sent.push({ tabId, frameId, documentId, msg });
@@ -272,6 +275,12 @@ export function makeHarness(
     },
     navigate: (doc: string) => {
       topDoc = doc;
+    },
+    setTabUrl: (url: string | undefined) => {
+      tabUrl = url;
+    },
+    setSettings: (next: Settings) => {
+      settings = structuredClone(next);
     },
   };
 }

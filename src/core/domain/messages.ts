@@ -14,7 +14,7 @@
 //
 // 大小（5.12）：整条消息 JSON 序列化后不超过 64 KB。大字段按 JSON 字节设上限（maxBytes，见 bytes.ts），
 // 每条消息的字段上限之和都小于 64 KB，所以「字段合法」就一定「不超限」（单测逐条核对）。
-import { BLOCK_KINDS } from '../context/page-doc';
+import { BLOCK_KINDS, PAGE_NOTE_KINDS } from '../context/page-doc';
 import type { RequestContextPlan } from '../context/plan';
 import type { ModelError, ModelErrorKind } from '../llm/adapter';
 import { BUILTIN_ACTION_IDS } from './actions';
@@ -91,12 +91,17 @@ export const contentToBackground = tagged({
     originalLength: int({ min: 0 }),
     inCode: bool,
   }),
-  /** 阅读器给选区补上锚点与所在块（选区就绪后异步算出） */
+  /**
+   * 阅读器给选区补上锚点与所在块（选区就绪后异步算出）。
+   * contentVersion（contract-v1.3 增量，可选）：blockIds 属于哪一次抽取；后台只在版本对得上时直接采用块号，
+   * 对不上就用锚点在新版本里重新定位，不把旧块号套到新内容上（V-06）
+   */
   'selection/anchored': obj({
     type: lit('selection/anchored'),
     selectionRevision: int({ min: 0 }),
     anchor: anchorSchema,
     blockIds: arr(blockId, { max: 200 }),
+    contentVersion: opt(str({ max: 128 })),
   }),
   /** 请求页面侧配置（工具栏按钮、站点级别、去向） */
   'config/get': obj({ type: lit('config/get') }),
@@ -108,6 +113,15 @@ export const contentToBackground = tagged({
     total: int({ min: 1, max: 1000 }),
     /** PageDocReport 的 JSON 文本按 JSON 字节切片（splitByJsonBytes） */
     data: str({ maxBytes: JOB_LIMITS.maxFieldBytes }),
+  }),
+  /**
+   * 应答 page/read（contract-v1.3 增量）：重新抽取后指纹与 knownContentVersion 相同，不再回传正文。
+   * 后台只在同一文档（sender.documentId）已有这个版本的缓存时采信，否则当作读取失败
+   */
+  'page/docUnchanged': obj({
+    type: lit('page/docUnchanged'),
+    readId: id,
+    contentVersion: str({ max: 128 }),
   }),
   /** 定位与高亮结果（应答 page/locate） */
   'page/locateResult': obj({
@@ -145,7 +159,7 @@ export const pageDocSchema = obj({
   blocks: arr(blockSchema, { max: 20_000 }),
   notes: arr(
     obj({
-      kind: oneOf(['visibilityUncertain', 'fallbackBodyText', 'tooLittleText', 'frameSkipped']),
+      kind: oneOf(PAGE_NOTE_KINDS),
       detail: opt(str({ max: 500 })),
     }),
     { max: 100 },

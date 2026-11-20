@@ -1,6 +1,6 @@
 // 小窗纯逻辑（5.3 小窗、5.5 任务与恢复）：增量合并、任务状态迁移、握手/重连状态机、
 // 以及发给后台的消息构造。不碰扩展 API、不碰 DOM，便于单测；FloatApp.tsx 只做装配与副作用。
-import type { LengthTier, ThinkingLevel } from '@/core/context/plan';
+import type { ContextTier, LengthTier, ThinkingLevel } from '@/core/context/plan';
 import { TOKEN_PATTERN } from '@/core/domain/float';
 import { isTerminal, type JobState } from '@/core/domain/job';
 import type { BackgroundToClient, ClientToBackground, RejectReason } from '@/core/domain/messages';
@@ -296,6 +296,8 @@ export interface AskParams {
   lengthTier: LengthTier;
   thinking: ThinkingLevel;
   model: ModelRef;
+  /** 页面上下文档位；小窗还没有切换界面，取设置里的默认档位（settings.context.defaultTier），不填按只发选区 */
+  contextTier?: ContextTier;
 }
 
 export function buildAskMessage(p: AskParams): ClientToBackground {
@@ -305,7 +307,7 @@ export function buildAskMessage(p: AskParams): ClientToBackground {
     actionId: 'ask',
     text: p.text,
     ...(p.quote ? { selectionRevision: p.quote.selectionRevision } : {}),
-    contextTier: 'selection',
+    contextTier: p.contextTier ?? 'selection',
     lengthTier: p.lengthTier,
     thinking: p.thinking,
     model: p.model,
@@ -322,6 +324,7 @@ export interface QueuedAsk {
   lengthTier: LengthTier;
   thinking: ThinkingLevel;
   model: ModelRef;
+  contextTier?: ContextTier;
 }
 
 /** Enter 发送、Shift+Enter 换行；输入法组合输入中的 Enter 不发送（keyCode 229 是旧浏览器的组合态标记） */

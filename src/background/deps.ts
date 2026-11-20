@@ -45,6 +45,11 @@ export interface BackgroundDeps {
   loadSettings(): Promise<MigrateResult>;
   /** 确保顶层框架注入了阅读器（同一文档只注入一次），返回顶层文档的 documentId */
   injectReader(tabId: number): Promise<string>;
+  /**
+   * 标签页当前的顶层地址（tabs.get；有主机权限才看得到）。站点策略按它判定：子框架取「顶层与框架来源」更严，
+   * 发问前决定读不读页面（4.1）。取不到返回 undefined。可选只是为了不打扰只测别的模块的单测，真实实现一定提供
+   */
+  getTabUrl?(tabId: number): Promise<string | undefined>;
   /** 指令只发给指定框架的指定文档；文档已不在时失败 */
   sendToFrame(tabId: number, frameId: number, documentId: string, msg: BackgroundToContent): Promise<void>;
   fetch(url: string, init: RequestInit): Promise<Response>;

@@ -124,6 +124,45 @@ export function siteLevelFor(hostname: string, rules: readonly SiteRule[]): Site
   return level;
 }
 
+/** 按地址取站点级别；拿不到主机名（非 http(s)、地址非法）时按 normal（这类页面本来就不注入、不读取） */
+export function siteLevelForUrl(url: string | undefined, rules: readonly SiteRule[]): SiteLevel {
+  if (!url) return 'normal';
+  let host: string;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'normal';
+    host = u.hostname;
+  } catch {
+    return 'normal';
+  }
+  return siteLevelFor(host, rules);
+}
+
+/** 一个框架的实际级别：顶层站点与框架来源取更严（4.1、AR-14）。顶层框架两者相同 */
+export function frameSiteLevel(
+  topUrl: string | undefined,
+  frameUrl: string | undefined,
+  rules: readonly SiteRule[],
+): SiteLevel {
+  return stricter(siteLevelForUrl(topUrl, rules), siteLevelForUrl(frameUrl, rules));
+}
+
+/**
+ * 哨兵动态注册的 excludeMatches（4.1：两级都不常驻）。域名规则写成 `*://*.host/*`，同时命中本域与子域；
+ * IPv4 与 localhost 写成 `*://host/*`（匹配模式不含端口，任何端口都命中）。
+ * IPv6 字面量不是合法的匹配模式主机，写进去会让整个注册失败，所以跳过：这类站点的哨兵照常常驻，
+ * 但读取与发送仍由后台按策略拦截（不影响隐私，只影响「不自动弹工具栏」）。结果去重、排序，便于对账比较
+ */
+export function sentinelExcludeMatches(rules: readonly SiteRule[]): string[] {
+  const out = new Set<string>();
+  for (const r of rules) {
+    const host = normalizeSiteRule(r.host);
+    if (host === undefined || host.startsWith('[')) continue;
+    out.add(isIp(host) || host === 'localhost' ? `*://${host}/*` : `*://*.${host}/*`);
+  }
+  return [...out].sort();
+}
+
 /**
  * 策略变更时在途任务的处理（D-01）：已发出网络请求的继续到终态；
  * 已接单但尚未发出的取消（终态 stopped，原因 policyChanged）。

@@ -6,6 +6,7 @@ import { splitByJsonBytes } from '@/core/domain/bytes';
 import { canTransition, isTerminal, JOB_LIMITS, type JobRecord, type JobState } from '@/core/domain/job';
 import type { BackgroundToClient, ClientToBackground, RejectReason } from '@/core/domain/messages';
 import type { Settings } from '@/core/domain/settings';
+import { onPolicyChange } from '@/core/domain/site-policy';
 import type {
   ChatRequest,
   Connection,
@@ -18,6 +19,7 @@ import type {
 import { type AskTurn, assembleAsk } from '@/core/prompt/ask';
 import type { BackgroundDeps } from './deps';
 import type { Hub } from './hub';
+import type { Pages } from './pages';
 import type { Store, StoredSelection } from './store';
 
 type AskMsg = Extract<ClientToBackground, { type: 'conv/ask' }>;
@@ -50,6 +52,8 @@ interface Conversation {
   turns: AskTurn[];
   revision: number;
   activeJobId: string | undefined;
+  /** 上一次请求带了页面全文；下次不带时计划写明「已移除先前的全文」（5.9 降档） */
+  lastFullPage: boolean;
 }
 
 /** 内存里最多保留的任务（含增量日志）；超出时丢最早的已终结任务 */
@@ -100,7 +104,7 @@ const thinkingParam = (t: AskMsg['thinking']): NonNullable<ChatRequest['thinking
 
 export type Jobs = ReturnType<typeof createJobs>;
 
-export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub) {
+export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: Pages) {
   const epoch = deps.newId();
   const jobs = new Map<string, Job>();
   const byRequest = new Map<string, string>();
@@ -333,31 +337,12 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub) {
         turns: [],
         revision: 0,
         activeJobId: undefined,
+        lastFullPage: false,
       };
       conversations.set(conv.id, conv);
 
       const now = deps.now();
       const contextSnapshotId = deps.newId();
-      const assembly = assembleAsk({
-        question: msg.text,
-        ...(selection
-          ? {
-              selection: {
-                text: selection.text,
-                truncated: selection.truncated,
-                originalLength: selection.originalLength,
-              },
-            }
-          : {}),
-        history: conv.turns,
-        lengthTier: msg.lengthTier,
-        language: settings.reply.language,
-        thinking: msg.thinking,
-        requestedContextTier: msg.contextTier,
-        model: target.model,
-        contextSnapshotId,
-        budget: defaultBudget(undefined, settings.context),
-      });
       const record: JobRecord = {
         jobId,
         clientRequestId: msg.clientRequestId,
@@ -384,7 +369,8 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub) {
         pendingReasoning: '',
         flushTimer: undefined,
         error: undefined,
-        userText: assembly.userText,
+        // 装配后填（页面读取在接单之后）
+        userText: '',
         hasPageText: selection !== undefined,
         secrets: [target.conn.apiKey, ...Object.values(target.conn.headers)],
       };
@@ -408,8 +394,66 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub) {
         messageId: record.messageId,
         conversationId: conv.id,
       });
+
+      // 页面上下文（5.6、5.9）：接单之后、发请求之前读取。读取期间站点策略变了（设置页改了黑名单），
+      // 这次请求取消（D-01：未发出的取消）；用户在读取期间点了停止，同样不再发出
+      const ctx = await pages.prepare(tabId, msg.contextTier, selection, settings);
+      const fresh = await deps.loadSettings();
+      if (isTerminal(job.record.state)) return;
+      if (!fresh.ok || pages.levelChanged(ctx, fresh.settings)) {
+        deps.log('ask/policyChanged', { jobId });
+        transition(job, 'stopped', { stopReason: 'policyChanged' });
+        return;
+      }
+      const assembly = assembleAsk({
+        question: msg.text,
+        ...(selection
+          ? {
+              selection: {
+                text: selection.text,
+                truncated: selection.truncated,
+                originalLength: selection.originalLength,
+              },
+            }
+          : {}),
+        history: conv.turns,
+        lengthTier: msg.lengthTier,
+        language: settings.reply.language,
+        thinking: msg.thinking,
+        requestedContextTier: msg.contextTier,
+        model: target.model,
+        contextSnapshotId,
+        budget: defaultBudget(undefined, settings.context),
+        ...(ctx.page ? { page: ctx.page } : {}),
+        selectionBlockIds: ctx.selectionBlockIds,
+        siteNoRead: ctx.siteNoRead,
+        previousFullPage: conv.lastFullPage,
+        extraNotes: ctx.notes,
+      });
+      conv.lastFullPage = assembly.sentFullPage;
+      job.userText = assembly.userText;
+      job.hasPageText = selection !== undefined || assembly.plan.pageRead;
+      const { plan } = assembly;
+      // 诊断日志只记计划的结构（档位、块号、覆盖率、版本），不记任何页面文字或问题
+      deps.log('ask/plan', {
+        jobId,
+        requestedTier: msg.contextTier,
+        contextTier: plan.contextTier,
+        siteLevel: ctx.level,
+        pageRead: plan.pageRead,
+        sentBlockIds: plan.sentBlockIds,
+        coverage: plan.coverage,
+        contentVersion: plan.contentVersion,
+        removedEarlierPageText: plan.removedEarlierPageText,
+        droppedHistoryTurns: plan.droppedHistoryTurns,
+        historyHasPageText: plan.historyHasPageText,
+        estimatedInputTokens: plan.estimatedInputTokens,
+        budget: plan.budget,
+        model: plan.model,
+        notes: plan.notes.length,
+      });
       // 发送计划先于请求推给界面（规则 8）
-      hub.toTab(tabId, { type: 'conv/plan', jobId, contextSnapshotId, plan: assembly.plan });
+      hub.toTab(tabId, { type: 'conv/plan', jobId, contextSnapshotId, plan });
       void run(job, target.conn, adapter, {
         model: target.model.model,
         messages: assembly.messages,
@@ -443,6 +487,19 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub) {
 
     forgetTab(tabId: number): void {
       for (const [id, c] of conversations) if (c.tabId === tabId) conversations.delete(id);
+    },
+
+    /** 站点策略变更（D-01）：已接单、尚未发出网络请求的任务取消（stopped，policyChanged）；已发出的继续 */
+    cancelPending(): number {
+      let n = 0;
+      for (const job of jobs.values()) {
+        if (isTerminal(job.record.state) || onPolicyChange(job.record.requestSent) !== 'cancel') continue;
+        if (transition(job, 'stopped', { stopReason: 'policyChanged' })) {
+          job.controller.abort();
+          n++;
+        }
+      }
+      return n;
     },
   };
 }

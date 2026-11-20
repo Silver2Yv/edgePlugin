@@ -1,7 +1,7 @@
 // 设置结构与迁移（5.11）。存 storage.local，带版本号；提示词只存改过的部分（I1）。
 // storage.local 在写入 Key 前收紧为仅扩展自身可访问（5.11、AR-18），内容脚本读不到设置，
 // 它需要的由后台按需下发（PageConfig）。
-import type { LengthTier, ThinkingLevel } from '../context/plan';
+import type { ContextTier, LengthTier, ThinkingLevel } from '../context/plan';
 import type { Connection, ModelRef } from '../llm/adapter';
 import { type ActionDef, type ActionId, BUILTIN_ACTION_IDS, DEFAULT_TOOLBAR } from './actions';
 import { ID_PATTERN } from './ids';
@@ -37,6 +37,11 @@ export interface Settings {
     speedSoftBudgetRatio: number;
     /** 总结读取占软预算的比例，对应需求 20%–40% */
     summaryReadRatio: number;
+    /**
+     * 提问时默认的页面上下文档位（contract-v1.3 增量）。小窗还没有档位切换界面，发问时按它填 contextTier；
+     * 出厂 nearby：选区所在块前后若干段，比只发选区多了上下文，又比全文快、省
+     */
+    defaultTier: ContextTier;
   };
   float: {
     placement: 'nearSelection' | 'remembered';
@@ -55,7 +60,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenActions: [],
   promptOverrides: {},
   reply: { lengthTier: 'normal', language: 'auto', thinking: 'off' },
-  context: { speedSoftBudgetRatio: 0.5, summaryReadRatio: 0.3 },
+  context: { speedSoftBudgetRatio: 0.5, summaryReadRatio: 0.3, defaultTier: 'nearby' },
   float: { placement: 'nearSelection' },
   suggestions: { model: true, rules: true },
   updates: { autoCheck: false },
@@ -112,6 +117,7 @@ const settingsSchema = obj({
   context: obj({
     speedSoftBudgetRatio: num({ min: 0.1, max: 1 }),
     summaryReadRatio: num({ min: 0.2, max: 0.4 }),
+    defaultTier: oneOf(['selection', 'nearby', 'fullPage']),
   }),
   float: obj({
     placement: oneOf(['nearSelection', 'remembered']),

@@ -4,9 +4,14 @@ import { browser } from 'wxt/browser';
 import type { ActionId } from '@/core/domain/actions';
 import { truncateByJsonBytes } from '@/core/domain/bytes';
 import { JOB_LIMITS } from '@/core/domain/job';
-import type { ContentToBackground } from '@/core/domain/messages';
+import type { ContentToBackground, PageConfig } from '@/core/domain/messages';
 import { setLastSelectionRect } from './selection-bus';
-import { evaluateSelection, lastLineRect, type SelectionDecision } from './selection-policy';
+import {
+  evaluateSelection,
+  lastLineRect,
+  readonlyInputRect,
+  type SelectionDecision,
+} from './selection-policy';
 import { createToolbar, type ToolbarHost } from './toolbar';
 
 /** 同一框架里只留一个哨兵：后台在安装或更新时会向已开网页再注入一次（L5） */
@@ -19,6 +24,20 @@ export function startSentinel(): void {
   let pendingText = '';
   let pendingInCode = false;
   let toolbar: ToolbarHost | undefined;
+  /**
+   * 子框架的站点级别按「顶层与框架来源取更严」（4.1、AR-14）。excludeMatches 只看框架自己的地址，
+   * 顶层被列入黑名单时子框架里的哨兵仍会加载，所以子框架第一次有选区时向后台问一次级别，不是正常级别就不弹。
+   * 顶层框架不问：它的黑名单由 excludeMatches 排除，问一次会推迟工具栏出现
+   */
+  const isTop = window === window.top;
+  let allowed: Promise<boolean> | undefined;
+  const frameAllowed = (): Promise<boolean> => {
+    allowed ??= browser.runtime
+      .sendMessage({ type: 'config/get' } satisfies ContentToBackground)
+      .then((c: unknown) => (c as Partial<PageConfig> | undefined)?.siteLevel === 'normal')
+      .catch(() => false);
+    return allowed;
+  };
 
   function getToolbar(): ToolbarHost {
     if (toolbar === undefined) {
@@ -64,7 +83,13 @@ export function startSentinel(): void {
     void browser.runtime.sendMessage(msg);
   }
 
-  function onSelectionChange(): void {
+  function showFor(decision: SelectionDecision, rect: DOMRect): void {
+    sendSelectionReady(decision);
+    setLastSelectionRect(rect, selectionRevision);
+    getToolbar().show(rect);
+  }
+
+  function onSelectionChange(pointer?: { x: number; y: number }): void {
     // 扩展被更新或重新加载后，旧哨兵和后台的联系就断了（runtime.id 变为 undefined）：退出，让新注入的接手
     if (!browser.runtime?.id) {
       dispose();
@@ -76,18 +101,25 @@ export function startSentinel(): void {
       clearSelection();
       return;
     }
-    const rect = lastLineRect(sel);
+    // 只读输入框里拿不到文字矩形（A1）：用松开鼠标的位置或输入框位置
+    const rect =
+      lastLineRect(sel) ??
+      (decision.readonlyInput ? readonlyInputRect(decision.readonlyInput, pointer) : null);
     if (rect === null) {
       clearSelection();
       return;
     }
-    sendSelectionReady(decision);
-    setLastSelectionRect(rect);
-    getToolbar().show(rect);
+    if (isTop) {
+      showFor(decision, rect);
+      return;
+    }
+    void frameAllowed().then((ok) => {
+      if (ok) showFor(decision, rect);
+    });
   }
 
   const onMouseUp = (e: MouseEvent) => {
-    if (e.isTrusted) onSelectionChange();
+    if (e.isTrusted) onSelectionChange({ x: e.clientX, y: e.clientY });
   };
   const onKeyUp = (e: KeyboardEvent) => {
     if (!e.isTrusted) return;
