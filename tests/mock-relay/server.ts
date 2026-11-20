@@ -14,6 +14,7 @@
 // | split | 一个事件拆进多个网络块（逐字节写出） |
 // | streamError | 输出几段后在流里给出 error 对象 |
 // | disconnect | 输出几段后直接断开连接 |
+// | failOnce | 第一次请求像 disconnect 一样中途断开，第二次起正常走完（V-03 测重试能恢复） |
 // | html200 | 200 加网页（漏写 /v1 的真实表现） |
 // | markdown | 分约 20 段流式输出一份含标题/列表/代码/表格/公式/链接/原始 HTML 的 Markdown（V-10） |
 // | 401 / 403 / 404 / 405 | 对应错误（401 用 new_api_error，其他用 invalid_request_error） |
@@ -33,6 +34,7 @@ export const MODES = [
   'split',
   'streamError',
   'disconnect',
+  'failOnce',
   'html200',
   'markdown',
   '401',
@@ -154,6 +156,8 @@ export async function startMockRelay(
 ): Promise<MockRelay> {
   const scale = opts.scale ?? Number(process.env.MOCK_RELAY_SCALE ?? 1);
   const log: LogEntry[] = [];
+  /** failOnce 模式用：第几次请求到达，从 1 起 */
+  let failOnceAttempts = 0;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms * scale));
 
   const server = createServer((req, res) => {
@@ -166,6 +170,7 @@ export async function startMockRelay(
     if (url.pathname === '/__log') return json(res, 200, log);
     if (url.pathname === '/__reset') {
       log.length = 0;
+      failOnceAttempts = 0;
       return json(res, 200, { ok: true });
     }
     const m = /^(?:\/m\/([^/]+))?(\/.*)$/.exec(url.pathname);
@@ -193,6 +198,7 @@ export async function startMockRelay(
       hasAuth: typeof req.headers.authorization === 'string',
     });
     const model = body.model ?? 'mock-flash';
+    if (mode === 'failOnce') failOnceAttempts++;
 
     const err = ERRORS[mode];
     if (err) return json(res, err.status, { error: err });
@@ -261,6 +267,7 @@ export async function startMockRelay(
           return void res.end();
         }
         if (i === 2 && mode === 'disconnect') return void res.socket?.destroy();
+        if (i === 2 && mode === 'failOnce' && failOnceAttempts === 1) return void res.socket?.destroy();
         if (mode === 'heartbeat') await write(`: ping${nl}${nl}`);
         await write(chunk({ content: piece }));
         await sleep(50);

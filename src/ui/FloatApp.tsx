@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'preact/hooks';
 import type { Browser } from 'wxt/browser';
 import { browser } from 'wxt/browser';
-import { isTerminal } from '@/core/domain/job';
+import { canRetry, isTerminal } from '@/core/domain/job';
 import { type BackgroundToClient, type ClientToBackground, CONV_PORT } from '@/core/domain/messages';
 import { loadSettings } from '@/platform/settings-store';
 import { ERROR_LABEL } from './error-labels';
@@ -183,6 +183,11 @@ export function FloatApp() {
     portRef.current?.postMessage({ type: 'conv/stop', jobId: state.job.jobId } satisfies ClientToBackground);
   };
 
+  const handleRetry = () => {
+    if (!state.job) return;
+    portRef.current?.postMessage({ type: 'conv/retry', jobId: state.job.jobId } satisfies ClientToBackground);
+  };
+
   const onKeyDown = (e: KeyboardEvent) => {
     if (!shouldSendOnEnter(e)) return;
     e.preventDefault();
@@ -267,6 +272,14 @@ export function FloatApp() {
               {ERROR_LABEL[job.error.kind]}
               {job.error.message && `：${job.error.message}`}
             </p>
+          )}
+          {job.state === 'interrupted' && (
+            <p style={{ margin: '4px 0 0', color: '#999' }}>上次请求的结果未知，重试可能重新计费</p>
+          )}
+          {canRetry(job.state) && (
+            <button type="button" style={{ marginTop: 4 }} onClick={handleRetry}>
+              重试
+            </button>
           )}
         </div>
       )}

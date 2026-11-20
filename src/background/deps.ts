@@ -62,4 +62,6 @@ export interface BackgroundDeps {
   connectionTestTimeoutMs?: number;
   /** 拉取模型列表（含 /v1 探测）的超时（毫秒），默认 15 秒 */
   listModelsTimeoutMs?: number;
+  /** 发问等待响应头的超时（毫秒），默认见 JOB_LIMITS.connectTimeoutMs；单测用它调小（V-01） */
+  askConnectTimeoutMs?: number;
 }

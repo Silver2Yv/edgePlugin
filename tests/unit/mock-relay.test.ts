@@ -57,6 +57,14 @@ describe('模拟中转站', () => {
     await expect((await ask('disconnect')).text()).rejects.toThrow();
   });
 
+  it('failOnce：第一次像 disconnect 一样断开，第二次起正常走完（V-03 测重试）', async () => {
+    await fetch(`${relay.url}/__reset`, { method: 'POST' });
+    await expect((await ask('failOnce')).text()).rejects.toThrow();
+    const text = await (await ask('failOnce')).text();
+    expect(text.trimEnd().endsWith('data: [DONE]')).toBe(true);
+    expect(text).toContain('模拟中转站');
+  });
+
   it('crlf 与 heartbeat', async () => {
     expect(await (await ask('crlf')).text()).toContain('\r\n\r\n');
     expect(await (await ask('heartbeat')).text()).toContain(': ping');

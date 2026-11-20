@@ -122,6 +122,10 @@ export function makeHarness(
     status?: number;
     /** 让 lockStorage（收紧 storage.local）每次调用都失败，用于测 settings/ensureLocked 的失败分支 */
     lockStorageFails?: boolean;
+    /** fetch 调用后永不 resolve（除非被 signal 中止），模拟 head35/head65 那样迟迟不来的响应头（V-01） */
+    hangForever?: boolean;
+    /** 覆盖发问等待响应头的超时（毫秒），配合 hangForever 测连接超时，不必真的等 28 秒 */
+    askConnectTimeoutMs?: number;
   } = {},
 ) {
   const instance = ++instances;
@@ -163,6 +167,14 @@ export function makeHarness(
       const jobsAtCall = Object.entries(all)
         .filter(([k]) => k.startsWith('job:'))
         .map(([, v]) => v);
+      if (opts.hangForever) {
+        // 模拟响应头迟迟不来（head35/head65）：fetch 本身不 resolve，只能被 signal 中止
+        const res: FakeResponse = { push: () => undefined, close: () => undefined, fail: () => undefined };
+        fetches.push({ url, init, jobsAtCall, res });
+        return new Promise<Response>((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        });
+      }
       let ctl!: ReadableStreamDefaultController<Uint8Array>;
       const enc = new TextEncoder();
       const body = new ReadableStream<Uint8Array>({
@@ -197,6 +209,7 @@ export function makeHarness(
     lockStorage: vi.fn(async () => {
       if (opts.lockStorageFails) throw new Error('锁定失败');
     }),
+    ...(opts.askConnectTimeoutMs !== undefined ? { askConnectTimeoutMs: opts.askConnectTimeoutMs } : {}),
   };
   const app = createBackground(deps);
 
