@@ -165,6 +165,7 @@ test('设置页改成「不读取」：新的发送立即只带选区，旧缓�
   await expect.poll(() => logs.events('page/cachePurged').length).toBeGreaterThan(0);
 
   await test.step('同一对话接着问：只带选区，历史里的旧正文去掉', async () => {
+    const readsBefore = logs.events('page/read').length;
     const second = await convAsk(frame, {
       model,
       selectionRevision: rev,
@@ -182,6 +183,11 @@ test('设置页改成「不读取」：新的发送立即只带选区，旧缓�
     expect(userSide.at(-1)).toContain(PARA);
     expect(second.plan).toMatchObject({ pageRead: false, removedEarlierPageText: true, sentBlockIds: [] });
     expect(logs.plans().at(-1)).toMatchObject({ siteLevel: 'noRead' });
+    // 抽取层：没有再发 page/read；日志层：后台日志里没有任何页面正文
+    expect(logs.events('page/read')).toHaveLength(readsBefore);
+    const logged = logs.lines.join(' ');
+    expect(logged).not.toContain(OTHER);
+    expect(logged).not.toContain(PARA);
     console.log('[V-04] 改成不读取后的计划', JSON.stringify(second.plan));
   });
 

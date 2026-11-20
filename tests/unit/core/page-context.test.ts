@@ -4,6 +4,8 @@ import { blockDigest, contentVersionOf } from '@/core/context/content-version';
 import type { Block } from '@/core/context/page-doc';
 import { defaultBudget, estimateTokens } from '@/core/context/plan';
 import { pickPageBlocks } from '@/core/context/select';
+import { contentToBackground, parseFrom } from '@/core/domain/messages';
+import { DEFAULT_SETTINGS, migrateSettings } from '@/core/domain/settings';
 import { frameSiteLevel, sentinelExcludeMatches, siteLevelForUrl } from '@/core/domain/site-policy';
 import { type AskInput, type AskPage, assembleAsk, formatBlock, stripPageContent } from '@/core/prompt/ask';
 
@@ -276,5 +278,39 @@ describe('站点策略：哨兵排除规则与子框架', () => {
     expect(frameSiteLevel('https://top.test/', 'https://frame.test/', rules)).toBe('noRead');
     expect(siteLevelForUrl('chrome://settings', rules)).toBe('normal');
     expect(siteLevelForUrl(undefined, rules)).toBe('normal');
+  });
+});
+
+describe('契约增量 v1.3', () => {
+  const ID = '0123456789abcdef';
+  const anchor = {
+    exact: '甲',
+    prefix: '',
+    suffix: '乙',
+    blockDigest: 'abc',
+    headingPath: [],
+    scrollRatio: 0.1,
+    offsetInBlock: 0,
+  };
+
+  it('page/docUnchanged 与 selection/anchored.contentVersion 只有内容脚本能发，未知字段照样拒', () => {
+    const un = { type: 'page/docUnchanged', readId: ID, contentVersion: 'v1-x' };
+    expect(parseFrom('content', contentToBackground, un).ok).toBe(true);
+    expect(parseFrom('content', contentToBackground, { ...un, url: 'https://a.com/' }).ok).toBe(false);
+    expect(parseFrom('float', contentToBackground, un)).toMatchObject({ ok: false, reason: 'notAllowed' });
+    const an = { type: 'selection/anchored', selectionRevision: 1, anchor, blockIds: ['b1'] };
+    expect(parseFrom('content', contentToBackground, an).ok).toBe(true);
+    expect(parseFrom('content', contentToBackground, { ...an, contentVersion: 'v1-x' }).ok).toBe(true);
+  });
+
+  it('默认档位：旧设置没有这个字段时补成 nearby；非法值判为损坏', () => {
+    const { defaultTier: _drop, ...oldContext } = DEFAULT_SETTINGS.context;
+    const r = migrateSettings({ ...DEFAULT_SETTINGS, context: oldContext });
+    expect(r.ok && r.settings.context.defaultTier).toBe('nearby');
+    const bad = migrateSettings({
+      ...DEFAULT_SETTINGS,
+      context: { ...DEFAULT_SETTINGS.context, defaultTier: 'all' },
+    });
+    expect(bad.ok).toBe(false);
   });
 });
