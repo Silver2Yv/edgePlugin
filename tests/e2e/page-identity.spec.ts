@@ -73,6 +73,7 @@ test('只换文字（URL、main 节点、长度都不变）：指纹变了就用
   const mainBefore = await page.evaluate(() => {
     const m = document.getElementById('m') as HTMLElement & { __mark?: number };
     m.__mark = 1;
+    // biome-ignore lint/performance/useDomNodeTextContent: 比较的是页面显示出来的文字长度
     return m.innerText.length;
   });
   await page.evaluate(() => {
@@ -80,6 +81,7 @@ test('只换文字（URL、main 节点、长度都不变）：指纹变了就用
   });
   const mainAfter = await page.evaluate(() => {
     const m = document.getElementById('m') as HTMLElement & { __mark?: number };
+    // biome-ignore lint/performance/useDomNodeTextContent: 比较的是页面显示出来的文字长度
     return { len: m.innerText.length, same: m.__mark === 1 };
   });
   expect(mainAfter).toEqual({ len: mainBefore, same: true });
@@ -90,9 +92,9 @@ test('只换文字（URL、main 节点、长度都不变）：指纹变了就用
   expect(lastBody()).not.toContain('甲乙丙丁戊己庚辛壬癸');
   expect(b.plan).toMatchObject({ pageKey: a.plan?.pageKey, documentId: a.plan?.documentId });
   expect(b.plan?.contentVersion).not.toBe(rev);
-  expect((b.plan?.coverage as { extractableChars: number }).extractableChars).toBe(
-    (a.plan?.coverage as { extractableChars: number }).extractableChars,
-  );
+  const extractable = (p: Record<string, unknown> | undefined) =>
+    (p?.coverage as { extractableChars: number } | undefined)?.extractableChars;
+  expect(extractable(b.plan)).toBe(extractable(a.plan));
 
   // 不再变：第三次问用缓存（阅读器只回 docUnchanged）
   const c = await convAsk(frame, { ...ask('第三次'), selectionRevision: await selRev(serviceWorker, page) });
