@@ -15,6 +15,7 @@ import {
   onResumeRejected,
   onWake,
   parseTokenFromHash,
+  restoreCommandsOnConnect,
   shouldSendOnEnter,
   subscribeMessage,
 } from '@/ui/float/state';
@@ -514,5 +515,40 @@ describe('shouldSendOnEnter', () => {
   });
   it('其他按键不发送', () => {
     expect(shouldSendOnEnter({ key: 'a', shiftKey: false })).toBe(false);
+  });
+});
+
+describe('restoreCommandsOnConnect：小窗私有端口连接后恢复拖动/缩放记忆（5.3）', () => {
+  const current = { x: 10, y: 10, w: 380, h: 480 };
+
+  it('没有记忆设置：不发任何指令', () => {
+    expect(restoreCommandsOnConnect(current, { placement: 'nearSelection' })).toEqual([]);
+  });
+
+  it('摆放策略「出现在选区附近」：只恢复尺寸，不恢复坐标', () => {
+    const cmds = restoreCommandsOnConnect(current, {
+      placement: 'nearSelection',
+      rect: { x: 999, y: 999, w: 500, h: 600 },
+    });
+    expect(cmds).toEqual([{ type: 'float/resize', w: 500, h: 600 }]);
+  });
+
+  it('摆放策略「记住位置」：恢复坐标；尺寸相同时不重复发送 resize', () => {
+    const cmds = restoreCommandsOnConnect(current, {
+      placement: 'remembered',
+      rect: { x: 999, y: 888, w: 380, h: 480 },
+    });
+    expect(cmds).toEqual([{ type: 'float/reposition', x: 999, y: 888 }]);
+  });
+
+  it('摆放策略「记住位置」且尺寸也不同：先恢复尺寸，再恢复坐标', () => {
+    const cmds = restoreCommandsOnConnect(current, {
+      placement: 'remembered',
+      rect: { x: 999, y: 888, w: 500, h: 600 },
+    });
+    expect(cmds).toEqual([
+      { type: 'float/resize', w: 500, h: 600 },
+      { type: 'float/reposition', x: 999, y: 888 },
+    ]);
   });
 });

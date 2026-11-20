@@ -5,6 +5,7 @@ import './styles.css';
 
 export type { CitationMatch } from './citation';
 export { applyCitations, findCitationMatches } from './citation';
+export { addCopyButtons } from './code-copy';
 export { CODE_HIGHLIGHT_MAX_CHARS, highlightCode, isLanguageAllowed } from './highlight';
 export { KATEX_MAX_EXPAND, KATEX_MAX_SIZE, renderMath } from './katex-render';
 export { createMarkdownIt } from './markdown-it-setup';

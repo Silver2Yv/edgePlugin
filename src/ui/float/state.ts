@@ -3,7 +3,12 @@
 import type { ContextTier, LengthTier, ThinkingLevel } from '@/core/context/plan';
 import { TOKEN_PATTERN } from '@/core/domain/float';
 import { isTerminal, type JobState } from '@/core/domain/job';
-import type { BackgroundToClient, ClientToBackground, RejectReason } from '@/core/domain/messages';
+import type {
+  BackgroundToClient,
+  ClientToBackground,
+  FloatToReader,
+  RejectReason,
+} from '@/core/domain/messages';
 import { PROTOCOL_VERSION } from '@/core/domain/messages';
 import type { ModelErrorKind, ModelRef } from '@/core/llm/adapter';
 
@@ -340,4 +345,36 @@ export function shouldSendOnEnter(e: {
   keyCode?: number;
 }): boolean {
   return e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229;
+}
+
+// ───────────── 小窗私有端口：拖动 / 缩放持久化（5.3） ─────────────
+
+export interface FloatRectValue {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface FloatSettingsLike {
+  placement: 'nearSelection' | 'remembered';
+  rect?: FloatRectValue;
+}
+
+/**
+ * 私有端口连接后，用阅读器回报的当前 rect 与持久化设置算出要发的恢复指令：
+ * - 记忆了尺寸且与当前不同：恢复尺寸（与摆放策略无关——摆放只管坐标，尺寸是用户另一个决定）。
+ * - 摆放策略是「记住位置」且记了坐标：恢复坐标；「出现在选区附近」时坐标保持阅读器算好的近选区位置。
+ * 没有记忆设置时返回空数组（不发任何指令）。
+ */
+export function restoreCommandsOnConnect(
+  current: FloatRectValue,
+  settings: FloatSettingsLike,
+): FloatToReader[] {
+  const r = settings.rect;
+  if (!r) return [];
+  const cmds: FloatToReader[] = [];
+  if (r.w !== current.w || r.h !== current.h) cmds.push({ type: 'float/resize', w: r.w, h: r.h });
+  if (settings.placement === 'remembered') cmds.push({ type: 'float/reposition', x: r.x, y: r.y });
+  return cmds;
 }

@@ -1,12 +1,26 @@
 // 小窗宿主（ARCHITECTURE 5.3）：阅读器在顶层框架创建的隐藏 iframe，承载扩展页面 float.html。
 // 每个标签页最多一个；收起只隐藏不销毁；不用 window.postMessage。
+//
+// 拖动 / 缩放（用户试用后要求窗口尺寸可调）：指针事件在宿主侧（这里）捕获，不在 iframe 内捕获。
+// 原设计想法（ARCHITECTURE 5.3 原文）是在 iframe 内捕获指针事件、经私有端口移动宿主；
+// 实测验证（V-12）发现一旦指针移动到 iframe 渲染区域之外（缩放拖出、大幅拖动都会立刻发生），
+// 浏览器不再把 pointermove 路由进 iframe——这是 pointer capture 跨 iframe 边界的已知限制
+// （W3C pointerevents issue #493；Chromium 对跨源 frame 的 pointer capture 路由有同类问题），
+// 不是实现 bug。5.3 原文已预留退路：“若跟手性不够，改为宿主侧不可见把手”，这里就是那个退路：
+// 两个不可见的叠加元素（覆盖在 iframe 之上的拖动条、缩放角）在宿主侧捕获指针，直接挪动宿主 div；
+// 手势结束后把最终位置尺寸经私有端口回报给小窗（float-port.ts 的 onRectSettled），小窗据此落盘
+// settings.float.rect——存储写入必须发生在小窗（扩展页面，可信上下文），不能在这里直接写
+// storage.local（5.11 收紧后内容脚本读不到）。
 import { browser } from 'wxt/browser';
 import { FLOAT_LIMITS } from '@/core/domain/float';
 import { getLastSelectionRect } from './selection-bus';
 
-const WIDTH = 380;
-const HEIGHT = 480;
+const DEFAULT_WIDTH = 380;
+const DEFAULT_HEIGHT = 480;
 const MARGIN = 16;
+/** 不可见把手的命中区域尺寸（CSS 像素） */
+const DRAG_STRIP_HEIGHT = 16;
+const RESIZE_HANDLE_SIZE = 16;
 
 interface Rect {
   left: number;
@@ -15,6 +29,14 @@ interface Rect {
   bottom: number;
 }
 interface Size {
+  width: number;
+  height: number;
+}
+
+/** 小窗当前位置与尺寸（CSS 像素，相对视口） */
+export interface FloatRect {
+  left: number;
+  top: number;
   width: number;
   height: number;
 }
@@ -40,12 +62,41 @@ export function computeFloatPosition(
   return { left, top };
 }
 
+/**
+ * 纯计算：把一个位置 + 尺寸夹回视口内（拖动 / 缩放 / 视口变化后调用）。
+ * 尺寸先夹到 [最小尺寸, 视口可用空间] 之间，再夹位置；视口小于最小尺寸时退回最小尺寸（会溢出，无法避免）。
+ */
+export function clampRect(rect: FloatRect, viewport: Size): FloatRect {
+  const maxWidth = Math.max(FLOAT_LIMITS.minWidth, viewport.width - 2 * MARGIN);
+  const maxHeight = Math.max(FLOAT_LIMITS.minHeight, viewport.height - 2 * MARGIN);
+  const width = Math.min(Math.max(rect.width, FLOAT_LIMITS.minWidth), maxWidth);
+  const height = Math.min(Math.max(rect.height, FLOAT_LIMITS.minHeight), maxHeight);
+  const maxLeft = Math.max(MARGIN, viewport.width - width - MARGIN);
+  const maxTop = Math.max(MARGIN, viewport.height - height - MARGIN);
+  const left = Math.min(Math.max(rect.left, MARGIN), maxLeft);
+  const top = Math.min(Math.max(rect.top, MARGIN), maxTop);
+  return { left, top, width, height };
+}
+
 export type FloatLoadResult = 'ready' | 'failedTransient';
 
 export interface FloatHostApi {
   prewarm(token: string): void;
   show(opts: { token: string | undefined; focusInput: boolean }): void;
   hide(): void;
+  /** 恢复记忆尺寸：绝对尺寸（连接时按持久化设置回放一次，见 restoreCommandsOnConnect） */
+  resize(w: number, h: number): FloatRect | null;
+  /** 恢复记忆位置：绝对坐标 */
+  reposition(x: number, y: number): FloatRect | null;
+  /** 当前位置与尺寸；小窗未建好时为 null */
+  getRect(): FloatRect | null;
+  /** 小窗私有端口握手完成（attachFloatPort 收到合法连接）时调用；纯标记，供 e2e 等待后再做拖动/缩放 */
+  markPortReady(): void;
+  /**
+   * 一次拖动或缩放手势结束（宿主侧指针捕获，pointerup）时调用一次，带上最终 rect；
+   * float-port.ts 订阅它，把结果经私有端口回报给小窗用于落盘（settled: true）。
+   */
+  onRectSettled(cb: (rect: FloatRect) => void): void;
 }
 
 export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void): FloatHostApi {
@@ -55,10 +106,50 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   // 显示时小窗还没加载完：等加载完再聚焦。加载中的 iframe 拿到焦点后，换成扩展页面时焦点会丢回网页
   let focusOnLoad = false;
+  /** 当前位置与尺寸；build() 之后才有值 */
+  let rect: FloatRect | null = null;
+  let rectSettledCb: ((rect: FloatRect) => void) | null = null;
+
+  const viewport = (): Size => ({ width: window.innerWidth, height: window.innerHeight });
+
+  function applyRect(r: FloatRect): void {
+    rect = r;
+    if (!host) return;
+    host.style.left = `${r.left}px`;
+    host.style.top = `${r.top}px`;
+    host.style.width = `${r.width}px`;
+    host.style.height = `${r.height}px`;
+  }
+
+  /** 不可见把手：宿主侧捕获指针，覆盖在 iframe 之上的小块命中区域，不进 iframe（见文件头注释） */
+  function attachHandle(
+    el: HTMLElement,
+    onDrag: (dx: number, dy: number, startRect: FloatRect) => FloatRect,
+  ): void {
+    let start: { x: number; y: number; rect: FloatRect } | null = null;
+    el.addEventListener('pointerdown', (e) => {
+      if (!e.isTrusted || rect === null) return;
+      el.setPointerCapture(e.pointerId);
+      start = { x: e.clientX, y: e.clientY, rect };
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!start) return;
+      applyRect(clampRect(onDrag(e.clientX - start.x, e.clientY - start.y, start.rect), viewport()));
+    });
+    const end = (): void => {
+      if (!start) return;
+      start = null;
+      if (rect) rectSettledCb?.(rect);
+    };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
 
   function build(token: string): void {
     const h = document.createElement('div');
     h.popover = 'manual';
+    // 纯标记，方便 e2e 定位宿主 div（它直接挂在 document.documentElement 下，不在 shadow 里）
+    h.dataset.raFloatHost = 'true';
     Object.assign(h.style, {
       position: 'fixed',
       margin: '0',
@@ -72,14 +163,12 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
       inset: 'auto',
       overflow: 'hidden',
       zIndex: '2147483647',
-      width: `${WIDTH}px`,
-      height: `${HEIGHT}px`,
     });
     const shadow = h.attachShadow({ mode: 'closed' });
     const frame = document.createElement('iframe');
     frame.src = `${browser.runtime.getURL('/float.html')}#t=${token}`;
     frame.allow = 'clipboard-write';
-    Object.assign(frame.style, { width: '100%', height: '100%', border: '0' });
+    Object.assign(frame.style, { width: '100%', height: '100%', border: '0', display: 'block' });
     loaded = false;
     frame.addEventListener('load', () => {
       loaded = true;
@@ -89,26 +178,67 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
       onLoadResult('ready');
     });
     shadow.append(frame);
+
+    // 两个不可见把手，DOM 顺序在 iframe 之后（同层叠放时排在后面的在上面），覆盖在 iframe 对应区域上方，
+    // 指针事件被这两个元素截获，不会穿透到 iframe 里——从根本上避开 pointer capture 跨 iframe 边界的限制
+    const dragHandle = document.createElement('div');
+    dragHandle.dataset.testid = 'float-drag-handle';
+    Object.assign(dragHandle.style, {
+      position: 'absolute',
+      top: '0',
+      left: '0',
+      right: '0',
+      height: `${DRAG_STRIP_HEIGHT}px`,
+      cursor: 'move',
+      background: 'transparent',
+    });
+    attachHandle(dragHandle, (dx, dy, startRect) => ({
+      ...startRect,
+      left: startRect.left + dx,
+      top: startRect.top + dy,
+    }));
+
+    const resizeHandle = document.createElement('div');
+    resizeHandle.dataset.testid = 'float-resize-handle';
+    Object.assign(resizeHandle.style, {
+      position: 'absolute',
+      right: '0',
+      bottom: '0',
+      width: `${RESIZE_HANDLE_SIZE}px`,
+      height: `${RESIZE_HANDLE_SIZE}px`,
+      cursor: 'nwse-resize',
+      background: 'transparent',
+    });
+    attachHandle(resizeHandle, (dx, dy, startRect) => ({
+      ...startRect,
+      width: startRect.width + dx,
+      height: startRect.height + dy,
+    }));
+
+    shadow.append(dragHandle, resizeHandle);
     document.documentElement.append(h);
     host = h;
     iframe = frame;
+    applyRect({ left: 0, top: 0, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
     timeoutId = setTimeout(() => {
       if (!loaded) onLoadResult('failedTransient');
     }, FLOAT_LIMITS.loadTimeoutMs);
   }
 
+  /** 贴着最近一次选区重新定位；保留当前尺寸（用户缩放过也不被重置） */
   function reposition(): void {
-    if (host === null) return;
+    if (host === null || rect === null) return;
     const sel = getLastSelectionRect();
-    const rect = sel === null ? null : { left: sel.left, right: sel.right, top: sel.top, bottom: sel.bottom };
-    const pos = computeFloatPosition(
-      rect,
-      { width: WIDTH, height: HEIGHT },
-      { width: window.innerWidth, height: window.innerHeight },
-    );
-    host.style.left = `${pos.left}px`;
-    host.style.top = `${pos.top}px`;
+    const selRect =
+      sel === null ? null : { left: sel.left, right: sel.right, top: sel.top, bottom: sel.bottom };
+    const pos = computeFloatPosition(selRect, { width: rect.width, height: rect.height }, viewport());
+    applyRect(clampRect({ ...rect, left: pos.left, top: pos.top }, viewport()));
   }
+
+  // 视口变化（窗口缩放、浏览器缩放等）：把小窗夹回新视口内，不改变用户设定的相对大小
+  window.addEventListener('resize', () => {
+    if (host !== null && rect !== null) applyRect(clampRect(rect, viewport()));
+  });
 
   return {
     prewarm(token) {
@@ -130,6 +260,25 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
     },
     hide() {
       if (host?.matches(':popover-open')) host.hidePopover();
+    },
+    resize(w, h) {
+      if (host === null || rect === null) return null;
+      applyRect(clampRect({ ...rect, width: w, height: h }, viewport()));
+      return rect;
+    },
+    reposition(x, y) {
+      if (host === null || rect === null) return null;
+      applyRect(clampRect({ ...rect, left: x, top: y }, viewport()));
+      return rect;
+    },
+    getRect() {
+      return rect;
+    },
+    markPortReady() {
+      if (host) host.dataset.raFloatPortReady = 'true';
+    },
+    onRectSettled(cb) {
+      rectSettledCb = cb;
     },
   };
 }

@@ -16,6 +16,9 @@ export const FLOAT_LIMITS = {
   unsupportedCacheMs: 30 * 24 * 3600 * 1000,
   /** 标签页隐藏多久销毁预热 iframe */
   idleDestroyMs: 10 * 60 * 1000,
+  /** 小窗缩放的最小尺寸（5.3） */
+  minWidth: 200,
+  minHeight: 160,
 } as const;
 
 /** 按站点缓存的结构性失败；failedTransient 不缓存 */
