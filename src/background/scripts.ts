@@ -12,12 +12,21 @@ async function currentSettings(): Promise<Settings> {
   return r.ok ? r.settings : DEFAULT_SETTINGS;
 }
 
+/** 对账排队执行：安装时的对账与设置变更的对账同时到达，各自先查到「未注册」再各注册一次会撞号失败（e2e 复现） */
+let queue: Promise<void> = Promise.resolve();
+
 /**
  * 对账哨兵的动态注册（5.1、4.1）：两级黑名单进 excludeMatches，站点上不常驻任何脚本。
  * 安装、启动、站点规则变更时调用；注册表与期望一致就不动。已打开的网页里的旧哨兵要到下次加载才移除——
  * 这只影响「自动弹出工具栏」，读取与发送由后台按最新策略立即拦截（4.1 生效时机）
  */
-export async function reconcileSentinel(settings?: Settings): Promise<void> {
+export function reconcileSentinel(settings?: Settings): Promise<void> {
+  const run = queue.then(() => reconcileOnce(settings));
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+async function reconcileOnce(settings?: Settings): Promise<void> {
   const [s, [registered]] = await Promise.all([
     settings ?? currentSettings(),
     browser.scripting.getRegisteredContentScripts({ ids: [SENTINEL_ID] }),

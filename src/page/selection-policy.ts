@@ -56,7 +56,8 @@ function inCodeBlock(sel: Selection): boolean {
 
 /** 松开鼠标 / 键盘改变选区后调用；`sel` 一般是 `window.getSelection()` */
 export function evaluateSelection(sel: Selection | null): SelectionDecision {
-  if (sel === null || sel.isCollapsed) return NO;
+  if (sel === null) return NO;
+  // 先看焦点：输入框里的选区在 Selection 上可能表现为折叠（isCollapsed）或锚点落在父元素上
   const doc = (sel.anchorNode?.ownerDocument ?? globalThis.document) as Document | undefined;
   const active = doc ? deepActive(doc) : null;
   if (active?.matches('input, textarea, select')) {
@@ -65,6 +66,7 @@ export function evaluateSelection(sel: Selection | null): SelectionDecision {
     const text = value.slice(Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd));
     return text.trim() === '' ? NO : { show: true, text, inCode: true, readonlyInput: active };
   }
+  if (sel.isCollapsed) return NO;
   const text = sel.toString();
   if (text.trim() === '') return NO;
   if (inFormField(sel)) return NO;
