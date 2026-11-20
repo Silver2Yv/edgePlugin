@@ -9,10 +9,11 @@ import {
   type RejectReason,
 } from '@/core/domain/messages';
 import { DEFAULT_SETTINGS } from '@/core/domain/settings';
-import { siteLevelFor } from '@/core/domain/site-policy';
+import { frameSiteLevel } from '@/core/domain/site-policy';
 import type { BackgroundDeps, SenderLike } from './deps';
 import type { FloatHost } from './float-host';
 import type { Hub } from './hub';
+import type { Pages } from './pages';
 import { quoteOf } from './quote';
 import { senderRole } from './roles';
 import type { Store } from './store';
@@ -27,15 +28,7 @@ interface ContentSender {
   url: string | undefined;
 }
 
-const hostOf = (url: string | undefined): string => {
-  try {
-    return url ? new URL(url).hostname : '';
-  } catch {
-    return '';
-  }
-};
-
-export function createIntents(deps: BackgroundDeps, store: Store, hub: Hub, host: FloatHost) {
+export function createIntents(deps: BackgroundDeps, store: Store, hub: Hub, host: FloatHost, pages: Pages) {
   const refuse = (reason: RejectReason, detail?: Record<string, unknown>): IntentResponse => {
     deps.log('intent/rejected', { reason, ...detail });
     return { ok: false, reason };
@@ -50,7 +43,10 @@ export function createIntents(deps: BackgroundDeps, store: Store, hub: Hub, host
       const d = hidden.has(id) ? undefined : defs.find((a) => a.id === id);
       return d ? [{ id: d.id, label: d.label }] : [];
     });
-    return { siteLevel: siteLevelFor(hostOf(s.url), settings.sites), toolbarActions, askRoute: 'float' };
+    // 子框架取「顶层站点与框架来源」更严（4.1、AR-14）；顶层框架两者相同，不必再查标签页地址
+    const topUrl = s.frameId === 0 ? s.url : await deps.getTabUrl?.(s.tabId).catch(() => undefined);
+    const siteLevel = frameSiteLevel(topUrl, s.url, settings.sites);
+    return { siteLevel, toolbarActions, askRoute: 'float' };
   }
 
   async function handle(msg: ContentToBackground, s: ContentSender): Promise<IntentResponse> {
@@ -100,8 +96,16 @@ export function createIntents(deps: BackgroundDeps, store: Store, hub: Hub, host
         }
         return { ok: true };
       }
+      // 页面读取（5.6）：身份取自 sender，对不上这次读取的标签页、顶层框架、文档就拒绝（规则 7）
+      case 'page/docPart':
+      case 'page/docUnchanged': {
+        const reason = msg.type === 'page/docPart' ? pages.onDocPart(msg, s) : pages.onDocUnchanged(msg, s);
+        return reason ? refuse(reason, { type: msg.type }) : { ok: true };
+      }
+      case 'selection/anchored':
+        return pages.onAnchored(msg, s) ? { ok: true } : refuse('notOwner', { type: msg.type });
       default:
-        // 选区锚点、页面读取、定位、截图本版本不做
+        // 定位、截图本版本不做
         return refuse('notAllowed', { type: msg.type });
     }
   }

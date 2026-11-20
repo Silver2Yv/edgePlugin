@@ -1,6 +1,10 @@
 // 页面模型（5.6）。块到 DOM 的对应只留在阅读器里（弱引用），不随消息传递。
 import type { BlockId, ContentVersion, DocumentId, PageKey } from '../domain/ids';
 
+/**
+ * 块类型。listItem 承载「一整组列表」：列表项按上下文单元规则归入所属列表，整组作为一个块，
+ * 文字是 Markdown 列表（每项一行 `- …`）；表格同理整表一个块（V-08 方案 A 的切分口径）
+ */
 export const BLOCK_KINDS = ['heading', 'paragraph', 'listItem', 'code', 'table', 'quote', 'math'] as const;
 export type BlockKind = (typeof BLOCK_KINDS)[number];
 
@@ -19,8 +23,23 @@ export interface Block {
   lang?: string;
 }
 
-/** 判断不出可见性等情况的记录，进「实际发送说明」提示可能不完整 */
-export type PageNoteKind = 'visibilityUncertain' | 'fallbackBodyText' | 'tooLittleText' | 'frameSkipped';
+/**
+ * 判断不出可见性等情况的记录，进「实际发送说明」提示可能不完整。
+ * truncated（contract-v1.3 增量）：页面正文超过抽取上限，只保留了前面的部分
+ */
+export type PageNoteKind =
+  | 'visibilityUncertain'
+  | 'fallbackBodyText'
+  | 'tooLittleText'
+  | 'frameSkipped'
+  | 'truncated';
+export const PAGE_NOTE_KINDS: readonly PageNoteKind[] = [
+  'visibilityUncertain',
+  'fallbackBodyText',
+  'tooLittleText',
+  'frameSkipped',
+  'truncated',
+];
 export interface PageNote {
   kind: PageNoteKind;
   detail?: string;
