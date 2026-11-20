@@ -146,7 +146,7 @@ test('设置页改成「不读取」：新的发送立即只带选区，旧缓�
   // 多轮装配从协议层验证（page-helpers 的 convAsk）
   const frame = await selectAndOpen(page, '#para');
   const model = { connectionId: 'e2e-conn-0001', model: MODEL };
-  const rev = await selectionRevision(serviceWorker);
+  const rev = await selectionRevision(serviceWorker, page);
   const first = await convAsk(frame, { model, selectionRevision: rev, text: '这段话讲了什么？' });
   expect(first.states.at(-1)).toBe('completed');
   expect(JSON.stringify(parseBody(r.bodies[0]).messages)).toContain(OTHER);
@@ -276,7 +276,7 @@ test('D-01：改策略时已接单未发出的取消（不发请求），已发�
     await waitSentinelRegistered(serviceWorker);
     await page.goto('https://e2e.test/d01');
     const frame = await selectAndOpen(page, '#para');
-    const rev = await selectionRevision(serviceWorker);
+    const rev = await selectionRevision(serviceWorker, page);
     const model = { connectionId: 'e2e-conn-0001', model: MODEL };
 
     await test.step('未发出：读取还没回来时改成「不读取」→ 任务取消，模拟中转站收不到请求', async () => {

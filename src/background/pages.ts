@@ -1,6 +1,6 @@
 // 页面读取与缓存（5.6、6.1、4.1）：发问时按档位与站点策略决定读不读；要读就让顶层框架的阅读器抽取（page/read），
 // 收齐 page/docPart 后用 pageDocSchema 校验、按同一算法重算内容指纹核对，再按 sender 盖章（规则 7：
-// pageKey、url、documentId、块的 frameId 一律取自 sender，不信消息体）。
+// documentId、块的 frameId 取自 sender，pageKey 与 url 取自标签页当前地址（浏览器给的，与 sender 同源），一律不信消息体）。
 // 缓存按标签页存最近一份，按 contentVersion 失效：每次使用前都让阅读器重新抽取核对，指纹没变才回 page/docUnchanged。
 // 「不读取」站点不抽取、不缓存，并清掉该标签页的旧缓存；策略变更时整体清空（4.1「旧缓存标记失效」）。
 // 选区所在块：阅读器在同一次读取里先发 selection/anchored；版本对得上直接用块号，对不上用锚点重新定位，
@@ -81,6 +81,7 @@ const NOTE = {
   lostSelection: '页面内容已变化，没能在新内容里找到选区',
   ambiguous: '选区文字在页面里出现多处、位置不确定，没有按选区取前后段落',
   notFound: '没能在页面正文里找到选区（可能在折叠、表单或子框架里），没有按选区取前后段落',
+  navigated: '页面在读取期间发生了跳转，没有使用这次读到的内容，只发送了选中文字',
 } as const;
 
 const normalize = (s: string) => s.replace(/\s+/g, '');
@@ -167,7 +168,10 @@ export function createPages(deps: BackgroundDeps) {
       return [];
     }
     const a = anchors.get(tabId);
-    if (a && a.revision === sel.selectionRevision && a.documentId === doc.documentId) {
+    // 锚点取自读取那一刻网页上的选区；网页脚本可能已改写了选中的那段（修订号没变），
+    // 锚点文字不在点「问」时存下的选区文字里，就不信它（V-06：不把旧选区套到改过的内容上）
+    const fits = a !== undefined && normalize(sel.text).includes(normalize(a.anchor.exact));
+    if (a && fits && a.revision === sel.selectionRevision && a.documentId === doc.documentId) {
       if (a.contentVersion === doc.contentVersion) {
         const known = new Set(doc.blocks.map((b) => b.id));
         const ids = a.blockIds.filter((id) => known.has(id));
@@ -292,15 +296,29 @@ export function createPages(deps: BackgroundDeps) {
         ctx.notes.push(r.error === 'timeout' ? NOTE.timeout : NOTE.failed);
         return ctx;
       }
+      // 地址以标签页为准（V-06 实测：hash 路由、pushState 之后 sender.url 仍是文档创建时的地址，
+      // 而标签页地址跟着变）。读取前后标签页地址必须一致、且与 sender 同源，否则说明读取期间换了页，不用这份正文
+      const afterUrl = deps.getTabUrl ? await deps.getTabUrl(tabId).catch(() => undefined) : r.doc.url;
+      const docUrl = afterUrl ?? r.doc.url;
+      const pageKey = toPageKey(docUrl);
+      if (
+        afterUrl !== topUrl ||
+        pageKey === undefined ||
+        new URL(docUrl).origin !== new URL(r.doc.url).origin
+      ) {
+        deps.log('page/read', { result: 'navigatedDuringRead' });
+        ctx.notes.push(NOTE.navigated);
+        return ctx;
+      }
+      const doc: PageDoc = { ...r.doc, url: docUrl, pageKey };
       // 读取期间页面导航到了「不读取」站点：丢弃，不缓存（读取前的判定基于标签页地址，存在竞态）
-      if (siteLevelForUrl(r.doc.url, settings.sites) === 'noRead') {
+      if (siteLevelForUrl(doc.url, settings.sites) === 'noRead') {
         ctx.siteNoRead = true;
         cache.delete(tabId);
         return ctx;
       }
-      cache.set(tabId, { doc: r.doc, bytes: r.bytes, at: deps.now() });
+      cache.set(tabId, { doc, bytes: r.bytes, at: deps.now() });
       evict();
-      const doc = r.doc;
       ctx.page = {
         pageKey: doc.pageKey,
         documentId: doc.documentId,

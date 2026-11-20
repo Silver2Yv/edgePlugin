@@ -274,9 +274,15 @@ export interface ConvResult {
  * 现在的小窗界面每次发问都是新对话（不带 conversationId），多轮历史、降档、历史去正文这些装配行为
  * 只能这样从协议层验证；返回这次任务的发送计划（conv/plan）
  */
-export function convAsk(frame: Frame, ask: Record<string, unknown>, timeoutMs = 20_000): Promise<ConvResult> {
+export function convAsk(
+  frame: Frame,
+  ask: Record<string, unknown>,
+  opts: { timeoutMs?: number; untilPlan?: boolean } = {},
+): Promise<ConvResult> {
+  const timeoutMs = opts.timeoutMs ?? 20_000;
+  const untilPlan = opts.untilPlan ?? false;
   return frame.evaluate(
-    ({ ask, timeoutMs }) =>
+    ({ ask, timeoutMs, untilPlan }) =>
       new Promise<ConvResult>((resolve) => {
         const out: ConvResult = { states: [] };
         const port = chrome.runtime.connect({ name: 'conv' });
@@ -307,6 +313,8 @@ export function convAsk(frame: Frame, ask: Record<string, unknown>, timeoutMs = 
             out.accepted = { conversationId: m.conversationId as string, jobId: m.jobId as string };
           } else if (m.type === 'conv/plan' && m.jobId === out.accepted?.jobId) {
             out.plan = m.plan as Record<string, unknown>;
+            // 只要计划：不等回答（之后可以导航走，任务照常跑完，规则 2）
+            if (untilPlan) finish();
           } else if (m.type === 'conv/jobState' && m.jobId === out.accepted?.jobId) {
             out.states.push(m.state as string);
             if (['completed', 'stopped', 'interrupted', 'failed'].includes(m.state as string)) finish();
@@ -314,21 +322,68 @@ export function convAsk(frame: Frame, ask: Record<string, unknown>, timeoutMs = 
         });
         port.postMessage({ type: 'conv/resumeFloat' });
       }),
-    { ask, timeoutMs },
+    { ask, timeoutMs, untilPlan },
   );
 }
 
-/** action/click 存下的最近一次选区的修订号（storage.session 的 selection:<tabId>）；同时等小窗握手完成（有绑定才能 resumeFloat） */
-export async function selectionRevision(sw: Worker): Promise<number | undefined> {
-  const read = () =>
-    sw.evaluate(async () => {
-      const all = await chrome.storage.session.get(null);
-      const keys = Object.keys(all);
-      const sel = Object.entries(all).find(([k]) => k.startsWith('selection:'))?.[1] as
-        | { selectionRevision: number }
-        | undefined;
-      return { rev: sel?.selectionRevision, bound: keys.some((k) => k.startsWith('floatBinding:')) };
-    });
-  await expect.poll(async () => (await read()).bound, { message: '小窗握手完成' }).toBe(true);
-  return (await read()).rev;
+/** 这个网页所在标签页的编号：按标题找（同地址的两个标签页靠标题区分） */
+export async function tabIdOf(sw: Worker, page: Page): Promise<number> {
+  const title = await page.title();
+  const id = await sw.evaluate(
+    async (t) => (await chrome.tabs.query({})).find((x) => x.title === t)?.id,
+    title,
+  );
+  if (id === undefined) throw new Error(`找不到标题为「${title}」的标签页`);
+  return id;
+}
+
+/** 某标签页 action/click 存下的选区（修订号与存下的时间）与小窗绑定是否已建立 */
+const selectionInfo = (sw: Worker, tabId: number) =>
+  sw.evaluate(async (tab) => {
+    const all = await chrome.storage.session.get([`selection:${tab}`, `floatBinding:${tab}`]);
+    const sel = all[`selection:${tab}`] as { selectionRevision: number; at: number } | undefined;
+    return { rev: sel?.selectionRevision, at: sel?.at, bound: all[`floatBinding:${tab}`] !== undefined };
+  }, tabId);
+
+/**
+ * 最近一次选区的修订号；先等小窗握手完成（有绑定才能 resumeFloat）。
+ * after：上一次选区存下的时间，等到存下了新的一份再返回（换页后哨兵的修订号会从头数，不能拿修订号比较）
+ */
+export async function selectionRevision(
+  sw: Worker,
+  page?: Page,
+  after?: number,
+): Promise<number | undefined> {
+  const tabId = page
+    ? await tabIdOf(sw, page)
+    : await sw.evaluate(async () => (await chrome.tabs.query({ active: true }))[0]?.id ?? -1);
+  await expect
+    .poll(async () => (await selectionInfo(sw, tabId)).bound, { message: '小窗握手完成' })
+    .toBe(true);
+  if (after !== undefined)
+    await expect
+      .poll(async () => (await selectionInfo(sw, tabId)).at, { message: '新的选区已存下' })
+      .not.toBe(after);
+  return (await selectionInfo(sw, tabId)).rev;
+}
+
+/**
+ * 选中一段 → 点「问」（存下这次选区、打开小窗）→ 通过对话端口发问。返回小窗与这次任务的结果。
+ * 每次都等新的选区存下再发，免得用上一次的修订号
+ */
+export async function selectAndConvAsk(
+  page: Page,
+  sw: Worker,
+  selector: string,
+  ask: Record<string, unknown>,
+  opts: { untilPlan?: boolean } = {},
+): Promise<{ frame: Frame; res: ConvResult }> {
+  const tabId = await tabIdOf(sw, page);
+  const before = (await selectionInfo(sw, tabId)).at ?? -1;
+  await page.locator(selector).click({ clickCount: 3 });
+  await clickAsk(page);
+  const frame = await floatFrame(page);
+  const rev = await selectionRevision(sw, page, before);
+  const res = await convAsk(frame, { ...ask, selectionRevision: rev }, opts);
+  return { frame, res };
 }
