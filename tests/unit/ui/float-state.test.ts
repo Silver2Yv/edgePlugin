@@ -171,6 +171,20 @@ describe('applyJobState：状态迁移', () => {
     expect(retried.text).toBe('旧答案'); // 还没整体替换
   });
 
+  it('重试是跳出终态的唯一例外：failed 状态下 attemptId 变化也能回到 accepted', () => {
+    const failed: JobView = { ...base, attemptId: A1, attemptStarted: true, text: '旧答案', state: 'failed' };
+    const retried = applyJobState(failed, {
+      type: 'conv/jobState',
+      jobId: JOB,
+      state: 'accepted',
+      attemptId: A2,
+    });
+    expect(retried.state).toBe('accepted');
+    expect(retried.attemptId).toBe(A2);
+    expect(retried.attemptStarted).toBe(false);
+    expect(retried.text).toBe('旧答案'); // 还没整体替换
+  });
+
   it('终态不可覆盖', () => {
     const done: JobView = { ...base, state: 'completed' };
     const v = applyJobState(done, { type: 'conv/jobState', jobId: JOB, state: 'failed', attemptId: '' });

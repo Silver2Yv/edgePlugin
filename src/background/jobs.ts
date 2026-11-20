@@ -3,7 +3,14 @@
 // 本版本不接 IndexedDB：对话历史只在内存，任务热副本只在 storage.session。
 import { defaultBudget } from '@/core/context/plan';
 import { splitByJsonBytes } from '@/core/domain/bytes';
-import { canTransition, isTerminal, JOB_LIMITS, type JobRecord, type JobState } from '@/core/domain/job';
+import {
+  canRetry,
+  canTransition,
+  isTerminal,
+  JOB_LIMITS,
+  type JobRecord,
+  type JobState,
+} from '@/core/domain/job';
 import type { BackgroundToClient, ClientToBackground, RejectReason } from '@/core/domain/messages';
 import type { Settings } from '@/core/domain/settings';
 import { onPolicyChange } from '@/core/domain/site-policy';
@@ -44,6 +51,11 @@ interface Job {
   userText: string;
   hasPageText: boolean;
   secrets: string[];
+  /** 重试（conv/retry）要重新发起同一份请求，这三样原样保留，不重新装配 */
+  conn: Connection;
+  adapter: ModelAdapter;
+  /** 页面读取与装配在接单之后，装配完才有；装配前就被停掉的任务没有可重发的请求 */
+  req: ChatRequest | undefined;
 }
 
 interface Conversation {
@@ -208,6 +220,12 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       job.record = { ...job.record, updatedAt: deps.now() };
       void store.putJob(job.record);
     }, JOB_LIMITS.checkpointMs);
+    // 连接超时（V-01 实测）：等响应头的阶段单独计时，拿到响应头后立即解除；首条内容之后的沉默不受此限
+    let connectTimedOut = false;
+    const connectTimer = setTimeout(() => {
+      connectTimedOut = true;
+      job.controller.abort();
+    }, deps.askConnectTimeoutMs ?? JOB_LIMITS.connectTimeoutMs);
     try {
       // accepted → streaming：请求发出的那一刻，不等首字节
       transition(job, 'streaming', { requestSent: true });
@@ -218,6 +236,7 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         redirect: http.redirect,
         signal,
       });
+      clearTimeout(connectTimer);
       if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
         return fail(job, { kind: 'redirected', status: res.status });
       }
@@ -262,9 +281,11 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
     } catch {
       // 停止后中止请求会抛 AbortError：任务已是终态，忽略
       if (isTerminal(job.record.state)) return;
+      if (connectTimedOut) return fail(job, { kind: 'timeout' });
       fail(job, { kind: job.answer || job.reasoning ? 'streamBroken' : 'network' });
     } finally {
       clearInterval(checkpoint);
+      clearTimeout(connectTimer);
       // 提前结束（流中错误、分类失败）时释放连接；正常读完后中止没有效果
       job.controller.abort();
     }
@@ -306,15 +327,19 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       }
       const jobId = deps.newId();
       byRequest.set(msg.clientRequestId, jobId);
+      const known = msg.conversationId === undefined ? undefined : conversations.get(msg.conversationId);
       const refuse = (reason: RejectReason) => {
         byRequest.delete(msg.clientRequestId);
+        // 下面抢先占住的 activeJobId，在真正接单前的任何失败都要还回去
+        if (known?.activeJobId === jobId) known.activeJobId = undefined;
         reject(reason);
       };
 
-      const known = msg.conversationId === undefined ? undefined : conversations.get(msg.conversationId);
       if (known && known.tabId !== tabId) return refuse('notOwner');
-      // 同一对话正在生成时不排队、不自动停止（决策 062）
+      // 同一对话正在生成时不排队、不自动停止（决策 062）。下面到真正接单之间还有好几个 await
+      // （取选区、读设置），先同步占住 activeJobId，关闭「两个界面同一对话几乎同时发问」的竞态窗口（V-03）
       if (known?.activeJobId !== undefined) return refuse('invalid');
+      if (known) known.activeJobId = jobId;
 
       let selection: StoredSelection | undefined;
       if (msg.selectionRevision !== undefined) {
@@ -373,6 +398,9 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         userText: '',
         hasPageText: selection !== undefined,
         secrets: [target.conn.apiKey, ...Object.values(target.conn.headers)],
+        conn: target.conn,
+        adapter,
+        req: undefined,
       };
       jobs.set(jobId, job);
       conv.activeJobId = jobId;
@@ -454,12 +482,13 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       });
       // 发送计划先于请求推给界面（规则 8）
       hub.toTab(tabId, { type: 'conv/plan', jobId, contextSnapshotId, plan });
-      void run(job, target.conn, adapter, {
+      job.req = {
         model: target.model.model,
         messages: assembly.messages,
         stream: target.conn.stream,
         thinking: thinkingParam(msg.thinking),
-      });
+      };
+      void run(job, job.conn, job.adapter, job.req);
     },
 
     /** 停止：先落定 stopped 再中止请求，之后到达的完成回调被忽略 */
@@ -467,6 +496,44 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       const job = jobs.get(jobId);
       if (!job || job.tabId !== tabId) return 'notOwner';
       if (transition(job, 'stopped', { stopReason: 'user' })) job.controller.abort();
+      return undefined;
+    },
+
+    /**
+     * 重试（V-03）：同一 jobId / messageId，开一次新尝试（新 attemptId），任务回到 accepted，
+     * 原样重发上次装配好的请求（job.ts 文件头：不是新发问，不重新装配）。只对还在内存里、且处于
+     * 可重试终态（failed / interrupted / stopped）的任务生效；跨后台重启后任务已不在内存，
+     * 没有保存原始请求内容，退化为不可重试（notOwner），需要用户发起新一轮提问。
+     */
+    retry(tabId: number, jobId: string): RejectReason | undefined {
+      const job = jobs.get(jobId);
+      if (!job || job.tabId !== tabId) return 'notOwner';
+      if (!canRetry(job.record.state)) return 'notAllowed';
+      // 装配前就被停掉的（读页面时站点策略变了、用户停止）：没有请求可重发，要用户重新提问
+      const req = job.req;
+      if (req === undefined) return 'notAllowed';
+      job.controller = new AbortController();
+      job.answer = '';
+      job.reasoning = '';
+      job.pendingText = '';
+      job.pendingReasoning = '';
+      if (job.flushTimer !== undefined) clearTimeout(job.flushTimer);
+      job.flushTimer = undefined;
+      job.error = undefined;
+      const { stopReason: _stopReason, interruptReason: _interruptReason, ...rest } = job.record;
+      job.record = {
+        ...rest,
+        attemptId: deps.newId(),
+        attempt: job.record.attempt + 1,
+        state: 'accepted',
+        requestSent: false,
+        updatedAt: deps.now(),
+      };
+      const conv = conversations.get(job.record.conversationId);
+      if (conv) conv.activeJobId = jobId;
+      void store.putJob(job.record);
+      hub.toTab(tabId, jobStateMsg(job));
+      void run(job, job.conn, job.adapter, req);
       return undefined;
     },
 

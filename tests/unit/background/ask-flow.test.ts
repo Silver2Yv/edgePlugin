@@ -4,6 +4,7 @@ import { SESSION_KEYS } from '@/core/domain/session-keys';
 import {
   askMsg,
   click,
+  FLOAT_DOC,
   fakeSession,
   makeHarness,
   readyFloat,
@@ -236,5 +237,154 @@ describe('conv/ask', () => {
     await until(() => h2.fetches.length === 1, '第二次请求');
     expect(again.ofType('conv/accepted')[0]).toMatchObject({ conversationId });
     expect(JSON.stringify(JSON.parse(String(h2.fetches[0]?.init.body)).messages)).toContain(SELECTED);
+  });
+
+  it('等响应头超时（V-01）：failed(timeout)，没有收到任何内容', async () => {
+    const h = makeHarness({ hangForever: true, askConnectTimeoutMs: 20 });
+    const { c, call } = await asked(h);
+    await until(() => states(c).includes('failed'));
+    expect(c.ofType('conv/jobState').at(-1)).toMatchObject({ state: 'failed', error: { kind: 'timeout' } });
+    expect(call.init.signal?.aborted).toBe(true);
+  });
+
+  it('响应头已到达后不再受连接超时限制：body 迟迟不来不算超时', async () => {
+    const h = makeHarness({ askConnectTimeoutMs: 20 });
+    const { c } = await asked(h); // 默认的假 fetch 立即给响应头，之后迟迟不推正文
+    await new Promise((r) => setTimeout(r, 60));
+    expect(states(c)).toEqual(['streaming']); // 没有被连接超时打成 failed
+  });
+
+  it('两个界面同一对话几乎同时发问：只接一单，不会两边都发出网络请求（V-03）', async () => {
+    const h = makeHarness();
+    const c1 = await readyFloat(h);
+    // c1 先问一轮并让它完成，拿到 conversationId
+    c1.send(askMsg({ clientRequestId: 'req-first', selectionRevision: undefined, text: '第一问' }));
+    await until(() => h.fetches.length === 1);
+    h.fetches[0]?.res.push('T:答一\nF\n');
+    h.fetches[0]?.res.close();
+    await until(() => c1.ofType('conv/jobState').some((s) => s.state === 'completed'));
+    const conversationId = c1.ofType('conv/accepted')[0]?.conversationId as string;
+
+    // 同一标签页的第二个连接：resumeFloat 不消费令牌，复用 c1 已经建好的绑定即可握手，
+    // 模拟「本版本虽只有小窗，但协议层已经有两个并发连接」的情形（产品层的双 UI 待侧边栏接入）
+    const c2 = h.connect(h.floatSender());
+    c2.send({ type: 'conv/resumeFloat' });
+    await until(() => c2.ofType('conv/ready').length === 1);
+    c2.send({ type: 'conv/subscribe' });
+    await until(() => c2.ofType('conv/snapshot').length === 1);
+
+    // 几乎同时各发一条到同一个对话：中间除了 `await ready`（已 resolve）外不该再有能插队的 await
+    c1.send(
+      askMsg({
+        clientRequestId: 'req-bbbbbbbb',
+        conversationId,
+        selectionRevision: undefined,
+        text: 'c1 问',
+      }),
+    );
+    c2.send(
+      askMsg({
+        clientRequestId: 'req-cccccccc',
+        conversationId,
+        selectionRevision: undefined,
+        text: 'c2 问',
+      }),
+    );
+
+    const settled = (c: typeof c1, id: string) =>
+      c.ofType('conv/accepted').some((a) => a.clientRequestId === id) ||
+      c.ofType('conv/rejected').some((r) => r.refId === id);
+    await until(() => settled(c1, 'req-bbbbbbbb') && settled(c2, 'req-cccccccc'));
+
+    // 只接了一单：加上第一问，总共只应该发出 2 次网络请求，不是 3 次
+    expect(h.fetches).toHaveLength(2);
+    const rejected = [...c1.ofType('conv/rejected'), ...c2.ofType('conv/rejected')];
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({ reason: 'invalid' });
+  });
+});
+
+describe('conv/retry（V-03）', () => {
+  it('失败后重试：新 attemptId，不发新 clientRequestId，旧内容不与新内容拼接', async () => {
+    const h = makeHarness();
+    const { c, call } = await asked(h);
+    call.res.fail();
+    await until(() => states(c).includes('failed'));
+    const jobId = c.ofType('conv/accepted')[0]?.jobId as string;
+    const attemptBefore = c.ofType('conv/jobState').at(-1)?.attemptId;
+
+    c.send({ type: 'conv/retry', jobId });
+    await until(() => h.fetches.length === 2, '重试发出新请求');
+    const retryState = c.ofType('conv/jobState').find((s) => s.jobId === jobId && s.state === 'accepted');
+    expect(retryState?.attemptId).not.toBe(attemptBefore);
+    expect(c.ofType('conv/accepted')).toHaveLength(1); // 不是新发问，没有新的 conv/accepted
+
+    h.fetches[1]?.res.push('T:重试后的答案\nF\n');
+    h.fetches[1]?.res.close();
+    await until(() => states(c).filter((s) => s === 'completed').length === 1);
+    // 第二次请求同样带着选中的文字（重试不重新装配，原样重发）
+    expect(JSON.stringify(JSON.parse(String(h.fetches[1]?.init.body)).messages)).toContain(SELECTED);
+  });
+
+  it('新选区不改变在途请求：失败后产生了新选区，重试仍发送原始选区（V-03）', async () => {
+    const h = makeHarness();
+    const { c, call } = await asked(h);
+    call.res.fail();
+    await until(() => states(c).includes('failed'));
+    const jobId = c.ofType('conv/accepted')[0]?.jobId as string;
+
+    // 在重试之前，页面上出现了一次新的划词（新 selectionRevision，不同的文字）
+    const NEW_SELECTED = '这是另一段完全不同的新选区文字。';
+    await h.message(click(2, 'ask', NEW_SELECTED));
+
+    c.send({ type: 'conv/retry', jobId });
+    await until(() => h.fetches.length === 2, '重试发出新请求');
+    const retryBody = JSON.stringify(JSON.parse(String(h.fetches[1]?.init.body)).messages);
+    expect(retryBody).toContain(SELECTED); // 仍是原来那次发问时的选区
+    expect(retryBody).not.toContain(NEW_SELECTED); // 不是新选区
+  });
+
+  it('停止后也能重试；还在生成中时重试被拒绝（notAllowed）', async () => {
+    const h = makeHarness();
+    const { c, call } = await asked(h);
+    call.res.push('T:一半\n');
+    await until(() => c.ofType('conv/delta').length === 1);
+    const jobId = c.ofType('conv/accepted')[0]?.jobId as string;
+
+    c.send({ type: 'conv/retry', jobId }); // 还在 streaming，不可重试
+    await until(() => c.ofType('conv/rejected').length === 1);
+    expect(c.ofType('conv/rejected')[0]).toMatchObject({ reason: 'notAllowed', refId: jobId });
+
+    c.send({ type: 'conv/stop', jobId });
+    await until(() => states(c).includes('stopped'));
+    c.send({ type: 'conv/retry', jobId });
+    await until(() => h.fetches.length === 2);
+    expect(c.ofType('conv/rejected')).toHaveLength(1); // 还是只有刚才那一次拒绝，重试这次没被拒
+  });
+
+  it('不是任务所属标签页：拒绝（notOwner）', async () => {
+    const h = makeHarness();
+    const { c, call } = await asked(h);
+    call.res.fail();
+    await until(() => states(c).includes('failed'));
+    const jobId = c.ofType('conv/accepted')[0]?.jobId as string;
+
+    // 另一个标签页的小窗（直接灌绑定做 resumeFloat 握手，不必走一遍选区/预热）
+    await h.session.set({
+      [SESSION_KEYS.floatBinding(TAB + 1)]: {
+        tabId: TAB + 1,
+        frameId: 3,
+        floatDocumentId: FLOAT_DOC,
+        hostDocumentId: 'doc-top-other',
+        boundAt: 1,
+      },
+    });
+    const other = h.connect(h.floatSender(FLOAT_DOC, TAB + 1));
+    other.send({ type: 'conv/resumeFloat' });
+    await until(() => other.ofType('conv/ready').length === 1);
+
+    other.send({ type: 'conv/retry', jobId });
+    await until(() => other.ofType('conv/rejected').length === 1);
+    expect(other.ofType('conv/rejected')[0]).toMatchObject({ reason: 'notOwner' });
   });
 });

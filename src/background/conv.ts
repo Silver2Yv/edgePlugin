@@ -152,8 +152,13 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
           if (reason) reject(reason, msg);
           return;
         }
+        case 'conv/retry': {
+          const reason = jobs.retry(tabId, msg.jobId);
+          if (reason) reject(reason, msg);
+          return;
+        }
         default:
-          // 重试、切换档位与模型、转侧边栏本版本不做
+          // 切换档位与模型、转侧边栏本版本不做
           return reject('notAllowed', msg);
       }
     }

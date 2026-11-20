@@ -79,7 +79,7 @@ $$\\rule{900000em}{900000em}$$
 
 结束。`;
 
-export const LONG_CODE_BLOCK = '```text\n' + 'x'.repeat(25_000) + '\n```\n';
+export const LONG_CODE_BLOCK = `\`\`\`text\n${'x'.repeat(25_000)}\n\`\`\`\n`;
 
 export const KATEX_SYNTAX_ERROR = `公式：$\\frac{1}{$ 结束。`;
 

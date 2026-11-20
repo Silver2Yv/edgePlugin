@@ -62,11 +62,14 @@ export function isGenerating(job: JobView | null): boolean {
 
 /**
  * 合并一条增量。丢弃：不属于这个任务的、任务已到终态的、seq 不够新的。
- * 新尝试（attemptId 变化）的第一条增量整段替换，不与旧尝试内容拼接；同一尝试内按正文/思考分别追加。
+ * 新尝试（重试）的第一条增量整段替换，不与旧尝试内容拼接：判断「是不是新尝试的第一条」不能只看
+ * attemptId 是否变化——重试的 jobState 消息通常先于它的第一条增量到达，到增量来时 view.attemptId
+ * 已经被 applyJobState 同步成新值了，两边会显示"相同"。真正可靠的信号是 attemptStarted
+ * （这次尝试是否已经收到过增量），所以两个条件都要看。
  */
 export function applyDelta(view: JobView, delta: DeltaMsg): JobView {
   if (delta.jobId !== view.jobId || isTerminal(view.state) || delta.seq <= view.lastSeq) return view;
-  const isNewAttempt = delta.attemptId !== view.attemptId;
+  const isNewAttempt = delta.attemptId !== view.attemptId || !view.attemptStarted;
   return {
     ...view,
     attemptId: delta.attemptId,
@@ -78,11 +81,13 @@ export function applyDelta(view: JobView, delta: DeltaMsg): JobView {
 }
 
 /**
- * 合并一次状态迁移。终态落定后不可覆盖。attemptId 变化表示开了新尝试（重试）：
+ * 合并一次状态迁移。终态落定后不可覆盖——但这不妨碍重试：重试带着新 attemptId 把任务从终态
+ * 带回 accepted，是唯一能跳出终态的例外（job.ts 文件头「重试」）。attemptId 变化表示开了新尝试：
  * 保留旧的正文/思考，直到这次尝试的第一条增量到达（attemptStarted 复位为 false，交给 applyDelta 整段替换）。
  */
 export function applyJobState(view: JobView, msg: JobStateMsg): JobView {
-  if (msg.jobId !== view.jobId || isTerminal(view.state)) return view;
+  if (msg.jobId !== view.jobId) return view;
+  if (isTerminal(view.state) && msg.attemptId === view.attemptId) return view;
   const retried = msg.attemptId !== view.attemptId;
   const { error: _prevError, ...rest } = view;
   const base: JobView = {
