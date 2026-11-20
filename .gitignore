@@ -16,6 +16,7 @@ selectlingo-v1.1.0/
 
 # 本机配置与秘密
 .claude/settings.local.json
+.claude/worktrees/
 .env
 .env.*
 !.env.example
