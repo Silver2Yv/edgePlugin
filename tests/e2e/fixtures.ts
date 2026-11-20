@@ -4,14 +4,18 @@ import { type BrowserContext, test as base, chromium, type Worker } from '@playw
 export const EXTENSION_PATH = resolve(import.meta.dirname, '..', '..', '.output', 'chrome-mv3');
 export const EXTENSION_ID = 'pkahgpgifechjgdpecaebajnocgcnnnd';
 
-// 加载解压缩扩展的持久化上下文。扩展只能在 Playwright 自带 Chromium 中加载（channel: 'chromium'）。
+// 加载解压缩扩展的持久化上下文。默认用 Playwright 自带 Chromium（channel: 'chromium'）；
+// E2E_BROWSER=msedge 时用本机安装的 Edge（有界面运行，Edge 157 实测可加载解压缩扩展）
+const EDGE = process.env.E2E_BROWSER === 'msedge';
+
 export const test = base.extend<{ context: BrowserContext; serviceWorker: Worker }>({
   // biome-ignore lint/correctness/noEmptyPattern: Playwright fixture 约定
   context: async ({}, use) => {
     const context = await chromium.launchPersistentContext('', {
-      channel: 'chromium',
+      channel: EDGE ? 'msedge' : 'chromium',
+      ...(EDGE ? { headless: false } : {}),
       // 本机自带 Chromium 无法启动时，可用 E2E_CHROMIUM_PATH 指向一份可用的副本
-      ...(process.env.E2E_CHROMIUM_PATH ? { executablePath: process.env.E2E_CHROMIUM_PATH } : {}),
+      ...(!EDGE && process.env.E2E_CHROMIUM_PATH ? { executablePath: process.env.E2E_CHROMIUM_PATH } : {}),
       args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
     });
     await use(context);
