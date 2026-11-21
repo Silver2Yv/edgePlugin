@@ -331,8 +331,9 @@ export function createFloatHost(
     },
     show({ token, focusInput }) {
       wanted = true;
-      // 小窗用不了（加载超时，或宿主被网页移除了）：有新令牌就重建；没有就提示改用侧边栏，并上报失败让后台下次发令牌
-      if (host !== null && (failed || !host.isConnected)) {
+      // 小窗用不了（加载超时，或宿主被网页移除了）：有新令牌就重建；没有就提示改用侧边栏，并上报失败让后台下次发令牌。
+      // 后台带了新令牌说明它不知道这个文档有握手过的小窗（握手失败、令牌过期）：同样换新令牌重建
+      if (host !== null && (failed || !host.isConnected || token !== undefined)) {
         const removed = !host.isConnected;
         discard();
         if (token === undefined) {

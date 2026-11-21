@@ -300,7 +300,7 @@ describe('conv/ask', () => {
     expect(h.fetches).toHaveLength(2);
     const rejected = [...c1.ofType('conv/rejected'), ...c2.ofType('conv/rejected')];
     expect(rejected).toHaveLength(1);
-    expect(rejected[0]).toMatchObject({ reason: 'invalid' });
+    expect(rejected[0]).toMatchObject({ reason: 'busy' });
   });
 });
 

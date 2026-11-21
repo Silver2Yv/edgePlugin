@@ -109,6 +109,7 @@ export function createCommands(
     void opened.catch((e: unknown) =>
       deps.log('sidepanel/openFailed', { via: 'summary', error: errName(e) }),
     );
+    void deps.notifyPages({ type: 'sidepanel/wake', windowId });
     void startSummary(tabId).catch((e: unknown) => deps.log('summary/failed', { error: errName(e) }));
   }
 

@@ -71,7 +71,10 @@ export function SidePanelApp() {
     const onMessage = (raw: unknown, sender: Browser.runtime.MessageSender) => {
       if (sender.id !== browser.runtime.id || sender.tab !== undefined) return;
       const m = raw as Partial<BackgroundToPages> | undefined;
-      if (m?.type === 'sidepanel/toggle' && m.windowId === windowId) check(m.at);
+      if (m?.windowId !== windowId) return;
+      if (m.type === 'sidepanel/toggle') check(m.at);
+      // 后台有东西交给本窗口的侧边栏：断线闲着的就重连（重连后 hello 里取到待接的转接、订阅时取到说明）
+      else if (m.type === 'sidepanel/wake') wake();
     };
     browser.runtime.onMessage.addListener(onMessage);
     const key = SESSION_KEYS.sidepanelToggle(windowId);

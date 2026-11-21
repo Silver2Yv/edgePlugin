@@ -396,9 +396,13 @@ export type PanelNoticeKind = 'floatTransient' | 'floatUnsupported' | 'noConnect
  * 后台 → 扩展页面的广播（runtime.sendMessage，contract-v1.3 增量）。后台自己产出，只用类型约束；
  * 接收方核对 sender.id 是本扩展且不在标签页里。
  * sidepanel/toggle：开关快捷键（5.4）。后台在命令处理里同步 open() 之后发出；at 是命令到达的时间，
- * 该窗口里在这之前就已存在的面板自行 window.close()（这次 open 新开的面板晚于 at，不受影响）
+ * 该窗口里在这之前就已存在的面板自行 window.close()（这次 open 新开的面板晚于 at，不受影响）。
+ * sidepanel/wake：有东西要交给这个窗口的侧边栏（转接、改走侧边栏、总结本页）。面板若因后台被回收断了线、
+ * 正闲着没重连（不主动唤醒后台，5.4），收到后立即重连并重新订阅
  */
-export type BackgroundToPages = { type: 'sidepanel/toggle'; windowId: number; at: number };
+export type BackgroundToPages =
+  | { type: 'sidepanel/toggle'; windowId: number; at: number }
+  | { type: 'sidepanel/wake'; windowId: number };
 
 // ───────────── 设置页 / 欢迎页 → 后台（runtime.sendMessage，一问一答） ─────────────
 
@@ -508,7 +512,20 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
   unknown: new Set(),
 };
 
-export type RejectReason = 'tooLarge' | 'invalid' | 'notAllowed' | 'notHandshaken' | 'badToken' | 'notOwner';
+/**
+ * busy（contract-v1.3 增量）：同一对话正有回答在生成（决策 062）。两个界面几乎同时向同一对话发问时，
+ * 后到的那一条收到它（V-03），界面据此提示「回答进行中」，而不是笼统的「消息格式不对」。
+ * gone（contract-v1.3 增量）：要转到侧边栏的对话后台已经没有了（后台被回收重启过，本版本对话只在内存）
+ */
+export type RejectReason =
+  | 'tooLarge'
+  | 'invalid'
+  | 'notAllowed'
+  | 'notHandshaken'
+  | 'badToken'
+  | 'notOwner'
+  | 'busy'
+  | 'gone';
 
 /** JSON 序列化后的 UTF-8 字节数；序列化失败（循环引用、BigInt）返回 Infinity */
 export function messageBytes(msg: unknown): number {

@@ -171,10 +171,11 @@ describe('两个界面跟随同一个任务（conv/current）', () => {
 describe('转接（小窗这边）', () => {
   it('只认自己这次转接的 done；迟迟没接上标记为 slow', () => {
     let s = run(initialFloatState(true), { kind: 'handoffStarted' });
-    s = run(s, server({ type: 'handoff/done', handoffId: 'h-other' }));
-    expect(s.handoff).toEqual({ handoffId: null, slow: false, done: false });
+    expect(s.handoff).toEqual({ handoffId: null, sent: false, slow: false, done: false });
+    s = run(s, { kind: 'handoffSent' }, server({ type: 'handoff/done', handoffId: 'h-other' }));
+    expect(s.handoff).toEqual({ handoffId: null, sent: true, slow: false, done: false });
     s = run(s, server({ type: 'handoff/created', handoffId: 'h1' }), { kind: 'handoffSlow' });
-    expect(s.handoff).toEqual({ handoffId: 'h1', slow: true, done: false });
+    expect(s.handoff).toEqual({ handoffId: 'h1', sent: true, slow: true, done: false });
     s = run(s, server({ type: 'handoff/done', handoffId: 'h1' }));
     expect(s.handoff?.done).toBe(true);
     s = run(s, { kind: 'handoffSlow' });

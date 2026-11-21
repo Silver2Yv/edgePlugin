@@ -395,7 +395,7 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       if (known && known.tabId !== tabId) return refuse('notOwner');
       // 同一对话正在生成时不排队、不自动停止（决策 062）。下面到真正接单之间还有好几个 await
       // （取选区、读设置），先同步占住 activeJobId，关闭「两个界面同一对话几乎同时发问」的竞态窗口（V-03）
-      if (known?.activeJobId !== undefined) return refuse('invalid');
+      if (known?.activeJobId !== undefined) return refuse('busy');
       if (known) known.activeJobId = jobId;
 
       let selection: StoredSelection | undefined;

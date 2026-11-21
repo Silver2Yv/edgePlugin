@@ -223,7 +223,7 @@ describe('两个界面显示同一个任务', () => {
     const rejected = [...float.ofType('conv/rejected'), ...panel.ofType('conv/rejected')];
     expect(accepted).toHaveLength(1);
     expect(rejected).toHaveLength(1);
-    expect(rejected[0]).toMatchObject({ reason: 'invalid', refType: 'conv/ask' });
+    expect(rejected[0]).toMatchObject({ reason: 'busy', refType: 'conv/ask' });
     await until(() => h.fetches.length === 2);
     await new Promise((r) => setTimeout(r, 20));
     expect(h.fetches).toHaveLength(2);
@@ -272,6 +272,8 @@ describe('转到侧边栏（6.4、AR-19）', () => {
     expect(mine.ofType('handoff/pending')[0]).toMatchObject({ tabId: TAB });
     expect(mine.ofType('handoff/pending')[0]?.conversationId).toBeUndefined();
     expect(other.ofType('handoff/pending')).toHaveLength(0);
+    // 同时广播叫醒本窗口断线闲着的侧边栏
+    expect(h.pageMessages).toContainEqual({ type: 'sidepanel/wake', windowId: WIN });
   });
 
   it('过期、窗口不对、对话不对的转接：照常订阅，但不通知小窗收起', async () => {
@@ -305,6 +307,20 @@ describe('转到侧边栏（6.4、AR-19）', () => {
     await until(() => float.ofType('conv/rejected').length === 1);
     expect(float.ofType('conv/rejected')[0]).toMatchObject({ reason: 'notOwner', refType: 'handoff/start' });
     expect([...h.session.data.keys()].some((k) => k.startsWith('handoff:'))).toBe(false);
+  });
+
+  it('后台重启后对话已不在内存：不转（gone），小窗留着回答', async () => {
+    const h = makeHarness();
+    const float = await readyFloat(h);
+    const conversationId = await floatAnswered(h, float);
+    const h2 = makeHarness({ session: h.session });
+    const again = h2.connect(h2.floatSender());
+    again.send({ type: 'conv/resumeFloat' });
+    await until(() => again.ofType('conv/ready').length === 1);
+    again.send({ type: 'handoff/start', conversationId });
+    await until(() => again.ofType('conv/rejected').length === 1);
+    expect(again.ofType('conv/rejected')[0]).toMatchObject({ reason: 'gone', refType: 'handoff/start' });
+    expect([...h2.session.data.keys()].some((k) => k.startsWith('handoff:'))).toBe(false);
   });
 });
 

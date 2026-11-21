@@ -13,6 +13,7 @@ export interface RouteDecision {
   readiness: FloatReadiness;
   /** 改走侧边栏时 open 的结果（已在同步段里发出） */
   opened: Promise<void> | undefined;
+  windowId: number | undefined;
 }
 
 export type Route = ReturnType<typeof createRoute>;
@@ -27,7 +28,7 @@ export function createRoute(deps: BackgroundDeps, store: Store, hub: Hub, host: 
       const readiness = store.readinessNow(tabId);
       const toPanel = forcePanel || routeOnAsk(readiness) === 'sidepanel';
       const opened = toPanel && windowId !== undefined ? deps.openSidePanel(windowId) : undefined;
-      return { toPanel, readiness, opened };
+      return { toPanel, readiness, opened, windowId };
     },
 
     /**
@@ -41,6 +42,8 @@ export function createRoute(deps: BackgroundDeps, store: Store, hub: Hub, host: 
         hub.toTab(tabId, { type: 'conv/notice', kind });
       }
       if (d.readiness === 'failedTransient') await store.setReadiness(tabId, 'unknown');
+      // 面板本来就开着、但后台被回收后断线闲着：叫它重连，好显示这次的引用与说明
+      if (d.windowId !== undefined) void deps.notifyPages({ type: 'sidepanel/wake', windowId: d.windowId });
       const ok = d.opened
         ? await d.opened.then(
             () => true,

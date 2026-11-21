@@ -182,19 +182,31 @@ export function FloatApp() {
     dispatch({ kind: 'askSent', clientRequestId: ask.clientRequestId });
   }, [state.snapshotSeq]);
 
-  // 转接：侧边栏接上（handoff/done）才收起；迟迟没接上就提示一行，小窗留着（AR-19）
+  // 转接：连接就绪才发 handoff/start（点击时后台可能被回收了，先唤醒重连）
   useEffect(() => {
     const h = state.handoff;
-    if (!h) return;
-    if (h.done) {
-      collapse();
-      dispatch({ kind: 'handoffClear' });
-      return;
-    }
-    if (h.slow) return;
+    if (!h || h.sent || state.connPhase !== 'ready') return;
+    const conversationId = state.conversationId;
+    portRef.current?.postMessage({
+      type: 'handoff/start',
+      ...(conversationId ? { conversationId } : {}),
+    } satisfies ClientToBackground);
+    dispatch({ kind: 'handoffSent' });
+  }, [state.handoff, state.connPhase]);
+
+  // 侧边栏接上（handoff/done）才收起；迟迟没接上就提示一行，小窗留着（AR-19）
+  useEffect(() => {
+    if (!state.handoff?.done) return;
+    collapse();
+    dispatch({ kind: 'handoffClear' });
+  }, [state.handoff?.done]);
+
+  const handoffWaiting = state.handoff !== null && !state.handoff.done && !state.handoff.slow;
+  useEffect(() => {
+    if (!handoffWaiting) return;
     const timer = setTimeout(() => dispatch({ kind: 'handoffSlow' }), HANDOFF_SLOW_MS);
     return () => clearTimeout(timer);
-  }, [state.handoff]);
+  }, [handoffWaiting]);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -278,13 +290,11 @@ export function FloatApp() {
       .catch(() =>
         dispatch({ kind: 'localError', message: '浏览器没有打开侧边栏，请点工具栏里的「阅读助手」图标' }),
       );
-    if (stateRef.current.connPhase !== 'ready') return;
-    const conversationId = stateRef.current.conversationId;
-    portRef.current?.postMessage({
-      type: 'handoff/start',
-      ...(conversationId ? { conversationId } : {}),
-    } satisfies ClientToBackground);
+    // 没握手、握手失败、版本不对：没有转接可确认，只打开侧边栏（侧边栏跟着本标签页，引用照样带过去）
+    const phase = stateRef.current.connPhase;
+    if (phase === 'noToken' || phase === 'expired' || phase === 'versionMismatch') return;
     dispatch({ kind: 'handoffStarted' });
+    wake();
   };
 
   const onKeyDown = (e: KeyboardEvent) => {

@@ -106,6 +106,8 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
         t.expiresAt <= deps.now() ||
         (hostDoc !== undefined && hostDoc !== t.documentId)
       ) {
+        // 握手失败的小窗用不了：下次显示带新令牌，阅读器据此重建（不再显示这个失效的）
+        if (tabId !== undefined) host.markFloatFailed(tabId);
         return reject('badToken', { type: 'conv/helloFloat' });
       }
       await store.putBinding({
@@ -233,6 +235,8 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
       const { conversationId } = msg;
       const owner = conversationId === undefined ? undefined : jobs.ownerOf(conversationId);
       if (owner !== undefined && owner !== tabId) return reject('notOwner', msg);
+      // 对话不在了（后台重启过，本版本对话只在内存）：转过去侧边栏也显示不出来，不转，小窗留着这份回答
+      if (conversationId !== undefined && owner === undefined) return reject('gone', msg);
       const windowId = sender.tab?.windowId ?? (await deps.tabWindow(tabId));
       if (windowId === undefined) return reject('notOwner', msg);
       const h: Handoff = {
@@ -244,8 +248,9 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
       };
       await store.putHandoff(h);
       post({ type: 'handoff/created', handoffId: h.handoffId });
-      // 侧边栏已经连着（先连上、转接后到）：直接推给它
+      // 侧边栏已经连着（先连上、转接后到）：直接推给它；开着但断了线在闲着的，叫它重连（重连后在 hello 里取到）
       for (const p of panels.get(windowId) ?? []) hub.post(p, pendingMsg(h));
+      void deps.notifyPages({ type: 'sidepanel/wake', windowId });
       deps.log('handoff/created', { withConversation: conversationId !== undefined });
     }
 

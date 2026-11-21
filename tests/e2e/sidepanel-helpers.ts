@@ -2,7 +2,7 @@
 // CfT 159、Edge 157 实测），只能用浏览器级调试协议找到侧边栏的 target 再附加上去：
 // Target.attachToTarget（flatten: false）+ Target.sendMessageToTarget 收发协议消息。
 // 在侧边栏里点按钮用 Input.dispatchMouseEvent（可信点击，带用户激活），取值用 Runtime.evaluate。
-import type { BrowserContext, CDPSession, Worker } from '@playwright/test';
+import type { BrowserContext, CDPSession, Page, Worker } from '@playwright/test';
 import type { browser } from 'wxt/browser';
 import { EXTENSION_ID, expect } from './fixtures';
 
@@ -185,3 +185,50 @@ export async function openPanelByTrustedClick(context: BrowserContext, windowOf?
   await opt.close();
   return r;
 }
+
+/** 在侧边栏输入框里提问并回车（真实点击聚焦、真实按键） */
+export async function askInPanel(panel: PanelHandle, question: string): Promise<void> {
+  await panel.click('textarea[aria-label="输入问题"]');
+  await expect
+    .poll(() => panel.evaluate<boolean>('document.activeElement?.getAttribute("aria-label") === "输入问题"'))
+    .toBe(true);
+  await panel.type(question);
+  await expect.poll(() => panel.evaluate<string>('document.querySelector("textarea").value')).toBe(question);
+  await panel.press('Enter');
+}
+
+/** 元素文本（去掉首尾空白：回答区的 Markdown 渲染末尾带换行） */
+export const panelText = (panel: PanelHandle, testId: string) =>
+  panel.text(`[data-testid="${testId}"]`).then((t) => (t ?? '').trim());
+
+export interface TabInfo {
+  id: number;
+  windowId: number;
+  url: string;
+}
+
+/** 网页所在标签页（按地址找） */
+export async function tabOf(sw: Worker, page: Page): Promise<TabInfo> {
+  const url = page.url();
+  const t = await sw.evaluate(async (u) => (await chrome.tabs.query({})).find((x) => x.url === u), url);
+  if (t?.id === undefined || t.windowId === undefined) throw new Error(`找不到 ${url} 的标签页`);
+  return { id: t.id, windowId: t.windowId, url };
+}
+
+/**
+ * 在后台里直接触发快捷键 / 右键的处理函数：扩展事件对象自带 dispatch，会调到产品注册的监听器。
+ * 这样触发没有用户手势，sidePanel.open 会被拒——测的是其余逻辑；手势那一步见手动检查清单
+ */
+export const dispatchCommand = (sw: Worker, command: string, tab: Partial<TabInfo>) =>
+  sw.evaluate(
+    ({ command, tab }) =>
+      (chrome.commands.onCommand as unknown as { dispatch(...a: unknown[]): void }).dispatch(command, tab),
+    { command, tab },
+  );
+
+export const dispatchMenu = (sw: Worker, info: Record<string, unknown>, tab: Partial<TabInfo>) =>
+  sw.evaluate(
+    ({ info, tab }) =>
+      (chrome.contextMenus.onClicked as unknown as { dispatch(...a: unknown[]): void }).dispatch(info, tab),
+    { info, tab },
+  );

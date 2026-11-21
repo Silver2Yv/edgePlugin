@@ -161,6 +161,10 @@ export function rejectReasonText(reason: RejectReason): string {
       return '连接已失效';
     case 'notOwner':
       return '无权限操作该任务';
+    case 'busy':
+      return '回答进行中，请等这一轮答完或先停止';
+    case 'gone':
+      return '后台重启过，这段对话没法转过去，回答仍留在这里';
     default:
       return '未知原因';
   }
@@ -206,9 +210,13 @@ export const PANEL_NOTICE_TEXT: Readonly<Record<PanelNoticeKind, string>> = {
 /** 转接发出后等侧边栏接手多久，没接上就提示一行（小窗不收起） */
 export const HANDOFF_SLOW_MS = 5_000;
 
-/** 小窗这边的转接进度：handoff/created 带回编号，handoff/done 对上编号才收起 */
+/**
+ * 小窗这边的转接进度：handoff/created 带回编号，handoff/done 对上编号才收起。
+ * sent：handoff/start 发出去没有。点击时连接没就绪（后台被回收后闲着）先记下，重连就绪后再发
+ */
 export interface HandoffView {
   handoffId: string | null;
+  sent: boolean;
   slow: boolean;
   done: boolean;
 }
@@ -293,8 +301,9 @@ export type FloatAction =
   | { kind: 'localError'; message: string }
   /** 侧边栏换订阅：跟随切换标签页、地址变化，或接手转接 */
   | { kind: 'retarget'; tabId: number; handoff?: IncomingHandoff }
-  /** 小窗点了「转到侧边栏」并已发出 handoff/start */
+  /** 小窗点了「转到侧边栏」（已同步 open）；handoff/start 等连接就绪再发 */
   | { kind: 'handoffStarted' }
+  | { kind: 'handoffSent' }
   | { kind: 'handoffSlow' }
   /** 转接结束（已收起，或放弃） */
   | { kind: 'handoffClear' };
@@ -336,7 +345,13 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
         : { ...base, quote: null, job: null, conversationId: null, notice: null, actionError: null };
     }
     case 'handoffStarted':
-      return { ...state, handoff: { handoffId: null, slow: false, done: false }, actionError: null };
+      return {
+        ...state,
+        handoff: { handoffId: null, sent: false, slow: false, done: false },
+        actionError: null,
+      };
+    case 'handoffSent':
+      return state.handoff ? { ...state, handoff: { ...state.handoff, sent: true } } : state;
     case 'handoffSlow':
       return state.handoff && !state.handoff.done
         ? { ...state, handoff: { ...state.handoff, slow: true } }
