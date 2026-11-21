@@ -172,8 +172,8 @@ type TestView =
   | { kind: 'success'; text: string }
   | { kind: 'error'; text: string; suggestedBaseUrl?: string };
 
-const inputStyle = { width: '100%', boxSizing: 'border-box' as const, marginTop: 2 };
-const fieldStyle = { display: 'block', marginTop: 10 };
+const inputStyle = { width: '100%', boxSizing: 'border-box' as const, marginTop: '2px' };
+const fieldStyle = { display: 'block', marginTop: '10px' };
 
 // ───────────── 界面 ─────────────
 
@@ -410,14 +410,14 @@ export function OptionsApp() {
 
   if (loadError) {
     return (
-      <main style={{ padding: 16, fontSize: 13 }}>
+      <main style={{ padding: '16px', fontSize: '13px' }}>
         <p style={{ color: '#c33' }}>{loadError}</p>
       </main>
     );
   }
   if (!settings) {
     return (
-      <main style={{ padding: 16, fontSize: 13 }}>
+      <main style={{ padding: '16px', fontSize: '13px' }}>
         <p>加载中…</p>
       </main>
     );
@@ -434,33 +434,45 @@ export function OptionsApp() {
   const isNewConnection = editing ? !settings.connections.some((c) => c.id === editing.id) : false;
 
   return (
-    <main style={{ padding: 16, fontSize: 13, maxWidth: 640 }}>
-      <h1 style={{ fontSize: 16 }}>设置</h1>
+    <main style={{ padding: '16px', fontSize: '13px', maxWidth: '640px' }}>
+      <h1 style={{ fontSize: '16px' }}>设置</h1>
 
       <section>
-        <h2 style={{ fontSize: 14 }}>连接</h2>
+        <h2 style={{ fontSize: '14px' }}>连接</h2>
         {settings.connections.length === 0 && <p style={{ color: '#999' }}>还没有连接</p>}
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        <ul style={{ listStyle: 'none', padding: '0', margin: '0' }}>
           {settings.connections.map((conn) => (
             <li key={conn.id} style={{ padding: '6px 0', borderBottom: '1px solid #eee' }}>
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <span style={{ fontWeight: 600 }}>{conn.name}</span>
                 {settings.defaultModel?.connectionId === conn.id && (
-                  <span style={{ marginLeft: 8, color: '#2a7' }}>默认</span>
+                  <span
+                    style={{
+                      marginLeft: '8px',
+                      padding: '0 6px',
+                      fontSize: '11px',
+                      lineHeight: '18px',
+                      color: '#1a7f4b',
+                      background: '#e6f4ec',
+                      borderRadius: '9px',
+                    }}
+                  >
+                    默认
+                  </span>
                 )}
                 <span style={{ flex: 1 }} />
-                <button type="button" style={{ marginLeft: 8 }} onClick={() => startEdit(conn)}>
+                <button type="button" style={{ marginLeft: '8px' }} onClick={() => startEdit(conn)}>
                   编辑
                 </button>
-                <button type="button" style={{ marginLeft: 4 }} onClick={() => void handleDelete(conn)}>
+                <button type="button" style={{ marginLeft: '4px' }} onClick={() => void handleDelete(conn)}>
                   删除
                 </button>
               </div>
               <div
                 style={{
-                  marginTop: 2,
+                  marginTop: '2px',
                   color: '#888',
-                  fontSize: 12,
+                  fontSize: '12px',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -471,14 +483,16 @@ export function OptionsApp() {
             </li>
           ))}
         </ul>
-        <button type="button" style={{ marginTop: 8 }} onClick={handleAddConnection}>
+        <button type="button" style={{ marginTop: '8px' }} onClick={handleAddConnection}>
           添加连接
         </button>
       </section>
 
       {editing && (
-        <section style={{ marginTop: 16, padding: 12, border: '1px solid #ddd', borderRadius: 4 }}>
-          <h2 style={{ fontSize: 14, margin: 0 }}>{isNewConnection ? '新建连接' : '编辑连接'}</h2>
+        <section
+          style={{ marginTop: '16px', padding: '12px', border: '1px solid #ddd', borderRadius: '4px' }}
+        >
+          <h2 style={{ fontSize: '14px', margin: '0' }}>{isNewConnection ? '新建连接' : '编辑连接'}</h2>
 
           <label style={fieldStyle}>
             名称
@@ -520,7 +534,7 @@ export function OptionsApp() {
                 />
               )}
             </label>
-            <button type="button" style={{ marginTop: 4 }} onClick={() => setShowKey((v) => !v)}>
+            <button type="button" style={{ marginTop: '4px' }} onClick={() => setShowKey((v) => !v)}>
               {showKey ? '隐藏' : '显示'}
             </button>
           </div>
@@ -540,13 +554,13 @@ export function OptionsApp() {
             ))}
           </datalist>
 
-          <div style={{ marginTop: 12 }}>
+          <div style={{ marginTop: '12px' }}>
             <button type="button" disabled={saving} onClick={() => void handleSave()}>
               保存
             </button>
             <button
               type="button"
-              style={{ marginLeft: 6 }}
+              style={{ marginLeft: '6px' }}
               disabled={fetchingModels}
               onClick={() => void handleListModels()}
             >
@@ -554,7 +568,7 @@ export function OptionsApp() {
             </button>
             <button
               type="button"
-              style={{ marginLeft: 6 }}
+              style={{ marginLeft: '6px' }}
               disabled={testing}
               onClick={() => void handleTest()}
             >
@@ -580,10 +594,10 @@ export function OptionsApp() {
         </section>
       )}
 
-      <section style={{ marginTop: 16 }}>
-        <h2 style={{ fontSize: 14 }}>默认模型</h2>
+      <section style={{ marginTop: '16px' }}>
+        <h2 style={{ fontSize: '14px' }}>默认模型</h2>
         <select
-          style={{ width: '100%', maxWidth: 320 }}
+          style={{ width: '100%', maxWidth: '320px' }}
           value={selectedIndex}
           onChange={(e) => {
             const idx = Number((e.target as HTMLSelectElement).value);
@@ -600,11 +614,11 @@ export function OptionsApp() {
         </select>
       </section>
 
-      <section style={{ marginTop: 16 }}>
-        <h2 style={{ fontSize: 14 }}>提问时附带的页面内容</h2>
+      <section style={{ marginTop: '16px' }}>
+        <h2 style={{ fontSize: '14px' }}>提问时附带的页面内容</h2>
         <select
           aria-label="默认档位"
-          style={{ width: '100%', maxWidth: 320 }}
+          style={{ width: '100%', maxWidth: '320px' }}
           value={settings.context.defaultTier}
           onChange={(e) => void setDefaultTier((e.target as HTMLSelectElement).value as ContextTier)}
         >
@@ -616,21 +630,21 @@ export function OptionsApp() {
         </select>
       </section>
 
-      <section style={{ marginTop: 16 }}>
-        <h2 style={{ fontSize: 14 }}>站点规则</h2>
+      <section style={{ marginTop: '16px' }}>
+        <h2 style={{ fontSize: '14px' }}>站点规则</h2>
         <p style={{ color: '#999', margin: '4px 0' }}>
           「不弹工具栏」：选中文字不再自动弹出工具栏，页面内容仍可读取。「不读取页面内容」：不读正文、不缓存，
           提问时只发送你选中的文字。改动立即生效；已打开的网页里的工具栏在刷新后才消失。包含子域名。
         </p>
         {settings.sites.length === 0 && <p style={{ color: '#999' }}>没有站点规则</p>}
-        <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+        <ul style={{ listStyle: 'none', padding: '0', margin: '0' }}>
           {settings.sites.map((r) => (
             <li key={r.host} style={{ padding: '6px 0', borderBottom: '1px solid #eee' }}>
               <span>{r.host}</span>
-              <span style={{ color: '#999', marginLeft: 8 }}>{SITE_LEVEL_LABEL[r.level]}</span>
+              <span style={{ color: '#999', marginLeft: '8px' }}>{SITE_LEVEL_LABEL[r.level]}</span>
               <button
                 type="button"
-                style={{ marginLeft: 8 }}
+                style={{ marginLeft: '8px' }}
                 aria-label={`删除站点 ${r.host}`}
                 onClick={() => void removeSite(r.host)}
               >
@@ -639,24 +653,24 @@ export function OptionsApp() {
             </li>
           ))}
         </ul>
-        <div style={{ marginTop: 8 }}>
+        <div style={{ marginTop: '8px' }}>
           <input
             aria-label="站点"
             placeholder="example.com"
-            style={{ width: 220 }}
+            style={{ width: '220px' }}
             value={siteInput}
             onInput={(e) => setSiteInput((e.target as HTMLInputElement).value)}
           />
           <select
             aria-label="站点级别"
-            style={{ marginLeft: 6 }}
+            style={{ marginLeft: '6px' }}
             value={siteLevel}
             onChange={(e) => setSiteLevel((e.target as HTMLSelectElement).value as SiteRule['level'])}
           >
             <option value="noRead">{SITE_LEVEL_LABEL.noRead}</option>
             <option value="noToolbar">{SITE_LEVEL_LABEL.noToolbar}</option>
           </select>
-          <button type="button" style={{ marginLeft: 6 }} onClick={() => void handleAddSite()}>
+          <button type="button" style={{ marginLeft: '6px' }} onClick={() => void handleAddSite()}>
             添加站点
           </button>
         </div>

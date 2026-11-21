@@ -415,7 +415,7 @@ export function FloatApp() {
             <p style={{ margin: '4px 0 0', color: '#999' }}>上次请求的结果未知，重试可能重新计费</p>
           )}
           {canRetry(job.state) && (
-            <button type="button" style={{ marginTop: 4 }} onClick={handleRetry}>
+            <button type="button" style={{ marginTop: '4px' }} onClick={handleRetry}>
               重试
             </button>
           )}
