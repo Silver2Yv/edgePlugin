@@ -1,6 +1,6 @@
 {
   "env": {
-    "at": "2026-11-21T07:11:09.641Z",
+    "at": "2026-11-21T08:06:30.042Z",
     "node": "v24.12.0",
     "os": "win32 10.0.26100",
     "cpu": "12th Gen Intel(R) Core(TM) i7-12700H x20",
@@ -9,15 +9,15 @@
     "browserVersionEnabled": "159.0.8154.6",
     "browserVersionDisabled": "159.0.8154.6",
     "chromiumPathOverride": "D:/tmp/cft/chrome.exe",
-    "commit": "5af39fbb3663be689d421f3596d287824642ba26",
+    "commit": "693c819d6f36c41855ed507ae67d8e9a49e7ff38",
     "quick": false,
-    "note": "本机同时有另外两个代理在跑 e2e，存在并发负载；以下数字标「并发负载下的试跑」，不是独占机器的洁净基线。"
+    "note": "机器空闲时运行（没有其他 e2e 或构建在跑）。"
   },
   "repeats": {
     "baseline": 10,
     "selectNoAsk": 12,
-    "askCold": 10,
-    "askWarm": 15,
+    "askCold": 20,
+    "askWarm": 20,
     "largePage": 8,
     "multiFrame": 8,
     "scroll": 6,
@@ -27,14 +27,23 @@
   "scenarios": {
     "bundleSize": {
       "sentinelGzipBytes": 3734,
-      "readerGzipBytes": 9967,
-      "floatGzipBytes": 155742,
-      "backgroundGzipBytes": 18678
+      "readerGzipBytes": 10773,
+      "floatGzipBytes": 169647,
+      "floatFiles": [
+        "chunks/float-BI5MCVK8.js",
+        "chunks/jsxRuntime-Ds9xXwSB.js",
+        "chunks/error-labels-Vh5YE7oF.js",
+        "chunks/settings-store-DcvgX68W.js",
+        "chunks/messages-YD97FyR8.js",
+        "chunks/ask-defaults-BT7jJode.js"
+      ],
+      "sidepanelGzipBytes": 169287,
+      "backgroundGzipBytes": 21351
     },
     "sentinelLoad": {
-      "ms": 2.599,
+      "ms": 1.949,
       "matchedEvents": 2,
-      "totalEvents": 2124
+      "totalEvents": 3338
     },
     "baseline": {
       "enabled": {
@@ -128,18 +137,18 @@
     },
     "selectNoAsk": {
       "toolbarMs": [
-        76,
+        77,
+        46,
         54,
-        73,
-        65,
-        75,
-        69,
-        95,
-        63,
-        88,
-        83,
-        83,
-        76
+        55,
+        49,
+        47,
+        51,
+        57,
+        55,
+        52,
+        61,
+        54
       ],
       "readerInjected": [
         true,
@@ -160,682 +169,193 @@
     "askFlowArticle": {
       "cold": [
         {
-          "toolbarMs": 70,
-          "floatFrameMs": 39,
-          "inputVisibleMs": 99,
-          "requestSentMs": 194,
-          "firstContentMs": 530,
-          "totalMs": 540,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 74,
-          "floatFrameMs": 21,
-          "inputVisibleMs": 57,
-          "requestSentMs": 103,
-          "firstContentMs": 174,
-          "totalMs": 422,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 73,
-          "floatFrameMs": 21,
-          "inputVisibleMs": 70,
-          "requestSentMs": 106,
-          "firstContentMs": 182,
-          "totalMs": 429,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 66,
-          "floatFrameMs": 22,
-          "inputVisibleMs": 77,
-          "requestSentMs": 158,
-          "firstContentMs": 244,
-          "totalMs": 493,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 85,
-          "floatFrameMs": 22,
-          "inputVisibleMs": 72,
-          "requestSentMs": 111,
-          "firstContentMs": 179,
-          "totalMs": 457,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 67,
-          "floatFrameMs": 23,
-          "inputVisibleMs": 50,
-          "requestSentMs": 86,
-          "firstContentMs": 171,
-          "totalMs": 416,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 50,
-          "floatFrameMs": 35,
-          "inputVisibleMs": 58,
-          "requestSentMs": 86,
-          "firstContentMs": 162,
-          "totalMs": 410,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 66,
-          "floatFrameMs": 23,
-          "inputVisibleMs": 74,
-          "requestSentMs": 111,
-          "firstContentMs": 181,
-          "totalMs": 427,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 50,
-          "floatFrameMs": 40,
-          "inputVisibleMs": 61,
-          "requestSentMs": 96,
-          "firstContentMs": 182,
-          "totalMs": 429,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 60,
-          "floatFrameMs": 20,
-          "inputVisibleMs": 76,
-          "requestSentMs": 104,
-          "firstContentMs": 180,
-          "totalMs": 427,
-          "finalState": "completed"
-        }
-      ],
-      "warm": [
-        {
-          "toolbarMs": 23,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 10,
-          "requestSentMs": 51,
-          "firstContentMs": 118,
-          "totalMs": 368,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 21,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 46,
-          "requestSentMs": 81,
-          "firstContentMs": 151,
-          "totalMs": 397,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 23,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 44,
-          "requestSentMs": 79,
-          "firstContentMs": 165,
-          "totalMs": 413,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 19,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 32,
-          "requestSentMs": 62,
-          "firstContentMs": 141,
-          "totalMs": 391,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 22,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 45,
-          "requestSentMs": 71,
-          "firstContentMs": 153,
-          "totalMs": 400,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 14,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 35,
-          "requestSentMs": 59,
-          "firstContentMs": 142,
-          "totalMs": 391,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 18,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 33,
-          "requestSentMs": 57,
-          "firstContentMs": 110,
-          "totalMs": 387,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 24,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 41,
-          "requestSentMs": 75,
-          "firstContentMs": 148,
-          "totalMs": 366,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 32,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 33,
-          "requestSentMs": 64,
-          "firstContentMs": 141,
-          "totalMs": 388,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 21,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 8,
-          "requestSentMs": 37,
-          "firstContentMs": 90,
-          "totalMs": 370,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 16,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 34,
-          "requestSentMs": 52,
-          "firstContentMs": 141,
-          "totalMs": 391,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 21,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 31,
-          "requestSentMs": 52,
-          "firstContentMs": 136,
-          "totalMs": 386,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 14,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 35,
-          "requestSentMs": 54,
-          "firstContentMs": 112,
-          "totalMs": 391,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 16,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 36,
-          "requestSentMs": 56,
-          "firstContentMs": 145,
-          "totalMs": 393,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 18,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 33,
-          "requestSentMs": 75,
-          "firstContentMs": 138,
-          "totalMs": 418,
-          "finalState": "completed"
-        }
-      ]
-    },
-    "askFlowLargePage": {
-      "cold": [
-        {
-          "toolbarMs": 147,
-          "floatFrameMs": 28,
-          "inputVisibleMs": 61,
-          "requestSentMs": 325,
-          "firstContentMs": 413,
-          "totalMs": 643,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 166,
-          "floatFrameMs": 23,
-          "inputVisibleMs": 52,
-          "requestSentMs": 253,
-          "firstContentMs": 347,
-          "totalMs": 588,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 146,
+          "toolbarMs": 52,
           "floatFrameMs": 21,
           "inputVisibleMs": 58,
-          "requestSentMs": 247,
-          "firstContentMs": 333,
-          "totalMs": 581,
+          "requestSentMs": 119,
+          "firstContentMs": 354,
+          "totalMs": 449,
           "finalState": "completed"
         },
         {
-          "toolbarMs": 100,
-          "floatFrameMs": 6,
-          "inputVisibleMs": 51,
-          "requestSentMs": 214,
-          "firstContentMs": 296,
-          "totalMs": 545,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 144,
-          "floatFrameMs": 22,
-          "inputVisibleMs": 48,
-          "requestSentMs": 221,
-          "firstContentMs": 312,
-          "totalMs": 560,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 95,
+          "toolbarMs": 48,
           "floatFrameMs": 20,
-          "inputVisibleMs": 48,
-          "requestSentMs": 221,
-          "firstContentMs": 296,
-          "totalMs": 542,
+          "inputVisibleMs": 62,
+          "requestSentMs": 93,
+          "firstContentMs": 169,
+          "totalMs": 436,
           "finalState": "completed"
         },
         {
-          "toolbarMs": 101,
-          "floatFrameMs": 22,
-          "inputVisibleMs": 47,
-          "requestSentMs": 209,
-          "firstContentMs": 275,
-          "totalMs": 548,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 160,
+          "toolbarMs": 44,
           "floatFrameMs": 20,
-          "inputVisibleMs": 54,
-          "requestSentMs": 260,
-          "firstContentMs": 322,
-          "totalMs": 601,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 143,
-          "floatFrameMs": 24,
-          "inputVisibleMs": 52,
-          "requestSentMs": 231,
-          "firstContentMs": 308,
-          "totalMs": 554,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 101,
-          "floatFrameMs": 6,
-          "inputVisibleMs": 52,
-          "requestSentMs": 208,
-          "firstContentMs": 294,
-          "totalMs": 543,
-          "finalState": "completed"
-        }
-      ],
-      "warm": [
-        {
-          "toolbarMs": 64,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 34,
-          "requestSentMs": 159,
-          "firstContentMs": 254,
-          "totalMs": 504,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 103,
-          "floatFrameMs": 6,
-          "inputVisibleMs": 38,
-          "requestSentMs": 172,
-          "firstContentMs": 242,
-          "totalMs": 492,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 69,
-          "floatFrameMs": 2,
           "inputVisibleMs": 43,
-          "requestSentMs": 140,
-          "firstContentMs": 225,
-          "totalMs": 443,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 76,
-          "floatFrameMs": 4,
-          "inputVisibleMs": 43,
-          "requestSentMs": 162,
-          "firstContentMs": 235,
-          "totalMs": 485,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 88,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 42,
-          "requestSentMs": 172,
-          "firstContentMs": 254,
-          "totalMs": 503,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 70,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 46,
-          "requestSentMs": 150,
-          "firstContentMs": 230,
-          "totalMs": 474,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 82,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 44,
-          "requestSentMs": 161,
-          "firstContentMs": 243,
-          "totalMs": 490,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 71,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 42,
-          "requestSentMs": 148,
-          "firstContentMs": 242,
-          "totalMs": 491,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 54,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 12,
-          "requestSentMs": 104,
-          "firstContentMs": 166,
-          "totalMs": 440,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 78,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 10,
-          "requestSentMs": 144,
-          "firstContentMs": 234,
-          "totalMs": 479,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 55,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 7,
-          "requestSentMs": 103,
-          "firstContentMs": 193,
-          "totalMs": 439,
+          "requestSentMs": 74,
+          "firstContentMs": 157,
+          "totalMs": 409,
           "finalState": "completed"
         },
         {
           "toolbarMs": 41,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 5,
-          "requestSentMs": 73,
-          "firstContentMs": 162,
-          "totalMs": 412,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 60,
+          "requestSentMs": 107,
+          "firstContentMs": 193,
+          "totalMs": 442,
           "finalState": "completed"
         },
         {
-          "toolbarMs": 37,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 29,
-          "requestSentMs": 97,
-          "firstContentMs": 185,
-          "totalMs": 430,
+          "toolbarMs": 48,
+          "floatFrameMs": 22,
+          "inputVisibleMs": 39,
+          "requestSentMs": 69,
+          "firstContentMs": 151,
+          "totalMs": 402,
           "finalState": "completed"
         },
         {
-          "toolbarMs": 42,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 37,
-          "requestSentMs": 102,
-          "firstContentMs": 191,
-          "totalMs": 441,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 43,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 38,
-          "requestSentMs": 118,
-          "firstContentMs": 204,
-          "totalMs": 452,
-          "finalState": "completed"
-        }
-      ]
-    },
-    "askFlowMultiFrame": {
-      "cold": [
-        {
-          "toolbarMs": 49,
-          "floatFrameMs": 24,
-          "inputVisibleMs": 79,
-          "requestSentMs": 104,
-          "firstContentMs": 187,
-          "totalMs": 434,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 62,
-          "floatFrameMs": 19,
-          "inputVisibleMs": 63,
-          "requestSentMs": 95,
-          "firstContentMs": 173,
-          "totalMs": 423,
+          "toolbarMs": 40,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 72,
+          "requestSentMs": 100,
+          "firstContentMs": 179,
+          "totalMs": 429,
           "finalState": "completed"
         },
         {
           "toolbarMs": 52,
-          "floatFrameMs": 38,
-          "inputVisibleMs": 59,
-          "requestSentMs": 92,
-          "firstContentMs": 168,
-          "totalMs": 416,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 57,
-          "floatFrameMs": 37,
-          "inputVisibleMs": 62,
-          "requestSentMs": 106,
-          "firstContentMs": 171,
-          "totalMs": 452,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 57,
           "floatFrameMs": 20,
-          "inputVisibleMs": 63,
-          "requestSentMs": 96,
-          "firstContentMs": 170,
-          "totalMs": 418,
+          "inputVisibleMs": 43,
+          "requestSentMs": 73,
+          "firstContentMs": 148,
+          "totalMs": 398,
           "finalState": "completed"
         },
         {
-          "toolbarMs": 61,
+          "toolbarMs": 44,
+          "floatFrameMs": 36,
+          "inputVisibleMs": 51,
+          "requestSentMs": 87,
+          "firstContentMs": 167,
+          "totalMs": 414,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 56,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 41,
+          "requestSentMs": 71,
+          "firstContentMs": 144,
+          "totalMs": 393,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 55,
+          "floatFrameMs": 33,
+          "inputVisibleMs": 48,
+          "requestSentMs": 73,
+          "firstContentMs": 148,
+          "totalMs": 399,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 42,
           "floatFrameMs": 22,
           "inputVisibleMs": 68,
           "requestSentMs": 97,
-          "firstContentMs": 171,
-          "totalMs": 416,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 58,
-          "floatFrameMs": 36,
-          "inputVisibleMs": 62,
-          "requestSentMs": 97,
-          "firstContentMs": 174,
-          "totalMs": 421,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 57,
-          "floatFrameMs": 38,
-          "inputVisibleMs": 60,
-          "requestSentMs": 92,
-          "firstContentMs": 174,
+          "firstContentMs": 175,
           "totalMs": 423,
           "finalState": "completed"
         },
         {
-          "toolbarMs": 54,
-          "floatFrameMs": 38,
-          "inputVisibleMs": 68,
-          "requestSentMs": 107,
-          "firstContentMs": 184,
+          "toolbarMs": 56,
+          "floatFrameMs": 22,
+          "inputVisibleMs": 39,
+          "requestSentMs": 70,
+          "firstContentMs": 157,
+          "totalMs": 408,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 44,
+          "floatFrameMs": 34,
+          "inputVisibleMs": 51,
+          "requestSentMs": 79,
+          "firstContentMs": 155,
+          "totalMs": 404,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 60,
+          "floatFrameMs": 19,
+          "inputVisibleMs": 59,
+          "requestSentMs": 83,
+          "firstContentMs": 170,
+          "totalMs": 420,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 64,
+          "floatFrameMs": 19,
+          "inputVisibleMs": 44,
+          "requestSentMs": 72,
+          "firstContentMs": 154,
           "totalMs": 401,
           "finalState": "completed"
         },
         {
-          "toolbarMs": 58,
-          "floatFrameMs": 19,
-          "inputVisibleMs": 76,
-          "requestSentMs": 107,
-          "firstContentMs": 183,
-          "totalMs": 430,
+          "toolbarMs": 48,
+          "floatFrameMs": 18,
+          "inputVisibleMs": 62,
+          "requestSentMs": 89,
+          "firstContentMs": 169,
+          "totalMs": 419,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 51,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 42,
+          "requestSentMs": 68,
+          "firstContentMs": 145,
+          "totalMs": 394,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 42,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 60,
+          "requestSentMs": 86,
+          "firstContentMs": 167,
+          "totalMs": 418,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 48,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 59,
+          "requestSentMs": 88,
+          "firstContentMs": 172,
+          "totalMs": 424,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 47,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 39,
+          "requestSentMs": 69,
+          "firstContentMs": 155,
+          "totalMs": 404,
           "finalState": "completed"
         }
       ],
       "warm": [
         {
           "toolbarMs": 16,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 32,
-          "requestSentMs": 58,
-          "firstContentMs": 140,
-          "totalMs": 390,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 14,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 37,
-          "requestSentMs": 53,
-          "firstContentMs": 141,
-          "totalMs": 387,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 13,
           "floatFrameMs": 1,
-          "inputVisibleMs": 37,
-          "requestSentMs": 54,
-          "firstContentMs": 145,
-          "totalMs": 391,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 15,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 34,
-          "requestSentMs": 53,
-          "firstContentMs": 144,
-          "totalMs": 391,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 17,
-          "floatFrameMs": 2,
           "inputVisibleMs": 33,
-          "requestSentMs": 55,
-          "firstContentMs": 138,
-          "totalMs": 386,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 11,
-          "floatFrameMs": 1,
-          "inputVisibleMs": 36,
           "requestSentMs": 49,
-          "firstContentMs": 129,
-          "totalMs": 378,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 14,
-          "floatFrameMs": 1,
-          "inputVisibleMs": 35,
-          "requestSentMs": 47,
-          "firstContentMs": 126,
-          "totalMs": 376,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 21,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 32,
-          "requestSentMs": 51,
-          "firstContentMs": 135,
-          "totalMs": 383,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 20,
-          "floatFrameMs": 1,
-          "inputVisibleMs": 30,
-          "requestSentMs": 44,
-          "firstContentMs": 122,
-          "totalMs": 372,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 19,
-          "floatFrameMs": 3,
-          "inputVisibleMs": 30,
-          "requestSentMs": 53,
-          "firstContentMs": 138,
-          "totalMs": 390,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 12,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 37,
-          "requestSentMs": 50,
-          "firstContentMs": 130,
-          "totalMs": 377,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 20,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 30,
-          "requestSentMs": 51,
-          "firstContentMs": 136,
-          "totalMs": 351,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 11,
-          "floatFrameMs": 2,
-          "inputVisibleMs": 28,
-          "requestSentMs": 40,
-          "firstContentMs": 101,
-          "totalMs": 371,
-          "finalState": "completed"
-        },
-        {
-          "toolbarMs": 16,
-          "floatFrameMs": 1,
-          "inputVisibleMs": 33,
-          "requestSentMs": 52,
-          "firstContentMs": 140,
+          "firstContentMs": 109,
           "totalMs": 389,
           "finalState": "completed"
         },
@@ -843,9 +363,903 @@
           "toolbarMs": 13,
           "floatFrameMs": 1,
           "inputVisibleMs": 35,
-          "requestSentMs": 58,
-          "firstContentMs": 148,
-          "totalMs": 380,
+          "requestSentMs": 50,
+          "firstContentMs": 128,
+          "totalMs": 377,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 16,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 33,
+          "requestSentMs": 47,
+          "firstContentMs": 107,
+          "totalMs": 388,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 34,
+          "requestSentMs": 50,
+          "firstContentMs": 112,
+          "totalMs": 394,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 37,
+          "requestSentMs": 53,
+          "firstContentMs": 144,
+          "totalMs": 391,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 35,
+          "requestSentMs": 47,
+          "firstContentMs": 128,
+          "totalMs": 376,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 34,
+          "requestSentMs": 47,
+          "firstContentMs": 126,
+          "totalMs": 374,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 17,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 32,
+          "requestSentMs": 45,
+          "firstContentMs": 126,
+          "totalMs": 376,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 13,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 26,
+          "requestSentMs": 41,
+          "firstContentMs": 131,
+          "totalMs": 379,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 13,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 37,
+          "requestSentMs": 51,
+          "firstContentMs": 130,
+          "totalMs": 379,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 35,
+          "requestSentMs": 49,
+          "firstContentMs": 127,
+          "totalMs": 375,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 17,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 32,
+          "requestSentMs": 46,
+          "firstContentMs": 125,
+          "totalMs": 375,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 17,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 33,
+          "requestSentMs": 53,
+          "firstContentMs": 140,
+          "totalMs": 389,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 14,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 36,
+          "requestSentMs": 53,
+          "firstContentMs": 112,
+          "totalMs": 391,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 34,
+          "requestSentMs": 48,
+          "firstContentMs": 128,
+          "totalMs": 376,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 17,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 32,
+          "requestSentMs": 46,
+          "firstContentMs": 125,
+          "totalMs": 372,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 18,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 32,
+          "requestSentMs": 45,
+          "firstContentMs": 107,
+          "totalMs": 388,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 12,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 5,
+          "requestSentMs": 17,
+          "firstContentMs": 98,
+          "totalMs": 346,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 36,
+          "requestSentMs": 50,
+          "firstContentMs": 130,
+          "totalMs": 378,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 14,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 36,
+          "requestSentMs": 50,
+          "firstContentMs": 128,
+          "totalMs": 375,
+          "finalState": "completed"
+        }
+      ]
+    },
+    "askFlowLargePage": {
+      "cold": [
+        {
+          "toolbarMs": 95,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 52,
+          "requestSentMs": 208,
+          "firstContentMs": 268,
+          "totalMs": 523,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 77,
+          "floatFrameMs": 26,
+          "inputVisibleMs": 41,
+          "requestSentMs": 191,
+          "firstContentMs": 276,
+          "totalMs": 524,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 116,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 43,
+          "requestSentMs": 189,
+          "firstContentMs": 272,
+          "totalMs": 521,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 91,
+          "floatFrameMs": 18,
+          "inputVisibleMs": 38,
+          "requestSentMs": 178,
+          "firstContentMs": 257,
+          "totalMs": 508,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 106,
+          "floatFrameMs": 22,
+          "inputVisibleMs": 40,
+          "requestSentMs": 192,
+          "firstContentMs": 274,
+          "totalMs": 523,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 111,
+          "floatFrameMs": 19,
+          "inputVisibleMs": 38,
+          "requestSentMs": 169,
+          "firstContentMs": 257,
+          "totalMs": 507,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 73,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 43,
+          "requestSentMs": 181,
+          "firstContentMs": 263,
+          "totalMs": 489,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 104,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 43,
+          "requestSentMs": 184,
+          "firstContentMs": 263,
+          "totalMs": 512,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 76,
+          "floatFrameMs": 19,
+          "inputVisibleMs": 39,
+          "requestSentMs": 182,
+          "firstContentMs": 259,
+          "totalMs": 507,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 111,
+          "floatFrameMs": 18,
+          "inputVisibleMs": 37,
+          "requestSentMs": 175,
+          "firstContentMs": 257,
+          "totalMs": 506,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 119,
+          "floatFrameMs": 23,
+          "inputVisibleMs": 40,
+          "requestSentMs": 181,
+          "firstContentMs": 261,
+          "totalMs": 510,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 84,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 39,
+          "requestSentMs": 171,
+          "firstContentMs": 251,
+          "totalMs": 500,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 107,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 40,
+          "requestSentMs": 175,
+          "firstContentMs": 251,
+          "totalMs": 499,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 74,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 38,
+          "requestSentMs": 175,
+          "firstContentMs": 263,
+          "totalMs": 484,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 111,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 40,
+          "requestSentMs": 178,
+          "firstContentMs": 260,
+          "totalMs": 508,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 128,
+          "floatFrameMs": 18,
+          "inputVisibleMs": 38,
+          "requestSentMs": 188,
+          "firstContentMs": 273,
+          "totalMs": 524,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 70,
+          "floatFrameMs": 17,
+          "inputVisibleMs": 35,
+          "requestSentMs": 179,
+          "firstContentMs": 259,
+          "totalMs": 505,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 73,
+          "floatFrameMs": 19,
+          "inputVisibleMs": 42,
+          "requestSentMs": 189,
+          "firstContentMs": 266,
+          "totalMs": 517,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 113,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 41,
+          "requestSentMs": 180,
+          "firstContentMs": 256,
+          "totalMs": 503,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 79,
+          "floatFrameMs": 23,
+          "inputVisibleMs": 41,
+          "requestSentMs": 188,
+          "firstContentMs": 266,
+          "totalMs": 516,
+          "finalState": "completed"
+        }
+      ],
+      "warm": [
+        {
+          "toolbarMs": 40,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 39,
+          "requestSentMs": 106,
+          "firstContentMs": 194,
+          "totalMs": 411,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 38,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 4,
+          "requestSentMs": 69,
+          "firstContentMs": 149,
+          "totalMs": 394,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 40,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 6,
+          "requestSentMs": 75,
+          "firstContentMs": 161,
+          "totalMs": 411,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 43,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 38,
+          "requestSentMs": 100,
+          "firstContentMs": 161,
+          "totalMs": 441,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 39,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 27,
+          "requestSentMs": 92,
+          "firstContentMs": 181,
+          "totalMs": 431,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 39,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 40,
+          "requestSentMs": 101,
+          "firstContentMs": 179,
+          "totalMs": 430,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 38,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 40,
+          "requestSentMs": 98,
+          "firstContentMs": 180,
+          "totalMs": 430,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 37,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 28,
+          "requestSentMs": 88,
+          "firstContentMs": 166,
+          "totalMs": 417,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 37,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 27,
+          "requestSentMs": 89,
+          "firstContentMs": 167,
+          "totalMs": 416,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 38,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 26,
+          "requestSentMs": 88,
+          "firstContentMs": 166,
+          "totalMs": 414,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 41,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 4,
+          "requestSentMs": 71,
+          "firstContentMs": 149,
+          "totalMs": 397,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 40,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 38,
+          "requestSentMs": 100,
+          "firstContentMs": 178,
+          "totalMs": 427,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 45,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 35,
+          "requestSentMs": 111,
+          "firstContentMs": 191,
+          "totalMs": 440,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 40,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 5,
+          "requestSentMs": 72,
+          "firstContentMs": 152,
+          "totalMs": 401,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 43,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 38,
+          "requestSentMs": 98,
+          "firstContentMs": 178,
+          "totalMs": 430,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 42,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 39,
+          "requestSentMs": 100,
+          "firstContentMs": 178,
+          "totalMs": 425,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 45,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 36,
+          "requestSentMs": 103,
+          "firstContentMs": 192,
+          "totalMs": 439,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 35,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 30,
+          "requestSentMs": 109,
+          "firstContentMs": 170,
+          "totalMs": 449,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 37,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 43,
+          "requestSentMs": 124,
+          "firstContentMs": 213,
+          "totalMs": 467,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 39,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 43,
+          "requestSentMs": 122,
+          "firstContentMs": 182,
+          "totalMs": 461,
+          "finalState": "completed"
+        }
+      ]
+    },
+    "askFlowMultiFrame": {
+      "cold": [
+        {
+          "toolbarMs": 68,
+          "floatFrameMs": 19,
+          "inputVisibleMs": 64,
+          "requestSentMs": 90,
+          "firstContentMs": 175,
+          "totalMs": 424,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 47,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 65,
+          "requestSentMs": 91,
+          "firstContentMs": 174,
+          "totalMs": 426,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 51,
+          "floatFrameMs": 19,
+          "inputVisibleMs": 67,
+          "requestSentMs": 92,
+          "firstContentMs": 175,
+          "totalMs": 423,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 43,
+          "floatFrameMs": 37,
+          "inputVisibleMs": 53,
+          "requestSentMs": 79,
+          "firstContentMs": 156,
+          "totalMs": 404,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 48,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 62,
+          "requestSentMs": 88,
+          "firstContentMs": 175,
+          "totalMs": 425,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 42,
+          "floatFrameMs": 19,
+          "inputVisibleMs": 64,
+          "requestSentMs": 89,
+          "firstContentMs": 174,
+          "totalMs": 424,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 50,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 71,
+          "requestSentMs": 97,
+          "firstContentMs": 177,
+          "totalMs": 425,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 47,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 62,
+          "requestSentMs": 88,
+          "firstContentMs": 169,
+          "totalMs": 419,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 46,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 60,
+          "requestSentMs": 85,
+          "firstContentMs": 166,
+          "totalMs": 417,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 47,
+          "floatFrameMs": 18,
+          "inputVisibleMs": 41,
+          "requestSentMs": 67,
+          "firstContentMs": 144,
+          "totalMs": 396,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 60,
+          "floatFrameMs": 19,
+          "inputVisibleMs": 65,
+          "requestSentMs": 91,
+          "firstContentMs": 172,
+          "totalMs": 422,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 46,
+          "floatFrameMs": 22,
+          "inputVisibleMs": 64,
+          "requestSentMs": 90,
+          "firstContentMs": 173,
+          "totalMs": 421,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 43,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 65,
+          "requestSentMs": 96,
+          "firstContentMs": 183,
+          "totalMs": 430,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 50,
+          "floatFrameMs": 38,
+          "inputVisibleMs": 51,
+          "requestSentMs": 77,
+          "firstContentMs": 166,
+          "totalMs": 416,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 52,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 41,
+          "requestSentMs": 68,
+          "firstContentMs": 150,
+          "totalMs": 399,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 60,
+          "floatFrameMs": 24,
+          "inputVisibleMs": 44,
+          "requestSentMs": 71,
+          "firstContentMs": 159,
+          "totalMs": 410,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 52,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 40,
+          "requestSentMs": 65,
+          "firstContentMs": 144,
+          "totalMs": 393,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 51,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 45,
+          "requestSentMs": 71,
+          "firstContentMs": 150,
+          "totalMs": 399,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 44,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 60,
+          "requestSentMs": 87,
+          "firstContentMs": 175,
+          "totalMs": 424,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 56,
+          "floatFrameMs": 41,
+          "inputVisibleMs": 54,
+          "requestSentMs": 80,
+          "firstContentMs": 167,
+          "totalMs": 418,
+          "finalState": "completed"
+        }
+      ],
+      "warm": [
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 34,
+          "requestSentMs": 49,
+          "firstContentMs": 127,
+          "totalMs": 375,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 16,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 33,
+          "requestSentMs": 48,
+          "firstContentMs": 109,
+          "totalMs": 389,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 36,
+          "requestSentMs": 52,
+          "firstContentMs": 140,
+          "totalMs": 389,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 37,
+          "requestSentMs": 52,
+          "firstContentMs": 112,
+          "totalMs": 390,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 18,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 31,
+          "requestSentMs": 45,
+          "firstContentMs": 124,
+          "totalMs": 373,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 16,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 32,
+          "requestSentMs": 46,
+          "firstContentMs": 124,
+          "totalMs": 372,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 14,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 36,
+          "requestSentMs": 51,
+          "firstContentMs": 112,
+          "totalMs": 392,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 14,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 35,
+          "requestSentMs": 54,
+          "firstContentMs": 143,
+          "totalMs": 391,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 16,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 4,
+          "requestSentMs": 18,
+          "firstContentMs": 94,
+          "totalMs": 344,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 14,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 34,
+          "requestSentMs": 48,
+          "firstContentMs": 127,
+          "totalMs": 376,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 5,
+          "requestSentMs": 18,
+          "firstContentMs": 80,
+          "totalMs": 362,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 16,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 5,
+          "requestSentMs": 19,
+          "firstContentMs": 80,
+          "totalMs": 359,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 33,
+          "requestSentMs": 46,
+          "firstContentMs": 125,
+          "totalMs": 374,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 18,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 31,
+          "requestSentMs": 44,
+          "firstContentMs": 123,
+          "totalMs": 372,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 13,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 35,
+          "requestSentMs": 48,
+          "firstContentMs": 127,
+          "totalMs": 375,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 34,
+          "requestSentMs": 48,
+          "firstContentMs": 110,
+          "totalMs": 393,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 19,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 30,
+          "requestSentMs": 46,
+          "firstContentMs": 108,
+          "totalMs": 388,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 35,
+          "requestSentMs": 49,
+          "firstContentMs": 127,
+          "totalMs": 378,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 17,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 33,
+          "requestSentMs": 45,
+          "firstContentMs": 125,
+          "totalMs": 374,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 16,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 33,
+          "requestSentMs": 47,
+          "firstContentMs": 109,
+          "totalMs": 393,
           "finalState": "completed"
         }
       ]
@@ -855,123 +1269,123 @@
     },
     "scrollEnabled": [
       {
-        "scrollMs": 1829,
+        "scrollMs": 1867,
         "longtaskCount": 0,
         "longtaskTotalMs": 0
       },
       {
-        "scrollMs": 1817,
+        "scrollMs": 1859,
         "longtaskCount": 0,
         "longtaskTotalMs": 0
       },
       {
-        "scrollMs": 1840,
+        "scrollMs": 1851,
         "longtaskCount": 0,
         "longtaskTotalMs": 0
       },
       {
-        "scrollMs": 1801,
+        "scrollMs": 1861,
         "longtaskCount": 0,
         "longtaskTotalMs": 0
       },
       {
-        "scrollMs": 1812,
+        "scrollMs": 1856,
         "longtaskCount": 0,
         "longtaskTotalMs": 0
       },
       {
-        "scrollMs": 1823,
+        "scrollMs": 1870,
         "longtaskCount": 0,
         "longtaskTotalMs": 0
       }
     ],
     "scrollDisabled": [
       {
-        "scrollMs": 1825,
+        "scrollMs": 1868,
         "longtaskCount": 0,
         "longtaskTotalMs": 0
       },
       {
-        "scrollMs": 1779,
+        "scrollMs": 1865,
         "longtaskCount": 0,
         "longtaskTotalMs": 0
       },
       {
-        "scrollMs": 1827,
+        "scrollMs": 1866,
         "longtaskCount": 0,
         "longtaskTotalMs": 0
       },
       {
-        "scrollMs": 1810,
+        "scrollMs": 1864,
         "longtaskCount": 0,
         "longtaskTotalMs": 0
       },
       {
-        "scrollMs": 1820,
+        "scrollMs": 1865,
         "longtaskCount": 0,
         "longtaskTotalMs": 0
       },
       {
-        "scrollMs": 1785,
+        "scrollMs": 1861,
         "longtaskCount": 0,
         "longtaskTotalMs": 0
       }
     ],
     "longAnswer": [
       {
-        "firstContentMs": 63.09999999962747,
+        "firstContentMs": 74.80000000074506,
         "finalState": "completed",
-        "messageCount": 163,
-        "totalBytes": 33681,
-        "heapBefore": 2600912,
-        "heapMid1": 2996712,
-        "heapMid2": 2996712,
-        "heapAfter": 2996712,
-        "heapRecovered": 2996712
+        "messageCount": 166,
+        "totalBytes": 34326,
+        "heapBefore": 2606428,
+        "heapMid1": 3002204,
+        "heapMid2": 3002204,
+        "heapAfter": 3002204,
+        "heapRecovered": 3002204
       },
       {
-        "firstContentMs": 65,
+        "firstContentMs": 67.59999999962747,
+        "finalState": "completed",
+        "messageCount": 166,
+        "totalBytes": 34310,
+        "heapBefore": 2606428,
+        "heapMid1": 3002216,
+        "heapMid2": 3002216,
+        "heapAfter": 3002216,
+        "heapRecovered": 3002216
+      },
+      {
+        "firstContentMs": 67,
         "finalState": "completed",
         "messageCount": 165,
-        "totalBytes": 34109,
-        "heapBefore": 2600912,
-        "heapMid1": 2996944,
-        "heapMid2": 2996944,
-        "heapAfter": 2996944,
-        "heapRecovered": 2996944
+        "totalBytes": 34128,
+        "heapBefore": 2606504,
+        "heapMid1": 3002060,
+        "heapMid2": 3002060,
+        "heapAfter": 3002060,
+        "heapRecovered": 3002060
       },
       {
-        "firstContentMs": 59,
+        "firstContentMs": 64.59999999962747,
         "finalState": "completed",
-        "messageCount": 163,
-        "totalBytes": 33681,
-        "heapBefore": 2600900,
-        "heapMid1": 2996956,
-        "heapMid2": 2996956,
-        "heapAfter": 2996956,
-        "heapRecovered": 2996956
+        "messageCount": 167,
+        "totalBytes": 34508,
+        "heapBefore": 2606504,
+        "heapMid1": 3002236,
+        "heapMid2": 3002236,
+        "heapAfter": 3002236,
+        "heapRecovered": 3002236
       },
       {
-        "firstContentMs": 62.30000000074506,
+        "firstContentMs": 66.79999999888241,
         "finalState": "completed",
-        "messageCount": 160,
-        "totalBytes": 33007,
-        "heapBefore": 2600924,
-        "heapMid1": 2996956,
-        "heapMid2": 2996956,
-        "heapAfter": 2996956,
-        "heapRecovered": 2996956
-      },
-      {
-        "firstContentMs": 61.80000000074506,
-        "finalState": "completed",
-        "messageCount": 157,
-        "totalBytes": 32397,
-        "heapBefore": 2600920,
-        "heapMid1": 2996956,
-        "heapMid2": 2996956,
-        "heapAfter": 2996956,
-        "heapRecovered": 2996956
+        "messageCount": 167,
+        "totalBytes": 34484,
+        "heapBefore": 2606464,
+        "heapMid1": 3002264,
+        "heapMid2": 3002264,
+        "heapAfter": 3002264,
+        "heapRecovered": 3002264
       }
     ],
     "thirtyTabs": {
@@ -1009,10 +1423,10 @@
         1
       ],
       "maxFloatFrameCountPerTab": 1,
-      "totalHeapBytes": 82319660,
+      "totalHeapBytes": 82478836,
       "heapMeasuredTabs": 30,
-      "workerEpochBefore": "2e498d05-127b-4139-9ea9-f55511e15681",
-      "workerEpochAfter": "2e498d05-127b-4139-9ea9-f55511e15681",
+      "workerEpochBefore": "a071dae9-09b2-4eb2-a563-9edb7ea41c9f",
+      "workerEpochAfter": "a071dae9-09b2-4eb2-a563-9edb7ea41c9f",
       "workerEpochChanged": false
     },
     "backgroundWake": {

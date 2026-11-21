@@ -78,6 +78,16 @@ export function gzipSizeOf(relFile) {
 }
 
 /**
+ * 某个扩展页面首屏要加载的脚本合计 gzip 体积：入口脚本 + 所有 modulepreload 的 chunk（各自 gzip 后相加）。
+ * 从产物的 html 里读，不写死带构建哈希的文件名；共享 chunk（小窗与侧边栏共用的渲染代码）也算在内
+ */
+export function pageScriptsGzip(htmlFile) {
+  const html = readFileSync(join(EXTENSION_PATH, htmlFile), 'utf8');
+  const files = [...html.matchAll(/<(?:script|link)[^>]+(?:src|href)="\/([^"]+\.js)"/g)].map((m) => m[1]);
+  return { files, bytes: files.reduce((n, f) => n + (gzipSizeOf(f) ?? 0), 0) };
+}
+
+/**
  * 哨兵加载期主线程耗时：用 CDP Tracing 抓一次页面导航前后的 trace，把名字/参数里提到
  * sentinel.js 的完整事件（ph: 'X'，有 dur）耗时加总。只在这一条专门的测量里用，
  * 其余场景不开 Tracing（有性能与体积开销）。

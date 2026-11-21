@@ -23,6 +23,9 @@ E2E_BROWSER=msedge node prototypes/v13-perf/run.mjs
 `E2E_CHROMIUM_PATH` 是约定：本机 Playwright 自带 Chromium 跑不起来时指向一份可用的 `chrome.exe`
 （和 `tests/e2e/fixtures.ts` 用的环境变量一样）。不设置就用 Playwright 自带的 Chromium 渠道。
 
+正式数字要在机器空闲时跑。机器上同时有别的 e2e 或构建在跑时，用 `V13_NOTE='……'` 写明测量条件，
+结果文件的「环境」里会带上这句；不设置时记为「机器空闲时运行」。
+
 输出：`prototypes/v13-perf/results/v13-<时间戳>.json`（原始样本 + 汇总）与同名 `.md`（表格），
 以及总是指向最后一次结果的 `results/latest.json` / `results/latest.md`。
 

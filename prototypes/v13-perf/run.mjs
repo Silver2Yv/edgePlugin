@@ -28,6 +28,7 @@ import {
   enablePerf,
   gzipSizeOf,
   installLongTaskObserver,
+  pageScriptsGzip,
   jsHeapUsed,
   readLongTasks,
   traceSentinelLoad,
@@ -44,7 +45,7 @@ const QUICK = process.argv.includes('--quick');
 
 const REPEATS = QUICK
   ? { baseline: 2, selectNoAsk: 2, askCold: 2, askWarm: 3, largePage: 2, multiFrame: 2, scroll: 2, longAnswer: 1 }
-  : { baseline: 10, selectNoAsk: 12, askCold: 10, askWarm: 15, largePage: 8, multiFrame: 8, scroll: 6, longAnswer: 5 };
+  : { baseline: 10, selectNoAsk: 12, askCold: 20, askWarm: 20, largePage: 8, multiFrame: 8, scroll: 6, longAnswer: 5 };
 const TAB_COUNT = QUICK ? 5 : 30;
 
 const SITE = 'https://v13.test';
@@ -333,7 +334,8 @@ function envInfo(browserVersionEnabled, browserVersionDisabled) {
     chromiumPathOverride: process.env.E2E_CHROMIUM_PATH || undefined,
     commit,
     quick: QUICK,
-    note: '本机同时有另外两个代理在跑 e2e，存在并发负载；以下数字标「并发负载下的试跑」，不是独占机器的洁净基线。',
+    // 测量条件说明：机器上同时有别的重负载时用 V13_NOTE 写明，结果里会带上
+    note: process.env.V13_NOTE ?? '机器空闲时运行（没有其他 e2e 或构建在跑）。',
   };
 }
 
@@ -359,7 +361,9 @@ async function main() {
   results.scenarios.bundleSize = {
     sentinelGzipBytes: gzipSizeOf('content-scripts/sentinel.js'),
     readerGzipBytes: gzipSizeOf('content-scripts/reader.js'),
-    floatGzipBytes: gzipSizeOf('chunks/float-DkWBX9AK.js'),
+    floatGzipBytes: pageScriptsGzip('float.html').bytes,
+    floatFiles: pageScriptsGzip('float.html').files,
+    sidepanelGzipBytes: pageScriptsGzip('sidepanel.html').bytes,
     backgroundGzipBytes: gzipSizeOf('background.js'),
   };
 
@@ -462,7 +466,8 @@ function renderMarkdown(r) {
   lines.push('| --- | --- | --- | --- |');
   lines.push(`| 哨兵 sentinel.js | ${fmtKb(bundle.sentinelGzipBytes)} | ≤ 10 KB | ${bundle.sentinelGzipBytes / 1024 <= 10 ? '通过' : '未达标'} |`);
   lines.push(`| 阅读器 reader.js | ${fmtKb(bundle.readerGzipBytes)} | ≤ 50 KB | ${bundle.readerGzipBytes / 1024 <= 50 ? '通过' : '未达标'} |`);
-  lines.push(`| 小窗首屏 float 包 | ${fmtKb(bundle.floatGzipBytes)} | ≤ 100 KB | ${bundle.floatGzipBytes / 1024 <= 100 ? '通过' : '未达标'} |`);
+  lines.push(`| 小窗首屏脚本（float.html 入口 + 预加载 chunk 合计） | ${fmtKb(bundle.floatGzipBytes)} | ≤ 100 KB | ${bundle.floatGzipBytes / 1024 <= 100 ? '通过' : '未达标'} |`);
+  lines.push(`| 侧边栏首屏脚本（同口径，无初值） | ${fmtKb(bundle.sidepanelGzipBytes)} | - | - |`);
   lines.push(`| 后台 background.js | ${fmtKb(bundle.backgroundGzipBytes)} | （无初值） | - |`);
   lines.push('');
 
