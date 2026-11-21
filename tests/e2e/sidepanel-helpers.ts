@@ -188,9 +188,18 @@ export async function openPanelByTrustedClick(context: BrowserContext, windowOf?
 
 /** 在侧边栏输入框里提问并回车（真实点击聚焦、真实按键） */
 export async function askInPanel(panel: PanelHandle, question: string): Promise<void> {
-  await panel.click('textarea[aria-label="输入问题"]');
+  const focused = () =>
+    panel.evaluate<boolean>('document.activeElement?.getAttribute("aria-label") === "输入问题"');
+  // 点进输入框；没聚焦就再点（面板刚换完内容、布局还在动时，第一下可能落在别处）
   await expect
-    .poll(() => panel.evaluate<boolean>('document.activeElement?.getAttribute("aria-label") === "输入问题"'))
+    .poll(
+      async () => {
+        if (await focused()) return true;
+        await panel.click('textarea[aria-label="输入问题"]');
+        return focused();
+      },
+      { message: '侧边栏输入框获得焦点', timeout: 10_000 },
+    )
     .toBe(true);
   await panel.type(question);
   await expect.poll(() => panel.evaluate<string>('document.querySelector("textarea").value')).toBe(question);

@@ -129,6 +129,23 @@ test('本窗口授权：另一个窗口的侧边栏订阅不到这个窗口的�
   serviceWorker,
 }) => {
   test.setTimeout(60_000);
+  const helloLogs: string[] = [];
+  const hook = (w: Worker) =>
+    w.on('console', (m) => {
+      if (m.text().includes('sidepanel/hello')) helloLogs.push(m.text());
+    });
+  hook(serviceWorker);
+  context.on('serviceworker', hook);
+  // 平台事实（V-11）：侧边栏端口的 sender 带哪些字段、getContexts 给侧边栏的 windowId
+  await serviceWorker.evaluate(() => {
+    chrome.runtime.onConnect.addListener((port) => {
+      if (port.name === 'probe') console.info(`[探针] 侧边栏端口 sender ${JSON.stringify(port.sender)}`);
+    });
+  });
+  const probeLogs: string[] = [];
+  serviceWorker.on('console', (m) => {
+    if (m.text().includes('[探针]')) probeLogs.push(m.text());
+  });
   await page.goto('https://e2e.test/a');
   await selectAndOpen(page, '#target');
   const tabA = await tabOf(serviceWorker, page);
@@ -164,6 +181,12 @@ test('本窗口授权：另一个窗口的侧边栏订阅不到这个窗口的�
   const lying = await probe(tabA.windowId, tabA.id);
   console.log('[V-11] 面板自报别的窗口时的结果', JSON.stringify(lying));
   expect(lying[0]).toBe('conv/ready');
+  await panel.evaluate(`(chrome.runtime.connect({ name: 'probe' }), 1)`);
+  await expect.poll(() => probeLogs.length).toBeGreaterThan(0);
+  console.log('[V-11]', probeLogs[0]);
+  console.log('[V-11] getContexts', JSON.stringify(await panelContexts(serviceWorker)));
+  console.log('[V-11] 后台握手日志', JSON.stringify(helloLogs.slice(0, 2)));
+  expect(helloLogs.every((l) => l.includes('"windowFrom":"hint"'))).toBe(true);
   await panel.detach();
 });
 
