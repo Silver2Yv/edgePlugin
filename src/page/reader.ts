@@ -23,11 +23,15 @@ export function startReader(): void {
   attachFloatPort(floatHost);
 
   // 点网页别处或在网页里按 Esc 收起小窗（6.1：隐藏，不销毁）。小窗内部的事件发生在 iframe 自己的文档里，
-  // 不会传到网页文档，所以这里收到的都是「别处」。焦点在小窗里时按 Esc 收不到，留给小窗私有端口（5.3）
-  document.addEventListener('pointerdown', (e) => e.isTrusted && floatHost.hide(), {
-    capture: true,
-    passive: true,
-  });
+  // 不会传到网页文档；但小窗外壳（边框、拖动条、缩放把手）在网页文档里，按在上面不算「别处」，
+  // 否则一按住拖动条小窗就收起了（用户在 Edge 实测发现）。焦点在小窗里时按 Esc 收不到，留给小窗私有端口（5.3）
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.isTrusted && !floatHost.owns(e)) floatHost.hide();
+    },
+    { capture: true, passive: true },
+  );
   document.addEventListener('keydown', (e) => e.isTrusted && e.key === 'Escape' && floatHost.hide(), {
     capture: true,
   });

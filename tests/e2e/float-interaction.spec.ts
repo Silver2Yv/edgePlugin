@@ -194,6 +194,9 @@ const waitFloatPortReady = (page: Page) =>
     )
     .toBe(true);
 
+const floatHostOpen = (page: Page) =>
+  page.evaluate(() => document.querySelector('[data-ra-float-host]')?.matches(':popover-open') ?? false);
+
 const floatRectSetting = (sw: Worker) =>
   sw.evaluate(async () => {
     const { settings } = (await chrome.storage.local.get('settings')) as { settings?: Settings };
@@ -218,11 +221,14 @@ test.describe('拖动 / 缩放（5.3 宿主侧不可见把手）', () => {
     await cdp.detach();
     await page.mouse.move(center.x, center.y);
     await page.mouse.down();
-    await page.mouse.move(center.x + 40, center.y + 25);
+    // 往下拖：指针会移到小窗内容上方（跨进程的 iframe），手势期间必须仍由宿主侧接收（用户 Edge 实测拖不动）
+    await page.mouse.move(center.x + 40, center.y + 25, { steps: 8 });
     await page.mouse.up();
 
     const after = await floatHostRect(page);
     expect(after).not.toBeNull();
+    // 按住拖动条时小窗不能被「点网页别处收起」收掉（用户在 Edge 实测发现的问题）
+    expect(await floatHostOpen(page)).toBe(true);
     expect(after?.left).toBeCloseTo((before?.left ?? 0) + 40, 0);
     expect(after?.top).toBeCloseTo((before?.top ?? 0) + 25, 0);
 
@@ -250,6 +256,7 @@ test.describe('拖动 / 缩放（5.3 宿主侧不可见把手）', () => {
     await page.mouse.up();
 
     const after = await floatHostRect(page);
+    expect(await floatHostOpen(page)).toBe(true);
     expect(after?.width).toBeCloseTo((before?.width ?? 0) + 60, 0);
     expect(after?.height).toBeCloseTo((before?.height ?? 0) + 40, 0);
     expect(after?.width ?? 0).toBeGreaterThanOrEqual(200);
@@ -259,6 +266,36 @@ test.describe('拖动 / 缩放（5.3 宿主侧不可见把手）', () => {
       .poll(() => floatRectSetting(serviceWorker), { message: '尺寸落盘', timeout: 10_000 })
       .toMatchObject({ w: expect.closeTo(after?.width ?? 0, 0), h: expect.closeTo(after?.height ?? 0, 0) });
   });
+});
+
+test('往里缩小：把手往左上拖进小窗内容区也能缩，按住把手不会收起小窗', async ({
+  page,
+  serviceWorker,
+  context,
+}) => {
+  await setup(page, serviceWorker);
+  const cdp = await context.newCDPSession(page);
+  await selectAndOpenFloat(page, cdp);
+  await waitFloatPortReady(page);
+  const before = await floatHostRect(page);
+  const center = await hostHandleCenter(cdp, 'float-resize-handle');
+  await cdp.detach();
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.down();
+  expect(await floatHostOpen(page)).toBe(true);
+  await page.mouse.move(center.x - 80, center.y - 60, { steps: 8 });
+  await page.mouse.up();
+  const after = await floatHostRect(page);
+  expect(await floatHostOpen(page)).toBe(true);
+  expect(after?.width).toBeCloseTo((before?.width ?? 0) - 80, 0);
+  expect(after?.height).toBeCloseTo((before?.height ?? 0) - 60, 0);
+  // 手势结束后小窗内容恢复可点（手势期间 iframe 暂时不参与命中）
+  const frame = await floatFrame(page);
+  await frame.getByLabel('输入问题').click();
+  await expect(frame.getByLabel('输入问题')).toBeFocused();
+  // 点网页别处照样收起
+  await page.mouse.click(5, 5);
+  await expect.poll(() => floatHostOpen(page)).toBe(false);
 });
 
 test('收起再打开草稿不丢：隐藏是 popover 隐藏而不是销毁 iframe', async ({ page, serviceWorker, context }) => {

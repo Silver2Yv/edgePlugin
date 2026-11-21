@@ -84,6 +84,8 @@ export interface FloatHostApi {
   prewarm(token: string): void;
   show(opts: { token: string | undefined; focusInput: boolean }): void;
   hide(): void;
+  /** 事件是否发生在小窗外壳上（边框、拖动条、缩放把手）。「点网页别处收起」要排除这些 */
+  owns(e: Event): boolean;
   /** 恢复记忆尺寸：绝对尺寸（连接时按持久化设置回放一次，见 restoreCommandsOnConnect） */
   resize(w: number, h: number): FloatRect | null;
   /** 恢复记忆位置：绝对坐标 */
@@ -131,6 +133,9 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
       if (!e.isTrusted || rect === null) return;
       el.setPointerCapture(e.pointerId);
       start = { x: e.clientX, y: e.clientY, rect };
+      // 手势期间让小窗 iframe 不参与命中：指针一移到 iframe 上方，浏览器会把事件交给 iframe 所在的进程，
+      // 宿主侧的指针捕获就收不到后续移动（往下拖拖动条、往里缩把手时必现）。手势结束再恢复
+      if (iframe) iframe.style.pointerEvents = 'none';
     });
     el.addEventListener('pointermove', (e) => {
       if (!start) return;
@@ -139,10 +144,12 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
     const end = (): void => {
       if (!start) return;
       start = null;
+      if (iframe) iframe.style.pointerEvents = '';
       if (rect) rectSettledCb?.(rect);
     };
     el.addEventListener('pointerup', end);
     el.addEventListener('pointercancel', end);
+    el.addEventListener('lostpointercapture', end);
   }
 
   function build(token: string): void {
@@ -168,7 +175,16 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
     const frame = document.createElement('iframe');
     frame.src = `${browser.runtime.getURL('/float.html')}#t=${token}`;
     frame.allow = 'clipboard-write';
-    Object.assign(frame.style, { width: '100%', height: '100%', border: '0', display: 'block' });
+    // iframe 放在拖动条下方，拖动条不盖住小窗内容
+    Object.assign(frame.style, {
+      position: 'absolute',
+      top: `${DRAG_STRIP_HEIGHT}px`,
+      left: '0',
+      width: '100%',
+      height: `calc(100% - ${DRAG_STRIP_HEIGHT}px)`,
+      border: '0',
+      display: 'block',
+    });
     loaded = false;
     frame.addEventListener('load', () => {
       loaded = true;
@@ -190,8 +206,24 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
       right: '0',
       height: `${DRAG_STRIP_HEIGHT}px`,
       cursor: 'move',
-      background: 'transparent',
+      background: '#f3f3f3',
+      borderBottom: '1px solid #e6e6e6',
+      boxSizing: 'border-box',
     });
+    // 拖动条中间一道短横线，提示这里可以拖（用户试用反馈：完全不可见时不知道能拖）
+    const grip = document.createElement('div');
+    Object.assign(grip.style, {
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      width: '36px',
+      height: '4px',
+      margin: '-2px 0 0 -18px',
+      borderRadius: '2px',
+      background: '#c4c4c4',
+      pointerEvents: 'none',
+    });
+    dragHandle.append(grip);
     attachHandle(dragHandle, (dx, dy, startRect) => ({
       ...startRect,
       left: startRect.left + dx,
@@ -207,7 +239,9 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
       width: `${RESIZE_HANDLE_SIZE}px`,
       height: `${RESIZE_HANDLE_SIZE}px`,
       cursor: 'nwse-resize',
-      background: 'transparent',
+      // 右下角两道斜线，提示这里可以缩放
+      background:
+        'linear-gradient(135deg, transparent 0 52%, #b5b5b5 52% 60%, transparent 60% 72%, #b5b5b5 72% 80%, transparent 80%)',
     });
     attachHandle(resizeHandle, (dx, dy, startRect) => ({
       ...startRect,
@@ -260,6 +294,10 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
     },
     hide() {
       if (host?.matches(':popover-open')) host.hidePopover();
+    },
+    owns(e) {
+      // 外壳在封闭 shadow root 里，网页文档上的监听器看到的目标是宿主元素本身
+      return host !== null && e.composedPath().includes(host);
     },
     resize(w, h) {
       if (host === null || rect === null) return null;

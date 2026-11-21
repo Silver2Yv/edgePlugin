@@ -40,6 +40,7 @@ function fakeHost(rect: FloatRect | null = { left: 0, top: 0, width: 380, height
     prewarm: vi.fn(),
     show: vi.fn(),
     hide: vi.fn(),
+    owns: vi.fn(() => false),
     resize: vi.fn(() => rect),
     reposition: vi.fn(() => rect),
     getRect: vi.fn(() => rect),
