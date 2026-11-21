@@ -443,17 +443,31 @@ export function OptionsApp() {
         <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {settings.connections.map((conn) => (
             <li key={conn.id} style={{ padding: '6px 0', borderBottom: '1px solid #eee' }}>
-              <span>{conn.name}</span>
-              <span style={{ color: '#999', marginLeft: 8 }}>{displayBaseUrl(conn.baseUrl)}</span>
-              {settings.defaultModel?.connectionId === conn.id && (
-                <span style={{ marginLeft: 8, color: '#2a7' }}>默认</span>
-              )}
-              <button type="button" style={{ marginLeft: 8 }} onClick={() => startEdit(conn)}>
-                编辑
-              </button>
-              <button type="button" style={{ marginLeft: 4 }} onClick={() => void handleDelete(conn)}>
-                删除
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontWeight: 600 }}>{conn.name}</span>
+                {settings.defaultModel?.connectionId === conn.id && (
+                  <span style={{ marginLeft: 8, color: '#2a7' }}>默认</span>
+                )}
+                <span style={{ flex: 1 }} />
+                <button type="button" style={{ marginLeft: 8 }} onClick={() => startEdit(conn)}>
+                  编辑
+                </button>
+                <button type="button" style={{ marginLeft: 4 }} onClick={() => void handleDelete(conn)}>
+                  删除
+                </button>
+              </div>
+              <div
+                style={{
+                  marginTop: 2,
+                  color: '#888',
+                  fontSize: 12,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {displayBaseUrl(conn.baseUrl)}
+              </div>
             </li>
           ))}
         </ul>
@@ -603,7 +617,7 @@ export function OptionsApp() {
       </section>
 
       <section style={{ marginTop: 16 }}>
-        <h2 style={{ fontSize: 14 }}>站点</h2>
+        <h2 style={{ fontSize: 14 }}>站点规则</h2>
         <p style={{ color: '#999', margin: '4px 0' }}>
           「不弹工具栏」：选中文字不再自动弹出工具栏，页面内容仍可读取。「不读取页面内容」：不读正文、不缓存，
           提问时只发送你选中的文字。改动立即生效；已打开的网页里的工具栏在刷新后才消失。包含子域名。

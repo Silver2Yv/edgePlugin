@@ -16,8 +16,10 @@ import {
   onWake,
   parseTokenFromHash,
   restoreCommandsOnConnect,
+  retryRejectedText,
   shouldSendOnEnter,
   subscribeMessage,
+  waitHintText,
 } from '@/ui/float/state';
 
 const JOB = 'job-aaaaaaaa';
@@ -389,6 +391,31 @@ describe('floatReducer：整体归约', () => {
     expect(s.actionError).toContain('消息格式不对');
   });
 
+  it('conv/rejected：refType 为 conv/retry 时用专属文案（notOwner / notAllowed），而不是通用文案', () => {
+    const asked = floatReducer(initialFloatState(true), { kind: 'askSent', clientRequestId: 'req-1' });
+    const withJob = floatReducer(asked, {
+      kind: 'server',
+      msg: {
+        type: 'conv/accepted',
+        clientRequestId: 'req-1',
+        jobId: JOB,
+        messageId: MSG,
+        conversationId: 'c1',
+      },
+    });
+    const notOwner = floatReducer(withJob, {
+      kind: 'server',
+      msg: { type: 'conv/rejected', reason: 'notOwner', refType: 'conv/retry', refId: JOB },
+    });
+    expect(notOwner.actionError).toBe('后台已重启，这次没法重试，请重新提问');
+
+    const notAllowed = floatReducer(withJob, {
+      kind: 'server',
+      msg: { type: 'conv/rejected', reason: 'notAllowed', refType: 'conv/retry', refId: JOB },
+    });
+    expect(notAllowed.actionError).toBe('这次请求没有发出，没法重试，请重新提问');
+  });
+
   it('disconnected：没有未到终态的任务转入 idle', () => {
     const s = floatReducer({ ...initialFloatState(true), connPhase: 'ready' }, { kind: 'disconnected' });
     expect(s.connPhase).toBe('idle');
@@ -550,5 +577,67 @@ describe('restoreCommandsOnConnect：小窗私有端口连接后恢复拖动/缩
       { type: 'float/resize', w: 500, h: 600 },
       { type: 'float/reposition', x: 999, y: 888 },
     ]);
+  });
+});
+
+describe('retryRejectedText：重试被拒绝的专属文案', () => {
+  it('notOwner：后台已重启，内存里没有这次请求', () => {
+    expect(retryRejectedText('notOwner')).toBe('后台已重启，这次没法重试，请重新提问');
+  });
+
+  it('notAllowed：请求还没发出就被停掉了', () => {
+    expect(retryRejectedText('notAllowed')).toBe('这次请求没有发出，没法重试，请重新提问');
+  });
+
+  it('其他原因沿用通用文案', () => {
+    expect(retryRejectedText('tooLarge')).toBe('操作失败：内容过长');
+    expect(retryRejectedText('badToken')).toBe('操作失败：连接已失效');
+  });
+});
+
+describe('waitHintText：小窗等待时的持续反馈', () => {
+  const base = {
+    elapsedMs: 0,
+    hasAnswerText: false,
+    hasReasoningText: false,
+    msSinceLastDelta: 0,
+    jobState: 'streaming' as const,
+  };
+
+  it('任务到终态立即不再提示，不管经过了多久', () => {
+    expect(waitHintText({ ...base, elapsedMs: 20_000, jobState: 'completed' })).toBeNull();
+    expect(waitHintText({ ...base, elapsedMs: 20_000, jobState: 'failed' })).toBeNull();
+  });
+
+  it('还没收到任何正文/思考：按已过时间分三档', () => {
+    expect(waitHintText({ ...base, elapsedMs: 0 })).toBe('正在等待回答…');
+    expect(waitHintText({ ...base, elapsedMs: 6_999 })).toBe('正在等待回答…');
+    expect(waitHintText({ ...base, elapsedMs: 7_000 })).toBe('正在努力思考中…');
+    expect(waitHintText({ ...base, elapsedMs: 14_999 })).toBe('正在努力思考中…');
+    expect(waitHintText({ ...base, elapsedMs: 15_000 })).toBe('等待时间较长，仍在尝试中…');
+    expect(waitHintText({ ...base, elapsedMs: 60_000 })).toBe('等待时间较长，仍在尝试中…');
+  });
+
+  it('收到了思考内容、还没有正文：固定文案，不看已过时间', () => {
+    expect(waitHintText({ ...base, hasReasoningText: true, elapsedMs: 1_000 })).toBe(
+      '正在思考…（思考过程可展开查看）',
+    );
+    expect(waitHintText({ ...base, hasReasoningText: true, elapsedMs: 20_000 })).toBe(
+      '正在思考…（思考过程可展开查看）',
+    );
+  });
+
+  it('已有正文：连续一段时间没有新内容才提示「暂停」，否则不提示（正文本身就是反馈）', () => {
+    expect(waitHintText({ ...base, hasAnswerText: true, msSinceLastDelta: 0 })).toBeNull();
+    expect(waitHintText({ ...base, hasAnswerText: true, msSinceLastDelta: 9_999 })).toBeNull();
+    expect(waitHintText({ ...base, hasAnswerText: true, msSinceLastDelta: 10_000 })).toBe(
+      '回答暂停了一会儿，仍在等待…',
+    );
+  });
+
+  it('有正文时优先于思考判断（正文已经开始，不再显示「正在思考」）', () => {
+    expect(
+      waitHintText({ ...base, hasAnswerText: true, hasReasoningText: true, msSinceLastDelta: 0 }),
+    ).toBeNull();
   });
 });

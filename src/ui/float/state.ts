@@ -164,6 +164,22 @@ export function rejectReasonText(reason: RejectReason): string {
   }
 }
 
+/**
+ * conv/retry 被拒绝时的专属文案：比通用 rejectReasonText 更具体，直接告诉用户接下来怎么办。
+ * notOwner（后台已重启，内存里没有这次请求）与 notAllowed（请求还没发出就被停掉，如读页面时
+ * 站点规则变了）是重试仅有的两种拒绝原因（见 background/jobs.ts 的 retry()），其余原因沿用通用文案。
+ */
+export function retryRejectedText(reason: RejectReason): string {
+  switch (reason) {
+    case 'notOwner':
+      return '后台已重启，这次没法重试，请重新提问';
+    case 'notAllowed':
+      return '这次请求没有发出，没法重试，请重新提问';
+    default:
+      return `操作失败：${rejectReasonText(reason)}`;
+  }
+}
+
 // ───────────── 引用条 ─────────────
 
 export interface QuoteView {
@@ -279,8 +295,13 @@ function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatSt
 
 function applyRejected(state: FloatState, msg: RejectedMsg): FloatState {
   if (msg.refType === 'conv/resumeFloat') return { ...state, connPhase: onResumeRejected() };
-  if (state.job && msg.refId === state.job.jobId)
-    return { ...state, actionError: `操作失败：${rejectReasonText(msg.reason)}` };
+  if (state.job && msg.refId === state.job.jobId) {
+    const actionError =
+      msg.refType === 'conv/retry'
+        ? retryRejectedText(msg.reason)
+        : `操作失败：${rejectReasonText(msg.reason)}`;
+    return { ...state, actionError };
+  }
   if (state.pendingClientRequestId && msg.refId === state.pendingClientRequestId)
     return {
       ...state,
@@ -345,6 +366,38 @@ export function shouldSendOnEnter(e: {
   keyCode?: number;
 }): boolean {
   return e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229;
+}
+
+// ───────────── 等待提示（小窗回答区持续反馈，用户 2026-11-19 Edge 试用反馈） ─────────────
+
+const WAIT_HINT_THINKING_MS = 7_000;
+const WAIT_HINT_LONG_MS = 15_000;
+const WAIT_HINT_PAUSE_MS = 10_000;
+
+/** waitHintText 的输入：计时从发问/重试开始算起，收到任何增量就按情况切换，任务到终态由调用方立即停表 */
+export interface WaitHintInput {
+  /** 距发问（或重试开始）过去多久 */
+  elapsedMs: number;
+  hasAnswerText: boolean;
+  hasReasoningText: boolean;
+  /** 距最近一次收到正文/思考增量过去多久 */
+  msSinceLastDelta: number;
+  jobState: JobState;
+}
+
+/**
+ * 等待时持续给反馈：发问后迟迟没有任何增量时按已过时间换文案；已有正文后若连续一段时间没有
+ * 新内容，换成「暂停」提示；任务到终态立即不再提示（28 秒的连接超时等现有逻辑不受影响）。
+ */
+export function waitHintText(input: WaitHintInput): string | null {
+  if (isTerminal(input.jobState)) return null;
+  if (input.hasAnswerText) {
+    return input.msSinceLastDelta >= WAIT_HINT_PAUSE_MS ? '回答暂停了一会儿，仍在等待…' : null;
+  }
+  if (input.hasReasoningText) return '正在思考…（思考过程可展开查看）';
+  if (input.elapsedMs >= WAIT_HINT_LONG_MS) return '等待时间较长，仍在尝试中…';
+  if (input.elapsedMs >= WAIT_HINT_THINKING_MS) return '正在努力思考中…';
+  return '正在等待回答…';
 }
 
 // ───────────── 小窗私有端口：拖动 / 缩放持久化（5.3） ─────────────

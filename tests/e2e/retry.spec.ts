@@ -205,6 +205,6 @@ test('流式中途后台被回收：重连后标记 interrupted，提示「结�
   // 点「重试」会被拒绝（notOwner）——这是架构选定的退路（「不宣称恢复同一网络流」），
   // 不是静默重发，但也不是真的能继续；用户此时应改为重新提问（V-03 记录里的已知局限）
   await retryBtn.click();
-  await expect(frame.getByText(/发送失败|操作失败/)).toBeVisible({ timeout: 5_000 });
+  await expect(frame.getByText('后台已重启，这次没法重试，请重新提问')).toBeVisible({ timeout: 5_000 });
   await expect(jobState(frame)).toHaveText('interrupted'); // 没有变成 streaming
 });
