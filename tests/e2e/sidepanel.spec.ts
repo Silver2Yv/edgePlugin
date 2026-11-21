@@ -123,6 +123,55 @@ test('跟随切换标签页：每个标签页显示自己的对话，换到没�
   await panel.detach();
 });
 
+const floatOpen = (page: Page) =>
+  page.evaluate(() => document.querySelector('[data-ra-float-host]')?.matches(':popover-open') ?? false);
+
+test('侧边栏开着时点「问」（5.4、用户 11-21 确认）：引用进侧边栏、不开小窗，在侧边栏问答；后台被回收、侧边栏闲着时同样如此；关掉侧边栏后回到小窗', async ({
+  context,
+  page,
+  serviceWorker,
+}) => {
+  test.setTimeout(90_000);
+  await page.goto('https://e2e.test/a');
+  expect(await openPanelByTrustedClick(context)).toBe('ok');
+  await page.bringToFront();
+  const panel = await attachPanel(context);
+  await page.locator('#target').click({ clickCount: 3 });
+  await clickAsk(page);
+  await expect.poll(() => panelText(panel, 'quote')).toContain(PARAGRAPH);
+  await page.waitForTimeout(500);
+  expect(await floatOpen(page)).toBe(false);
+  expect(await panelContexts(serviceWorker)).toHaveLength(1);
+  console.log('[V-11] 点「问」后侧边栏是否拿到焦点', await panel.evaluate<boolean>('document.hasFocus()'));
+  await askInPanel(panel, '这段话讲了什么？');
+  await expect.poll(() => panelText(panel, 'job-state'), { timeout: 15_000 }).toBe('completed');
+  expect(r.bodies).toHaveLength(1);
+  expect(JSON.stringify(parseBody(r.bodies[0]).messages)).toContain(PARAGRAPH);
+
+  // 后台被回收：侧边栏断线闲着（读网页时的常态）。划词时后台叫醒它，选完立即点「问」也仍去侧边栏
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('ServiceWorker.enable');
+  await cdp.send('ServiceWorker.stopAllWorkers');
+  await cdp.detach();
+  await page.waitForTimeout(1_000);
+  await page.locator('p').first().click({ clickCount: 3 });
+  await clickAsk(page);
+  const t0 = Date.now();
+  await expect.poll(() => panelText(panel, 'quote')).toContain('用来做侧边栏测试的文章');
+  console.log('[V-11] 后台被回收后点「问」到侧边栏显示引用 ms', Date.now() - t0);
+  await page.waitForTimeout(500);
+  expect(await floatOpen(page)).toBe(false);
+
+  // 用户关掉侧边栏：再点「问」回到小窗
+  await panel.evaluate('(window.close(), 1)').catch(() => undefined);
+  const sw = context.serviceWorkers()[0] ?? serviceWorker;
+  await expectPanels(sw, 0);
+  await page.locator('#target').click({ clickCount: 3 });
+  await clickAsk(page);
+  await expect.poll(() => floatOpen(page)).toBe(true);
+  expect(await panelContexts(sw)).toHaveLength(0);
+});
+
 test('本窗口授权：另一个窗口的侧边栏订阅不到这个窗口的标签页（5.12）', async ({
   context,
   page,

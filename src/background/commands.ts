@@ -118,7 +118,7 @@ export function createCommands(
     const { id: tabId, windowId } = tab;
     if (tabId === undefined) return;
     const hostable = floatHostable(tab.url);
-    const d = route.decide(tabId, windowId, !hostable);
+    const d = route.decide(tabId, windowId, { forcePanel: !hostable });
     if (d.toPanel) {
       void route.finish(tabId, d, hostable);
       return;
@@ -132,7 +132,7 @@ export function createCommands(
     const raw = info.selectionText ?? '';
     if (tabId === undefined || info.editable || raw.trim() === '') return;
     const hostable = floatHostable(tab.url);
-    const d = route.decide(tabId, windowId, !hostable);
+    const d = route.decide(tabId, windowId, { forcePanel: !hostable });
     const { text, truncated } = truncateByJsonBytes(raw, JOB_LIMITS.maxFieldBytes);
     const now = deps.now();
     // 修订号用时间：与哨兵各框架自己数的修订号不会撞上；conv/ask 按它取这一份
@@ -152,7 +152,11 @@ export function createCommands(
       void route.finish(tabId, d, hostable);
       return;
     }
-    void host.show(tabId).catch((e: unknown) => deps.log('float/showFailed', { error: errName(e) }));
+    // 去向同工具栏：本窗口侧边栏开着就在侧边栏回答（引用已推给它）
+    void (async () => {
+      if (windowId !== undefined && (await route.panelOpenIn(windowId))) return;
+      await host.show(tabId);
+    })().catch((e: unknown) => deps.log('float/showFailed', { error: errName(e) }));
   }
 
   return {

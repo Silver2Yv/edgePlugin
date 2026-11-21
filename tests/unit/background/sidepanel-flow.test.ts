@@ -355,10 +355,72 @@ describe('降级路由（5.2、6.3）', () => {
     // 说明只给一次
     await subscribe(panel, TAB);
     expect(panel.ofType('conv/notice')).toHaveLength(1);
-    // 下一次点「问」：重新试小窗
+    // 用户关掉侧边栏后，下一次点「问」：重新试小窗（侧边栏开着时会留在侧边栏，见下一条）
+    panel.close();
     await h.message(click(2), tabSender(h));
     expect(h.panel.opens).toEqual([WIN]);
     expect(h.sent.some((s) => s.msg.type === 'float/show')).toBe(true);
+  });
+
+  it('本窗口侧边栏开着时点「问」（工具栏、右键）：引用推给侧边栏，不开小窗、不提示原因、不用 open；别的窗口的侧边栏不算；「打开小窗」快捷键不跟', async () => {
+    const h = makeHarness({ panelWakeMs: 50 });
+    h.addWindow(2);
+    await h.message(selectionReady(), tabSender(h));
+    const other = await readyPanel(h, { windowId: 2 });
+    h.panel.open = true;
+    // 只有别的窗口开着侧边栏：叫醒本窗口的等不到，照常走小窗
+    await h.message(click(1), tabSender(h));
+    expect(h.sent.filter((s) => s.msg.type === 'float/show')).toHaveLength(1);
+    other.close();
+
+    const panel = await readyPanel(h, { tabId: TAB });
+    expect(await h.message(click(2), tabSender(h))).toEqual({ ok: true });
+    expect(h.panel.opens).toEqual([]);
+    expect(h.sent.filter((s) => s.msg.type === 'float/show')).toHaveLength(1);
+    expect(h.sent.filter((s) => s.msg.type === 'page/notice')).toHaveLength(0);
+    expect(panel.ofType('conv/quote').at(-1)).toMatchObject({ selectionRevision: 2 });
+    expect(panel.ofType('conv/notice')).toHaveLength(0);
+    // 小窗的就绪状态不受影响
+    expect(h.session.data.get(SESSION_KEYS.float(TAB))).toBeUndefined();
+
+    // 右键「问」同样跟着侧边栏走
+    h.app.onMenuClicked(
+      { menuItemId: 'ask', selectionText: '右键选中的文字' },
+      { id: TAB, windowId: WIN, url: 'https://example.test/article' },
+    );
+    await until(() => panel.ofType('conv/quote').some((m) => m.text === '右键选中的文字'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(h.sent.filter((s) => s.msg.type === 'float/show')).toHaveLength(1);
+
+    // 「打开小窗」快捷键不跟：明说了要小窗
+    h.app.onCommand('open-float', { id: TAB, windowId: WIN, url: 'https://example.test/article' });
+    await until(() => h.sent.filter((s) => s.msg.type === 'float/show').length === 2);
+    expect(h.panel.opens).toEqual([]);
+  });
+
+  it('后台刚被唤醒、侧边栏开着但还没登记：划词时就叫醒它；点「问」等它握手后去侧边栏；一个侧边栏都没有时不广播、不等', async () => {
+    const h = makeHarness();
+    const wakes = () => h.pageMessages.filter((m) => (m as { type: string }).type === 'sidepanel/wake');
+    await h.message(selectionReady(), tabSender(h));
+    expect(wakes()).toHaveLength(0);
+    await h.message(click(1), tabSender(h));
+    expect(h.sent.filter((s) => s.msg.type === 'float/show')).toHaveLength(1);
+
+    h.panel.open = true;
+    await h.message(selectionReady(2), tabSender(h));
+    await until(() => wakes().length === 1);
+    expect(wakes()[0]).toEqual({ type: 'sidepanel/wake', windowId: WIN });
+    // 点「问」先到、侧边栏后握手：等它
+    const pending = h.message(click(2), tabSender(h));
+    const panel = await readyPanel(h, { tabId: TAB });
+    expect(await pending).toEqual({ ok: true });
+    expect(h.sent.filter((s) => s.msg.type === 'float/show')).toHaveLength(1);
+    expect(panel.ofType('conv/quote').at(-1)).toMatchObject({ selectionRevision: 2 });
+    // 已登记：不再广播
+    const n = wakes().length;
+    await h.message(selectionReady(3), tabSender(h));
+    await h.message(click(3), tabSender(h));
+    expect(wakes()).toHaveLength(n);
   });
 
   it('浏览器没让打开侧边栏：在网页上提示（区分失败与不支持）', async () => {

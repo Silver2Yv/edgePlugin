@@ -57,12 +57,22 @@ export function createIntents(
     // 子框架取「顶层站点与框架来源」更严（4.1、AR-14）；顶层框架两者相同，不必再查标签页地址
     const topUrl = s.frameId === 0 ? s.url : await deps.getTabUrl?.(s.tabId).catch(() => undefined);
     const siteLevel = frameSiteLevel(topUrl, s.url, settings.sites);
-    return { siteLevel, toolbarActions, askRoute: routeOnAsk(store.readinessNow(s.tabId)) };
+    const panelOpen = s.windowId !== undefined && hub.hasPanel(s.windowId);
+    return {
+      siteLevel,
+      toolbarActions,
+      askRoute: panelOpen ? 'sidepanel' : routeOnAsk(store.readinessNow(s.tabId)),
+    };
   }
 
   async function handle(msg: ContentToBackground, s: ContentSender): Promise<IntentResponse> {
     switch (msg.type) {
       case 'selection/ready': {
+        // 本窗口侧边栏开着、但后台刚被唤醒还没登记到它：现在就叫醒，紧接着的点击不用再等它握手
+        if (s.windowId !== undefined)
+          void route
+            .panelOpenIn(s.windowId)
+            .catch((e: unknown) => deps.log('sidepanel/wakeFailed', { error: errName(e) }));
         if (s.frameId === 0 && s.documentId !== undefined) await host.noteTopDocument(s.tabId, s.documentId);
         await host
           .prewarm(s.tabId)
@@ -72,8 +82,8 @@ export function createIntents(
       case 'action/click': {
         // 本版本只接「问」；其他动作回拒绝
         if (msg.actionId !== 'ask') return refuse('notAllowed', { type: msg.type });
-        // 去向（5.2）：小窗失败过就改用侧边栏。打开侧边栏必须在这条点击消息的同步段里发出（规则 10），
-        // 先于一切 await（见 route.ts）
+        // 去向（5.2、5.4）：小窗失败过就打开侧边栏——必须在这条点击消息的同步段里发出（规则 10），先于一切
+        // await；本窗口侧边栏已经开着就在侧边栏回答，不用 open，可以之后再判断（见 route.ts）
         const d = route.decide(s.tabId, s.windowId);
         const sel = {
           frameId: s.frameId,
@@ -90,6 +100,12 @@ export function createIntents(
         hub.toTab(s.tabId, quoteOf(sel));
         if (d.toPanel) {
           await route.finish(s.tabId, d);
+          await saved;
+          return { ok: true };
+        }
+        // 侧边栏开着：引用已推给它（刚握手、还没订阅的，订阅时取存下的选区），不开小窗
+        if (s.windowId !== undefined && (await route.panelOpenIn(s.windowId))) {
+          deps.log('route/sidepanel', { readiness: d.readiness, panelOpen: true });
           await saved;
           return { ok: true };
         }

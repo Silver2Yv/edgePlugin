@@ -326,7 +326,20 @@ export function createFloatHost(
 
   return {
     prewarm(token) {
-      if (host !== null) return; // 每个标签页最多一个预热实例
+      // 每个标签页最多一个小窗。已有一个、后台却又带新令牌来预热：说明它不知道这个文档里有握手过的小窗
+      // （握手失败、令牌过期），现有的用不了，换新令牌重建（与 show 同一规则）。不重建的话后台以为新令牌的小窗
+      // 已经建好，下次显示不再带令牌，用户点「问」看到的一直是失效的那个。正显示着的重建后照样显示在原处
+      if (host !== null) {
+        const open = host.isConnected && host.matches(':popover-open');
+        const prev = rect;
+        discard();
+        build(token);
+        if (open && prev !== null) {
+          applyRect(prev);
+          host?.showPopover();
+        }
+        return;
+      }
       build(token);
     },
     show({ token, focusInput }) {

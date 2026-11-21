@@ -65,9 +65,6 @@ const pendingMsg = (h: Handoff): BackgroundToClient => ({
 });
 
 export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: FloatHost, jobs: Jobs) {
-  /** 已握手的侧边栏端口，按窗口分组：转接发起时推 handoff/pending 给该窗口的侧边栏 */
-  const panels = new Map<number, Set<ConvPort>>();
-
   return function onConnect(port: ConvPort): void {
     if (port.name !== CONV_PORT) return;
     const sender = port.sender ?? {};
@@ -156,9 +153,7 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
       deps.log('sidepanel/hello', { windowFrom: real === undefined ? 'hint' : 'contexts' });
       st.windowId = hint;
       st.handshaken = true;
-      const set = panels.get(hint) ?? new Set<ConvPort>();
-      set.add(port);
-      panels.set(hint, set);
+      hub.addPanel(hint, port);
       post({ type: 'conv/ready', role: 'sidepanel', protocolVersion: PROTOCOL_VERSION });
       // 侧边栏是被「转到侧边栏」打开的：告诉它有待接的转接（6.4）
       const [pending] = await store.handoffsFor(hint);
@@ -249,7 +244,7 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
       await store.putHandoff(h);
       post({ type: 'handoff/created', handoffId: h.handoffId });
       // 侧边栏已经连着（先连上、转接后到）：直接推给它；开着但断了线在闲着的，叫它重连（重连后在 hello 里取到）
-      for (const p of panels.get(windowId) ?? []) hub.post(p, pendingMsg(h));
+      for (const p of hub.panelsIn(windowId)) hub.post(p, pendingMsg(h));
       void deps.notifyPages({ type: 'sidepanel/wake', windowId });
       deps.log('handoff/created', { withConversation: conversationId !== undefined });
     }
@@ -311,7 +306,7 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
     });
     port.onDisconnect.addListener(() => {
       hub.unsubscribe(port);
-      if (st.windowId !== undefined) panels.get(st.windowId)?.delete(port);
+      if (st.windowId !== undefined) hub.removePanel(st.windowId, port);
     });
   };
 }

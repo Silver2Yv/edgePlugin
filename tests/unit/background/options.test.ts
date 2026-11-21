@@ -44,6 +44,7 @@ function makeDeps(overrides: Partial<BackgroundDeps> = {}): BackgroundDeps {
     tabWindow: async () => undefined,
     windowExists: async () => false,
     panelWindowOf: async () => undefined,
+    sidePanelOpen: async () => false,
     notifyPages: async () => undefined,
     ...overrides,
   };

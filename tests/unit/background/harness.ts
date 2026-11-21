@@ -128,6 +128,8 @@ export function makeHarness(
     hangForever?: boolean;
     /** 覆盖发问等待响应头的超时（毫秒），配合 hangForever 测连接超时，不必真的等 28 秒 */
     askConnectTimeoutMs?: number;
+    /** 覆盖叫醒侧边栏后等它握手的上限（毫秒），不必真的等 1.5 秒 */
+    panelWakeMs?: number;
   } = {},
 ) {
   const instance = ++instances;
@@ -152,7 +154,8 @@ export function makeHarness(
   const tabWindows = new Map<number, number>([[TAB, WIN]]);
   const windows = new Set<number>([WIN]);
   /** sidePanel.open：有没有「手势」由测试控制；记下每次调用时是否还在发起它的同步段里 */
-  const panel = { gesture: true, opens: [] as number[] };
+  /** open：现在有没有侧边栏开着（sidePanelOpen 的假实现） */
+  const panel = { gesture: true, opens: [] as number[], open: false };
   const pageMessages: unknown[] = [];
 
   const deps: BackgroundDeps = {
@@ -229,10 +232,12 @@ export function makeHarness(
     tabWindow: vi.fn(async (tabId: number) => tabWindows.get(tabId)),
     windowExists: vi.fn(async (w: number) => windows.has(w)),
     panelWindowOf: vi.fn(async () => undefined),
+    sidePanelOpen: vi.fn(async () => panel.open),
     notifyPages: vi.fn(async (msg: unknown) => {
       pageMessages.push(msg);
     }),
     ...(opts.askConnectTimeoutMs !== undefined ? { askConnectTimeoutMs: opts.askConnectTimeoutMs } : {}),
+    ...(opts.panelWakeMs !== undefined ? { panelWakeMs: opts.panelWakeMs } : {}),
   };
   const app = createBackground(deps);
 

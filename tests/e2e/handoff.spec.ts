@@ -1,12 +1,11 @@
 // 转到侧边栏（V-11、6.4、AR-19）：小窗里点「转到侧边栏」是扩展页面上的用户手势，点击处理里同步 sidePanel.open；
 // 侧边栏连上、订阅、收到初始推送后后台才通知小窗收起。流式中途转接要无缝续上；侧边栏先连上、转接后到；
 // 转接时小窗被关掉；侧边栏迟迟没连上（小窗不收起，给一行提示）。
-import type { Frame, Page } from '@playwright/test';
+import type { Frame, Page, Worker } from '@playwright/test';
 import type { browser } from 'wxt/browser';
 import { expect, test } from './fixtures';
 import {
   askInFloat,
-  clickAsk,
   connection,
   type Relay,
   selectAndOpen,
@@ -16,10 +15,12 @@ import {
 } from './page-helpers';
 import {
   attachPanel,
+  dispatchCommand,
   expectPanels,
   openPanelByTrustedClick,
   panelContexts,
   panelText,
+  tabOf,
 } from './sidepanel-helpers';
 
 declare const chrome: typeof browser;
@@ -100,11 +101,13 @@ test('侧边栏先打开、转接后到：已开的侧边栏接手这个对话�
 }) => {
   test.setTimeout(60_000);
   await page.goto('https://e2e.test/article');
+  // 侧边栏开着时点「问」会直接在侧边栏回答（5.4），所以先在小窗问，再打开侧边栏
+  const frame = await selectAndOpen(page, '#target');
+  await askInFloat(frame, r, '第一问');
   expect(await openPanelByTrustedClick(context)).toBe('ok');
   await page.bringToFront();
   const panel = await attachPanel(context);
-  const frame = await selectAndOpen(page, '#target');
-  await askInFloat(frame, r, '第一问');
+  await expect.poll(() => floatOpen(page)).toBe(true);
   await frame.getByRole('button', { name: '转到侧边栏' }).click();
   await expect.poll(() => floatOpen(page), { message: '小窗收起' }).toBe(false);
   // 侧边栏还是那一个（没有新开、没有闪开闪关）
@@ -152,22 +155,23 @@ test('后台被回收、侧边栏断线闲着：小窗转接叫醒它、接手�
   await page.bringToFront();
   const panel = await attachPanel(context);
   await expect.poll(() => panelText(panel, 'job-state')).toBe('completed');
-  // 两边都断线（没有在跑的任务，都闲着不重连）。小窗里接着问：小窗重连，新后台里有了新对话
+  // 两边都断线（没有在跑的任务，都闲着不重连）。小窗还开着，在里面接着问：小窗重连，新后台里有了新对话
   await stopWorkers();
-  await page.locator('#target').click({ clickCount: 3 });
-  await clickAsk(page);
   await expect.poll(() => floatOpen(page)).toBe(true);
-  await askInFloat(frame, r, '第二问');
+  await askInFloat(frame, r, '第二问', { fill: true });
   await frame.getByRole('button', { name: '转到侧边栏' }).click();
   await expect.poll(() => floatOpen(page), { message: '侧边栏接上后小窗收起', timeout: 10_000 }).toBe(false);
   await expect.poll(() => panelText(panel, 'job-state')).toBe('completed');
   expect(await panelText(panel, 'answer')).toContain('第 1 段。');
   expect(r.bodies).toHaveLength(2);
 
-  // 再停一次后台：内存里的对话没了，转不过去（gone）；小窗不收起，回答还在
+  // 再停一次后台：内存里的对话没了，转不过去（gone）；小窗不收起，回答还在。
+  // 侧边栏开着时点「问」会去侧边栏，这里用「打开小窗」快捷键把收起的小窗叫回来（先划词唤醒后台）
   await stopWorkers();
   await page.locator('#target').click({ clickCount: 3 });
-  await clickAsk(page);
+  await expect.poll(() => context.serviceWorkers().length).toBeGreaterThan(0);
+  const sw = context.serviceWorkers()[0] as Worker;
+  await dispatchCommand(sw, 'open-float', await tabOf(sw, page));
   await expect.poll(() => floatOpen(page)).toBe(true);
   await frame.getByRole('button', { name: '转到侧边栏' }).click();
   await expect(frame.getByText('后台重启过，这段对话没法转过去')).toBeVisible({ timeout: 10_000 });

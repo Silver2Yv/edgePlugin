@@ -70,6 +70,9 @@ export function browserDeps(): BackgroundDeps {
       const w = ctx[0]?.windowId;
       return w !== undefined && w >= 0 ? w : undefined;
     },
+    sidePanelOpen: async () =>
+      (await browser.runtime.getContexts({ contextTypes: [browser.runtime.ContextType.SIDE_PANEL] })).length >
+      0,
     // 没有扩展页面在听时 sendMessage 会报「Receiving end does not exist」，这不是失败
     notifyPages: (msg) =>
       browser.runtime.sendMessage(msg).then(

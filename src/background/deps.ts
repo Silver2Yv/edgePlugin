@@ -64,6 +64,12 @@ export interface BackgroundDeps {
    * Chrome 159 / Edge 157 实测侧边栏的 windowId 是 -1，端口 sender 也不带 documentId（V-11）
    */
   panelWindowOf(documentId: string): Promise<number | undefined>;
+  /**
+   * 现在有没有任何侧边栏开着（runtime.getContexts）。只能看「有没有」：给全局侧边栏的窗口号是 -1，分不出是哪个窗口的
+   */
+  sidePanelOpen(): Promise<boolean>;
+  /** 叫醒断线的侧边栏后等它握手的上限（默认 1.5 秒）；可选只是为了单测缩短 */
+  panelWakeMs?: number;
   /** 广播给扩展页面（runtime.sendMessage）；没有页面在收时不算失败 */
   notifyPages(msg: BackgroundToPages): Promise<void>;
   /** 指令只发给指定框架的指定文档；文档已不在时失败 */
