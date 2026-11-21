@@ -86,6 +86,24 @@ describe('侧边栏换订阅', () => {
     expect(s.conversationId).toBeNull();
   });
 
+  it('断线重连后重订（没换标签页）：后台已没有这段对话时保留已显示的回答', () => {
+    let s = run(
+      readyPanel(),
+      { kind: 'retarget', tabId: 1 },
+      server(subscribed(1, 'j1', 'c1')),
+      server(delta('j1', 1, '甲')),
+      { kind: 'disconnected' },
+      { kind: 'wake' },
+      server({ type: 'conv/ready', role: 'sidepanel', protocolVersion: 1 }),
+      server(subscribed(1)),
+    );
+    expect(s.job?.text).toBe('甲');
+    expect(s.conversationId).toBe('c1');
+    // 之后同一标签页换了地址（重订）：以那次订阅为准
+    s = run(s, { kind: 'retarget', tabId: 1 }, server(subscribed(1)));
+    expect(s.job).toBeNull();
+  });
+
   it('换订阅时 conv/ready、被拒、待接转接照收', () => {
     const s = run(
       readyPanel(),

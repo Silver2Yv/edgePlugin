@@ -4,10 +4,11 @@ import type { PageDocReport } from '@/core/context/page-doc';
 import { toPageKey } from '@/core/context/page-key';
 import { defaultBudget, estimateTokens } from '@/core/context/plan';
 import { jsonStringBytes, splitByJsonBytes, truncateByJsonBytes } from '@/core/domain/bytes';
-import { bindingMatches, routeOnAsk } from '@/core/domain/float';
+import { bindingMatches, floatHostable, handoffMatches, routeOnAsk } from '@/core/domain/float';
 import { canRetry, canTransition, isTerminal, JOB_LIMITS } from '@/core/domain/job';
 import {
   type anchorSchema,
+  backgroundToContent,
   clientToBackground,
   contentToBackground,
   messageBytes,
@@ -155,6 +156,10 @@ describe('消息协议', () => {
     expect(parseFrom('sidepanel', clientToBackground, q).ok).toBe(true);
     const h = { type: 'handoff/start', conversationId: ID };
     expect(parseFrom('sidepanel', clientToBackground, h)).toMatchObject({ ok: false, reason: 'notAllowed' });
+    // contract-v1.3 增量：还没发问的小窗也能转（不带对话）
+    expect(parseFrom('float', clientToBackground, h).ok).toBe(true);
+    expect(parseFrom('float', clientToBackground, { type: 'handoff/start' }).ok).toBe(true);
+    expect(parseFrom('float', clientToBackground, { ...h, windowId: 3 }).ok).toBe(false);
     const loc = { type: 'citation/locate', requestId: ID, messageId: ID, segmentIndex: 0 };
     expect(parseFrom('sidepanel', clientToBackground, loc).ok).toBe(true);
     expect(parseFrom('float', clientToBackground, loc)).toMatchObject({ ok: false, reason: 'notAllowed' });
@@ -324,6 +329,41 @@ describe('小窗路由', () => {
   it('失败状态走侧边栏', () => {
     expect(routeOnAsk('unknown')).toBe('float');
     expect(routeOnAsk('failedUnsupported')).toBe('sidepanel');
+  });
+
+  it('放不了小窗的页面：看不到地址或不是网页', () => {
+    expect(floatHostable('https://a.test/x')).toBe(true);
+    expect(floatHostable('file:///home/user/a.html')).toBe(true);
+    expect(floatHostable(undefined)).toBe(false);
+    expect(floatHostable('edge://settings')).toBe(false);
+    expect(floatHostable('chrome-extension://abc/options.html')).toBe(false);
+  });
+
+  it('转接核对：窗口、标签页、对话都要对上，且未过期；转接不带对话时只核对窗口与标签页', () => {
+    const h = {
+      handoffId: 'h-00000001',
+      windowId: 1,
+      tabId: 7,
+      conversationId: 'c-00000001',
+      expiresAt: 100,
+    };
+    const ok = { windowId: 1, tabId: 7, conversationId: 'c-00000001', now: 50 };
+    expect(handoffMatches(h, ok)).toBe(true);
+    expect(handoffMatches(h, { ...ok, now: 100 })).toBe(false);
+    expect(handoffMatches(h, { ...ok, windowId: 2 })).toBe(false);
+    expect(handoffMatches(h, { ...ok, tabId: 8 })).toBe(false);
+    expect(handoffMatches(h, { ...ok, conversationId: undefined })).toBe(false);
+    const { conversationId: _c, ...noConv } = h;
+    expect(handoffMatches(noConv, { ...ok, conversationId: undefined })).toBe(true);
+    expect(handoffMatches(undefined, ok)).toBe(false);
+  });
+
+  it('网页提示指令只带原因（规则 4：不带对话内容）', () => {
+    expect(backgroundToContent.parse({ type: 'page/notice', kind: 'floatFailed' }).ok).toBe(true);
+    expect(backgroundToContent.parse({ type: 'page/notice', kind: 'floatFailed', text: '回答' }).ok).toBe(
+      false,
+    );
+    expect(backgroundToContent.parse({ type: 'page/notice', kind: 'other' }).ok).toBe(false);
   });
 
   it('重连核对：标签页、框架、小窗文档都要对上，缺 documentId 一律拒绝', () => {

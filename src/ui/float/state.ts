@@ -443,8 +443,9 @@ function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatSt
 type SubscribedMsg = Extract<BackgroundToClient, { type: 'conv/subscribed' }>;
 
 /**
- * 订阅生效。侧边栏（有 target）：这次订阅的初始推送完整描述了要显示的东西——任务、对话、引用、说明都以它为准，
- * 没带的就是没有（换了页面、没发过问）。小窗：只补不删（后台重启后内存里没有对话，小窗照旧显示上一次的回答）。
+ * 订阅生效。侧边栏换了订阅（有 target 且还没确认）：这次订阅的初始推送完整描述了要显示的东西——任务、对话、引用、
+ * 说明都以它为准，没带的就是没有（换了页面、没发过问）。小窗、以及侧边栏断线重连后的重订（没换标签页）：只补不删
+ * （后台重启后内存里没有对话，照旧显示上一次的回答）。
  * 同一个任务保留已有的视图，补发的增量按 seq 去重；换了任务从 0 开始续播
  */
 function applySubscribed(state: FloatState, msg: SubscribedMsg): FloatState {
@@ -453,7 +454,7 @@ function applySubscribed(state: FloatState, msg: SubscribedMsg): FloatState {
       ? state.job
       : createJobView(msg.job.jobId, msg.job.messageId)
     : null;
-  if (state.target === null) {
+  if (state.target === null || state.targetConfirmed) {
     return { ...state, job: job ?? state.job, conversationId: msg.conversationId ?? state.conversationId };
   }
   return {
