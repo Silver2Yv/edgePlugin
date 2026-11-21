@@ -1,0 +1,22 @@
+/**
+ * 等待提示（data-testid="wait-hint"）末尾省略号的轻微闪烁动画。只在用户没有关闭动态效果时启用。
+ */
+.wait-hint__dots {
+  display: inline-block;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .wait-hint__dots {
+    animation: wait-hint-blink 1.2s ease-in-out infinite;
+  }
+}
+
+@keyframes wait-hint-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
