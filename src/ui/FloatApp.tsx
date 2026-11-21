@@ -6,10 +6,13 @@
 // 大幅拖动都会立刻发生）就收不到后续 pointermove，这是 pointer capture 跨 iframe 边界的已知限制
 // （不是实现 bug），按 5.3 原文的退路改为宿主侧不可见把手直接处理（page/float-host.ts）。
 // 这里只做两件事：连接时按持久化设置回放一次记忆的位置/尺寸；收到手势结束后的最终 rect 时落盘。
-import { useEffect, useMemo, useReducer, useRef, useState } from 'preact/hooks';
+//
+// 转到侧边栏（6.4、AR-19）：小窗是扩展页面，在这里点按钮是扩展页面上的用户手势，点击处理里同步
+// sidePanel.open（窗口在加载时就取好，点击时不 await，规则 10），再发 handoff/start；侧边栏订阅并收到
+// 初始推送后后台回 handoff/done，小窗这时才经私有端口收起。迟迟没接上就不收起，提示一行。
+import { useEffect, useReducer, useRef, useState } from 'preact/hooks';
 import type { Browser } from 'wxt/browser';
 import { browser } from 'wxt/browser';
-import { canRetry, isTerminal } from '@/core/domain/job';
 import {
   type BackgroundToClient,
   type ClientToBackground,
@@ -19,22 +22,21 @@ import {
   type ReaderToFloat,
 } from '@/core/domain/messages';
 import { loadSettings, SETTINGS_KEY } from '@/platform/settings-store';
-import { ERROR_LABEL } from './error-labels';
+import { AnswerView } from './AnswerView';
+import { loadAskDefaults } from './ask-defaults';
 import {
   buildAskMessage,
   type FloatRectValue,
   type FloatState,
   floatReducer,
+  HANDOFF_SLOW_MS,
   initialFloatState,
   isGenerating,
   parseTokenFromHash,
   restoreCommandsOnConnect,
   shouldSendOnEnter,
   subscribeMessage,
-  waitHintText,
 } from './float/state';
-import './float/wait-hint.css';
-import { type AnswerRenderer, createAnswerRenderer } from './render';
 
 type Port = Browser.runtime.Port;
 
@@ -55,19 +57,6 @@ const CONN_MESSAGE: Readonly<Record<FloatState['connPhase'], string | null>> = {
   expired: '连接已失效，请关闭小窗后重新点「问」',
 };
 
-/** 把提示文案里的省略号包一层 span 做闪烁动画（wait-hint.css），其余文字原样显示 */
-function renderWaitHint(text: string) {
-  const idx = text.indexOf('…');
-  if (idx === -1) return text;
-  return (
-    <>
-      {text.slice(0, idx)}
-      <span className="wait-hint__dots">…</span>
-      {text.slice(idx + 1)}
-    </>
-  );
-}
-
 export function FloatApp() {
   const [token] = useState(takeToken);
   const [state, dispatch] = useReducer(floatReducer, initialFloatState(token !== null));
@@ -77,18 +66,10 @@ export function FloatApp() {
   const stateRef = useRef(state);
   stateRef.current = state;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const answerRef = useRef<HTMLDivElement | null>(null);
-  const answerRendererRef = useRef<AnswerRenderer | null>(null);
   // 小窗私有端口（恢复位置尺寸 / 收起，5.3）；与所在标签页的阅读器直连，不经后台
   const floatPortRef = useRef<Port | null>(null);
-
-  /** 回答容器挂载后才能创建渲染器；懒创建，同一个容器只创建一次 */
-  const getAnswerRenderer = (): AnswerRenderer | null => {
-    if (answerRendererRef.current) return answerRendererRef.current;
-    if (!answerRef.current) return null;
-    answerRendererRef.current = createAnswerRenderer(answerRef.current);
-    return answerRendererRef.current;
-  };
+  // 所在窗口：加载时取好，点「转到侧边栏」时同步 open 要用（规则 10，点击处理里不能 await）
+  const windowIdRef = useRef<number | null>(null);
 
   // 建端口：helloFloat（首次）或 resumeFloat（重连）
   const connect = (hello: ClientToBackground) => {
@@ -105,6 +86,13 @@ export function FloatApp() {
   useEffect(() => {
     if (token !== null) connect({ type: 'conv/helloFloat', token });
     // 只在挂载时建立首次连接；重连由下面按 connPhase 变化触发
+  }, []);
+
+  // tabs.getCurrent() 在扩展页面的 iframe 里拿到宿主所在的标签页（按帧树判定），从它取窗口
+  useEffect(() => {
+    void browser.tabs.getCurrent().then((tab) => {
+      if (tab?.windowId !== undefined) windowIdRef.current = tab.windowId;
+    });
   }, []);
 
   /** 手势结束后的最终 rect（settled: true）落盘到 settings.float.rect */
@@ -159,12 +147,13 @@ export function FloatApp() {
     };
   }, [token]);
 
+  const collapse = () =>
+    floatPortRef.current?.postMessage({ type: 'float/collapse' } satisfies FloatToReader);
+
   // 焦点在小窗里时按 Esc 收起（经私有端口；焦点在网页别处时由阅读器自己的 keydown 监听处理）
   useEffect(() => {
     const onEscape = (e: KeyboardEvent) => {
-      if (e.isTrusted && e.key === 'Escape') {
-        floatPortRef.current?.postMessage({ type: 'float/collapse' } satisfies FloatToReader);
-      }
+      if (e.isTrusted && e.key === 'Escape') collapse();
     };
     document.addEventListener('keydown', onEscape);
     return () => document.removeEventListener('keydown', onEscape);
@@ -193,6 +182,20 @@ export function FloatApp() {
     dispatch({ kind: 'askSent', clientRequestId: ask.clientRequestId });
   }, [state.snapshotSeq]);
 
+  // 转接：侧边栏接上（handoff/done）才收起；迟迟没接上就提示一行，小窗留着（AR-19）
+  useEffect(() => {
+    const h = state.handoff;
+    if (!h) return;
+    if (h.done) {
+      collapse();
+      dispatch({ kind: 'handoffClear' });
+      return;
+    }
+    if (h.slow) return;
+    const timer = setTimeout(() => dispatch({ kind: 'handoffSlow' }), HANDOFF_SLOW_MS);
+    return () => clearTimeout(timer);
+  }, [state.handoff]);
+
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
@@ -211,60 +214,6 @@ export function FloatApp() {
 
   const generating = isGenerating(state.job);
   const job = state.job;
-  const allowedCitationIds = useMemo(() => new Set(job?.sentBlockIds ?? []), [job?.sentBlockIds]);
-
-  // 等待提示（小窗回答区持续反馈，纯函数见 float/state.ts 的 waitHintText）：askStartedAtRef 记发问/
-  // 重试开始的时间，lastDeltaAtRef 记最近一次收到正文/思考增量的时间；1 秒定时器只用来驱动重渲染，
-  // 真正的时间判断在渲染时用 Date.now() 现算，任务到终态时 waitHintText 立即返回 null
-  const askStartedAtRef = useRef<number | null>(null);
-  const lastDeltaAtRef = useRef<number | null>(null);
-  const [, bumpWaitTick] = useState(0);
-
-  // 新任务 / 新尝试：清空回答区重新开始（job.jobId 或 attemptId 变化），同时重新起算等待计时
-  useEffect(() => {
-    const now = Date.now();
-    askStartedAtRef.current = job ? now : null;
-    lastDeltaAtRef.current = job ? now : null;
-    getAnswerRenderer()?.reset();
-  }, [job?.jobId, job?.attemptId]);
-
-  // 收到正文或思考的新增量：刷新「距上次增量过去多久」的参照点
-  useEffect(() => {
-    if (!job) return;
-    lastDeltaAtRef.current = Date.now();
-  }, [job?.text, job?.reasoning]);
-
-  // 任务进行中才跑定时器；到终态或没有任务时停表（清掉 interval）
-  useEffect(() => {
-    if (!job || isTerminal(job.state)) return;
-    const timer = setInterval(() => bumpWaitTick((v) => v + 1), 1000);
-    return () => clearInterval(timer);
-  }, [job?.jobId, job?.attemptId, job?.state]);
-
-  const waitHint = job
-    ? waitHintText({
-        elapsedMs: askStartedAtRef.current ? Date.now() - askStartedAtRef.current : 0,
-        hasAnswerText: job.text.length > 0,
-        hasReasoningText: job.reasoning.length > 0,
-        msSinceLastDelta: lastDeltaAtRef.current ? Date.now() - lastDeltaAtRef.current : 0,
-        jobState: job.state,
-      })
-    : null;
-
-  // 增量更新：走节流调度（rAF 合并同帧更新；超长回答降到至少 200ms 一次），终态交给下面那条 finalize
-  useEffect(() => {
-    if (!job || isTerminal(job.state)) return;
-    getAnswerRenderer()?.scheduleUpdate(job.text, allowedCitationIds);
-  }, [job?.text, job?.state, allowedCitationIds]);
-
-  // 到达终态：立即做一次完整校正（流式阶段可能遗留的前向引用等在这里被纠正）
-  useEffect(() => {
-    if (!job || !isTerminal(job.state)) return;
-    getAnswerRenderer()?.finalize(job.text, allowedCitationIds);
-  }, [job?.state, job?.text, allowedCitationIds]);
-
-  // 组件卸载：移除渲染器的 selectionchange 监听
-  useEffect(() => () => answerRendererRef.current?.destroy(), []);
 
   const handleSend = async () => {
     const text = question.trim();
@@ -273,19 +222,12 @@ export function FloatApp() {
       dispatch({ kind: 'localError', message: '回答进行中' });
       return;
     }
-    const result = await loadSettings();
-    if (!result.ok) {
-      dispatch({ kind: 'localError', message: '请先在设置里添加连接' });
+    const defaults = await loadAskDefaults();
+    if (!defaults.ok) {
+      dispatch({ kind: 'localError', message: defaults.message });
       return;
     }
-    const { settings } = result;
-    if (settings.defaultModel === undefined) {
-      dispatch({ kind: 'localError', message: '请先在设置里添加连接' });
-      return;
-    }
-    const { lengthTier, thinking } = settings.reply;
-    const contextTier = settings.context.defaultTier;
-    const model = settings.defaultModel;
+    const { lengthTier, thinking, contextTier, model } = defaults;
     const clientRequestId = crypto.randomUUID();
     if (stateRef.current.connPhase === 'ready') {
       portRef.current?.postMessage(
@@ -321,6 +263,30 @@ export function FloatApp() {
     portRef.current?.postMessage({ type: 'conv/retry', jobId: state.job.jobId } satisfies ClientToBackground);
   };
 
+  /**
+   * 转到侧边栏。open 必须在这次点击的同步路径上发出（规则 10），所以窗口事先取好、这里不 await。
+   * 没握手（令牌无效等）也能打开侧边栏：侧边栏跟着本标签页走，选区引用照样带过去，只是没有转接可确认
+   */
+  const handleToPanel = () => {
+    const windowId = windowIdRef.current;
+    if (windowId === null) {
+      dispatch({ kind: 'localError', message: '还没准备好，请稍后再点一次' });
+      return;
+    }
+    void browser.sidePanel
+      .open({ windowId })
+      .catch(() =>
+        dispatch({ kind: 'localError', message: '浏览器没有打开侧边栏，请点工具栏里的「阅读助手」图标' }),
+      );
+    if (stateRef.current.connPhase !== 'ready') return;
+    const conversationId = stateRef.current.conversationId;
+    portRef.current?.postMessage({
+      type: 'handoff/start',
+      ...(conversationId ? { conversationId } : {}),
+    } satisfies ClientToBackground);
+    dispatch({ kind: 'handoffStarted' });
+  };
+
   const onKeyDown = (e: KeyboardEvent) => {
     if (!shouldSendOnEnter(e)) return;
     e.preventDefault();
@@ -335,7 +301,21 @@ export function FloatApp() {
 
   return (
     <main style={{ width: '100%', boxSizing: 'border-box', padding: '8px', fontSize: '13px' }}>
-      {connMessage && <p style={{ margin: '0 0 8px', color: '#666' }}>{connMessage}</p>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 8px' }}>
+        <span style={{ flex: '1', color: '#666' }}>{connMessage}</span>
+        <button
+          type="button"
+          onClick={handleToPanel}
+          disabled={state.handoff !== null && !state.handoff.slow}
+        >
+          转到侧边栏
+        </button>
+      </div>
+      {state.handoff?.slow && (
+        <p data-testid="handoff-hint" style={{ margin: '0 0 8px', color: '#999' }}>
+          侧边栏还没有接上，小窗先留着；可以稍后再点一次
+        </p>
+      )}
       {state.quote && (
         <div style={{ margin: '0 0 8px', padding: '6px', background: '#f5f5f5', borderRadius: '4px' }}>
           <div style={{ maxHeight: '80px', overflow: 'auto', whiteSpace: 'pre-wrap', color: '#555' }}>
@@ -386,41 +366,7 @@ export function FloatApp() {
           )}
         </p>
       )}
-      {job && (
-        <div style={{ marginTop: '8px' }}>
-          <div data-testid="job-state" style={{ color: '#999' }}>
-            {job.state}
-          </div>
-          {job.reasoning && (
-            <details style={{ marginTop: '4px' }}>
-              <summary>思考过程</summary>
-              <div style={{ whiteSpace: 'pre-wrap', color: '#777' }}>{job.reasoning}</div>
-            </details>
-          )}
-          {/* 子节点完全由 src/ui/render（createAnswerRenderer）管理，这里不写 children，
-              Preact 不会对它做子节点 diff（见模块顶部注释与 render/mount.ts） */}
-          <div ref={answerRef} data-testid="answer" style={{ marginTop: '4px' }} />
-          {waitHint && (
-            <p data-testid="wait-hint" aria-live="polite" style={{ margin: '4px 0 0', color: '#999' }}>
-              {renderWaitHint(waitHint)}
-            </p>
-          )}
-          {job.state === 'failed' && job.error && (
-            <p style={{ margin: '4px 0 0', color: '#c33' }}>
-              {ERROR_LABEL[job.error.kind]}
-              {job.error.message && `：${job.error.message}`}
-            </p>
-          )}
-          {job.state === 'interrupted' && (
-            <p style={{ margin: '4px 0 0', color: '#999' }}>上次请求的结果未知，重试可能重新计费</p>
-          )}
-          {canRetry(job.state) && (
-            <button type="button" style={{ marginTop: '4px' }} onClick={handleRetry}>
-              重试
-            </button>
-          )}
-        </div>
-      )}
+      {job && <AnswerView job={job} onRetry={handleRetry} />}
     </main>
   );
 }

@@ -15,6 +15,8 @@ export const SESSION_KEYS = {
   floatBinding: (tabId: number) => `floatBinding:${tabId}`,
   /** 小窗转侧边栏（Handoff） */
   handoff: (id: HandoffId) => `handoff:${id}`,
+  /** 窗口最近一次「开关侧边栏」命令的时间（5.4）：面板加载时读，晚于自己创建时间就自行关闭 */
+  sidepanelToggle: (windowId: number) => `sidepanelToggle:${windowId}`,
   /** 本次后台进程的编号；启动扫描用它判断任务是否属于已结束的进程 */
   workerEpoch: 'workerEpoch',
 } as const;

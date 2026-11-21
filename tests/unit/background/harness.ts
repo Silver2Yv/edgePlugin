@@ -8,6 +8,8 @@ import type { Connection, ModelAdapter, StreamEvent } from '@/core/llm/adapter';
 
 export const EXT_ID = 'pkahgpgifechjgdpecaebajnocgcnnnd';
 export const TAB = 7;
+/** TAB 所在的窗口；侧边栏默认在这个窗口 */
+export const WIN = 1;
 export const TOP_DOC = 'doc-top-1';
 export const FLOAT_DOC = 'doc-float-1';
 export const SECRET_KEY = 'test-secret-key-123';
@@ -146,6 +148,12 @@ export function makeHarness(
   let settings: Settings = structuredClone(SETTINGS);
   const marked = new Set<string>();
   const injected: string[] = [];
+  /** 标签页 → 窗口；侧边栏的窗口核对按它 */
+  const tabWindows = new Map<number, number>([[TAB, WIN]]);
+  const windows = new Set<number>([WIN]);
+  /** sidePanel.open：有没有「手势」由测试控制；记下每次调用时是否还在发起它的同步段里 */
+  const panel = { gesture: true, opens: [] as number[] };
+  const pageMessages: unknown[] = [];
 
   const deps: BackgroundDeps = {
     self: { runtimeId: EXT_ID, protocol: 'chrome-extension:' },
@@ -212,6 +220,18 @@ export function makeHarness(
     lockStorage: vi.fn(async () => {
       if (opts.lockStorageFails) throw new Error('锁定失败');
     }),
+    openSidePanel: vi.fn((windowId: number) => {
+      panel.opens.push(windowId);
+      return panel.gesture
+        ? Promise.resolve()
+        : Promise.reject(new Error('`sidePanel.open()` may only be called in response to a user gesture.'));
+    }),
+    tabWindow: vi.fn(async (tabId: number) => tabWindows.get(tabId)),
+    windowExists: vi.fn(async (w: number) => windows.has(w)),
+    panelWindowOf: vi.fn(async () => undefined),
+    notifyPages: vi.fn(async (msg: unknown) => {
+      pageMessages.push(msg);
+    }),
     ...(opts.askConnectTimeoutMs !== undefined ? { askConnectTimeoutMs: opts.askConnectTimeoutMs } : {}),
   };
   const app = createBackground(deps);
@@ -231,6 +251,13 @@ export function makeHarness(
     tab: { id: tabId },
     frameId: 3,
     documentId,
+  });
+  /** 侧边栏：不在标签页里；Chrome 159 / Edge 157 实测端口 sender 不带 documentId */
+  const panelSender = (documentId?: string): SenderLike => ({
+    id: EXT_ID,
+    url: `chrome-extension://${EXT_ID}/sidepanel.html`,
+    origin: `chrome-extension://${EXT_ID}`,
+    ...(documentId === undefined ? {} : { documentId }),
   });
   /** 设置页 / 欢迎页：按路径判定，不要求在标签页里 */
   const optionsSender = (path: '/options.html' | '/welcome.html' = '/options.html'): SenderLike => ({
@@ -280,8 +307,17 @@ export function makeHarness(
     injected,
     contentSender,
     floatSender,
+    panelSender,
     optionsSender,
     connect,
+    panel,
+    pageMessages,
+    /** 把标签页挪到某个窗口（不存在的窗口一并建上） */
+    moveTab: (tabId: number, windowId: number) => {
+      tabWindows.set(tabId, windowId);
+      windows.add(windowId);
+    },
+    addWindow: (windowId: number) => windows.add(windowId),
     message: (raw: unknown, sender: SenderLike = contentSender()) => app.onMessage(raw, sender),
     advance: (ms: number) => {
       clock += ms;

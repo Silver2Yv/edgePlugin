@@ -101,10 +101,21 @@ export interface FloatHostApi {
   onRectSettled(cb: (rect: FloatRect) => void): void;
 }
 
-export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void): FloatHostApi {
+/**
+ * onUnavailable：用户要看小窗（点了「问」、快捷键唤起），小窗却用不了——加载超时、宿主被网页移除。
+ * 阅读器据此在网页上提示改用侧边栏（M4，page/notice.ts）；同时上报 failedTransient，后台下次换新令牌重建
+ */
+export function createFloatHost(
+  onLoadResult: (result: FloatLoadResult) => void,
+  onUnavailable: () => void = () => undefined,
+): FloatHostApi {
   let host: HTMLElement | null = null;
   let iframe: HTMLIFrameElement | null = null;
   let loaded = false;
+  /** 这一个 iframe 加载超时了（之后迟到的 load 仍会把它改回可用） */
+  let failed = false;
+  /** 用户此刻想看到小窗（show 之后、hide 之前） */
+  let wanted = false;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   // 显示时小窗还没加载完：等加载完再聚焦。加载中的 iframe 拿到焦点后，换成扩展页面时焦点会丢回网页
   let focusOnLoad = false;
@@ -194,8 +205,10 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
       display: 'block',
     });
     loaded = false;
+    failed = false;
     frame.addEventListener('load', () => {
       loaded = true;
+      failed = false;
       if (timeoutId !== undefined) clearTimeout(timeoutId);
       if (focusOnLoad && h.matches(':popover-open')) frame.focus();
       focusOnLoad = false;
@@ -271,8 +284,29 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
     iframe = frame;
     applyRect({ left: 0, top: 0, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
     timeoutId = setTimeout(() => {
-      if (!loaded) onLoadResult('failedTransient');
+      if (loaded) return;
+      failed = true;
+      onLoadResult('failedTransient');
+      // 用户正等着看小窗：收起空白的外壳，改在网页上提示怎么继续（不能替用户打开侧边栏：这时已不在点击的手势里）
+      if (wanted) {
+        hideHost();
+        onUnavailable();
+      }
     }, FLOAT_LIMITS.loadTimeoutMs);
+  }
+
+  function hideHost(): void {
+    if (host?.isConnected && host.matches(':popover-open')) host.hidePopover();
+  }
+
+  /** 丢掉不可用的小窗（超时、被网页移除），下次带新令牌重建 */
+  function discard(): void {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    host?.remove();
+    host = null;
+    iframe = null;
+    loaded = false;
+    failed = false;
   }
 
   /** 贴着最近一次选区重新定位；保留当前尺寸（用户缩放过也不被重置） */
@@ -296,6 +330,17 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
       build(token);
     },
     show({ token, focusInput }) {
+      wanted = true;
+      // 小窗用不了（加载超时，或宿主被网页移除了）：有新令牌就重建；没有就提示改用侧边栏，并上报失败让后台下次发令牌
+      if (host !== null && (failed || !host.isConnected)) {
+        const removed = !host.isConnected;
+        discard();
+        if (token === undefined) {
+          if (removed) onLoadResult('failedTransient');
+          onUnavailable();
+          return;
+        }
+      }
       if (host === null) {
         if (token === undefined) return; // 没令牌造不出小窗
         build(token);
@@ -314,7 +359,8 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
       else focusOnLoad = true;
     },
     hide() {
-      if (host?.matches(':popover-open')) host.hidePopover();
+      wanted = false;
+      hideHost();
     },
     owns(e) {
       // 外壳在封闭 shadow root 里，网页文档上的监听器看到的目标是宿主元素本身

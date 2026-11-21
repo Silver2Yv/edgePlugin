@@ -130,6 +130,14 @@ export function createFloatHost(deps: BackgroundDeps, store: Store) {
       if (st) st.floatFor = undefined;
     },
 
+    /** 在网页上显示一行提示（page/notice）：小窗用不了、侧边栏又没能替用户打开时 */
+    notice(tabId: number, kind: 'floatFailed' | 'floatUnsupported'): Promise<void> {
+      return queue(tabId, async () => {
+        const docId = await ensureReader(tabId);
+        await send(tabId, docId, { type: 'page/notice', kind });
+      });
+    },
+
     forget(tabId: number): void {
       tabs.delete(tabId);
     },

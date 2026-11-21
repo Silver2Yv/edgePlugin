@@ -1,7 +1,14 @@
 // 后台运行时状态（5.5）：真相在 storage.session（键见 SESSION_KEYS），内存只做缓存。
 // 后台空闲约 30 秒会被回收、内存清空（网络诊断包真机结论），所以读取都是先看内存，没有再读 storage.session。
-import { type FloatBinding, type FloatReadiness, type FloatToken, TOKEN_TTL_MS } from '@/core/domain/float';
+import {
+  type FloatBinding,
+  type FloatReadiness,
+  type FloatToken,
+  type Handoff,
+  TOKEN_TTL_MS,
+} from '@/core/domain/float';
 import type { JobRecord } from '@/core/domain/job';
+import type { PanelNoticeKind } from '@/core/domain/messages';
 import { SESSION_KEYS } from '@/core/domain/session-keys';
 import type { SessionArea } from './deps';
 
@@ -18,6 +25,10 @@ export interface StoredSelection {
 }
 
 const JOB_PREFIX = SESSION_KEYS.job('');
+/** 侧边栏顶部说明等多久没被侧边栏取走就作废（用户没打开侧边栏，过后再开不该看到旧原因） */
+export const NOTICE_TTL_MS = 30_000;
+const FLOAT_PREFIX = SESSION_KEYS.float(0).replace(/0$/, '');
+const HANDOFF_PREFIX = SESSION_KEYS.handoff('');
 
 export type Store = ReturnType<typeof createStore>;
 
@@ -27,6 +38,13 @@ export function createStore(session: SessionArea, now: () => number, newToken: (
   const pendingTokens = new Set<string>();
   const selections = new Map<number, StoredSelection>();
   const bindings = new Map<number, FloatBinding>();
+  /**
+   * 小窗就绪状态的内存副本：「问」被点击时要在同一个同步段里决定是否打开侧边栏（规则 10），
+   * 来不及读 storage.session。后台刚被唤醒、副本还没从 storage.session 补回来时按 unknown 处理（走小窗）
+   */
+  const readiness = new Map<number, FloatReadiness>();
+  /** 待侧边栏取走的顶部说明（5.4），只在内存：后台重启后丢了也只是少一行说明 */
+  const notices = new Map<number, { kind: PanelNoticeKind; at: number }>();
 
   async function read<T>(key: string): Promise<T | undefined> {
     const got = await session.get(key);
@@ -101,7 +119,58 @@ export function createStore(session: SessionArea, now: () => number, newToken: (
     },
 
     setReadiness(tabId: number, r: FloatReadiness): Promise<void> {
+      readiness.set(tabId, r);
       return session.set({ [SESSION_KEYS.float(tabId)]: r });
+    },
+    /** 同步读内存副本（见 readiness 注释） */
+    readinessNow: (tabId: number): FloatReadiness => readiness.get(tabId) ?? 'unknown',
+    /** 后台启动时从 storage.session 补回就绪状态的内存副本（尽力而为，不阻塞监听器） */
+    async warmReadiness(): Promise<void> {
+      const all = await session.get(null);
+      for (const [k, v] of Object.entries(all)) {
+        if (!k.startsWith(FLOAT_PREFIX)) continue;
+        const tabId = Number(k.slice(FLOAT_PREFIX.length));
+        if (Number.isInteger(tabId) && !readiness.has(tabId)) readiness.set(tabId, v as FloatReadiness);
+      }
+    },
+
+    putNotice(tabId: number, kind: PanelNoticeKind): void {
+      notices.set(tabId, { kind, at: now() });
+    },
+    /** 侧边栏订阅这个标签页时取走（取一次就没了）；过期的不给 */
+    takeNotice(tabId: number): PanelNoticeKind | undefined {
+      const n = notices.get(tabId);
+      notices.delete(tabId);
+      return n && now() - n.at < NOTICE_TTL_MS ? n.kind : undefined;
+    },
+
+    /** 「开关侧边栏」命令的时间（5.4）：面板加载时读，晚于自己创建时间就自行关闭 */
+    setPanelToggle(windowId: number, at: number): Promise<void> {
+      return session.set({ [SESSION_KEYS.sidepanelToggle(windowId)]: at });
+    },
+
+    putHandoff(h: Handoff): Promise<void> {
+      return session.set({ [SESSION_KEYS.handoff(h.handoffId)]: h });
+    },
+    getHandoff(id: string): Promise<Handoff | undefined> {
+      return read<Handoff>(SESSION_KEYS.handoff(id));
+    },
+    deleteHandoff(id: string): Promise<void> {
+      return session.remove(SESSION_KEYS.handoff(id));
+    },
+    /** 某窗口未过期的转接，最新的在前；过期的顺手删掉 */
+    async handoffsFor(windowId: number): Promise<Handoff[]> {
+      const all = await session.get(null);
+      const out: Handoff[] = [];
+      const stale: string[] = [];
+      for (const [k, v] of Object.entries(all)) {
+        if (!k.startsWith(HANDOFF_PREFIX)) continue;
+        const h = v as Handoff;
+        if (h.expiresAt <= now()) stale.push(k);
+        else if (h.windowId === windowId) out.push(h);
+      }
+      if (stale.length > 0) await session.remove(stale);
+      return out.sort((a, b) => b.expiresAt - a.expiresAt);
     },
 
     putJob(r: JobRecord): Promise<void> {
@@ -125,6 +194,8 @@ export function createStore(session: SessionArea, now: () => number, newToken: (
     async forgetTab(tabId: number): Promise<void> {
       selections.delete(tabId);
       bindings.delete(tabId);
+      readiness.delete(tabId);
+      notices.delete(tabId);
       const keys = [
         SESSION_KEYS.selection(tabId),
         SESSION_KEYS.floatBinding(tabId),

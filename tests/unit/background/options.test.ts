@@ -40,6 +40,11 @@ function makeDeps(overrides: Partial<BackgroundDeps> = {}): BackgroundDeps {
     newToken: () => 'token',
     log: () => undefined,
     lockStorage: async () => undefined,
+    openSidePanel: async () => undefined,
+    tabWindow: async () => undefined,
+    windowExists: async () => false,
+    panelWindowOf: async () => undefined,
+    notifyPages: async () => undefined,
     ...overrides,
   };
 }

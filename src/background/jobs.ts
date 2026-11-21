@@ -1,6 +1,7 @@
 // 任务执行（5.5）：接单先写 storage.session 再发网络请求；增量按 deltaCoalesceMs 合并后按 seq 推给订阅者；
 // 终态不可覆盖（canTransition）；进行中每 checkpointMs 写一次 storage.session，这同时让后台不被空闲回收。
 // 本版本不接 IndexedDB：对话历史只在内存，任务热副本只在 storage.session。
+import { toPageKey } from '@/core/context/page-key';
 import { defaultBudget } from '@/core/context/plan';
 import { splitByJsonBytes } from '@/core/domain/bytes';
 import {
@@ -31,6 +32,7 @@ import type { Store, StoredSelection } from './store';
 
 type AskMsg = Extract<ClientToBackground, { type: 'conv/ask' }>;
 type Delta = Extract<BackgroundToClient, { type: 'conv/delta' }>;
+type PlanMsg = Extract<BackgroundToClient, { type: 'conv/plan' }>;
 type Reply = (msg: BackgroundToClient) => void;
 type ClientError = { kind: ModelErrorKind; message: string };
 
@@ -40,6 +42,8 @@ interface Job {
   seq: number;
   /** 已推送的增量，断线重连时按 lastSeq 补发 */
   log: Delta[];
+  /** 已推送的发送计划，新订阅者（侧边栏接手、转接）补发，引用渲染要用它的块号 */
+  plan: PlanMsg | undefined;
   controller: AbortController;
   answer: string;
   reasoning: string;
@@ -64,6 +68,10 @@ interface Conversation {
   turns: AskTurn[];
   revision: number;
   activeJobId: string | undefined;
+  /** 最近一次接单的任务：新订阅者（侧边栏）从它续播 */
+  lastJobId: string | undefined;
+  /** 最近一次发问时标签页所在的页面（pageKey）。换了页面，不指定对话的订阅不再接上它 */
+  pageKey: string | undefined;
   /** 上一次请求带了页面全文；下次不带时计划写明「已移除先前的全文」（5.9 降档） */
   lastFullPage: boolean;
 }
@@ -121,6 +129,8 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
   const jobs = new Map<string, Job>();
   const byRequest = new Map<string, string>();
   const conversations = new Map<string, Conversation>();
+  /** 标签页当前的对话：最近一次接单的那个。侧边栏不指定对话时显示它（5.4「显示当前页的对话」） */
+  const currentByTab = new Map<number, string>();
 
   /** 启动扫描（5.5）：上一个后台进程留下的未终结任务标 interrupted；同时恢复去重表 */
   const ready = (async () => {
@@ -306,6 +316,53 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
     /** 对话属于哪个标签页；不在内存里返回 undefined */
     ownerOf: (conversationId: string): number | undefined => conversations.get(conversationId)?.tabId,
 
+    /**
+     * 订阅要接上的对话与任务：指定了对话就用它（须属于这个标签页）；否则用标签页当前的对话，
+     * 但标签页已换到别的页面（pageKey 不同）时不接（新页面不显示旧页面的回答）。
+     * 对话不在内存（后台重启过、或从没发过问）时返回 undefined
+     */
+    current(
+      tabId: number,
+      conversationId: string | undefined,
+      pageKey: string | undefined,
+    ): { conversationId: string; job?: { jobId: string; messageId: string } } | undefined {
+      const id = conversationId ?? currentByTab.get(tabId);
+      const conv = id === undefined ? undefined : conversations.get(id);
+      if (!conv || conv.tabId !== tabId) return undefined;
+      if (
+        conversationId === undefined &&
+        pageKey !== undefined &&
+        conv.pageKey !== undefined &&
+        conv.pageKey !== pageKey
+      )
+        return undefined;
+      const j = conv.lastJobId === undefined ? undefined : jobs.get(conv.lastJobId);
+      return {
+        conversationId: conv.id,
+        ...(j ? { job: { jobId: j.record.jobId, messageId: j.record.messageId } } : {}),
+      };
+    },
+
+    /** 内存里的任务（属于这个标签页才给） */
+    jobOf(tabId: number, jobId: string): { jobId: string; messageId: string } | undefined {
+      const j = jobs.get(jobId);
+      return j && j.tabId === tabId ? { jobId, messageId: j.record.messageId } : undefined;
+    },
+
+    /**
+     * 同步补发：seq > fromSeq 的增量、发送计划、当前状态。调用方在同一个同步段里随后把端口登记为订阅者，
+     * 中间没有 await，补发的与之后实时推送的不会交错、不会漏（侧边栏从 0 续播，6.4「无缝续上」）。
+     * 任务不在内存返回 false
+     */
+    replayNow(tabId: number, jobId: string, fromSeq: number, reply: Reply): boolean {
+      const job = jobs.get(jobId);
+      if (!job || job.tabId !== tabId) return false;
+      if (job.plan) reply(job.plan);
+      for (const d of job.log) if (d.seq > fromSeq) reply(d);
+      reply(jobStateMsg(job));
+      return true;
+    },
+
     async ask(tabId: number, msg: AskMsg, reply: Reply): Promise<void> {
       await ready;
       const reject = (reason: RejectReason) =>
@@ -350,6 +407,8 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
 
       const loaded = await deps.loadSettings();
       if (!loaded.ok) return refuse('invalid');
+      const tabUrl = await deps.getTabUrl?.(tabId).catch(() => undefined);
+      const pageKey = tabUrl === undefined ? undefined : toPageKey(tabUrl);
       const settings = loaded.settings;
       const target = resolveModel(settings, msg.model);
       const adapter = target && deps.adapters[target.conn.interfaceType];
@@ -362,6 +421,8 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         turns: [],
         revision: 0,
         activeJobId: undefined,
+        lastJobId: undefined,
+        pageKey,
         lastFullPage: false,
       };
       conversations.set(conv.id, conv);
@@ -387,6 +448,7 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         tabId,
         seq: 0,
         log: [],
+        plan: undefined,
         controller: new AbortController(),
         answer: '',
         reasoning: '',
@@ -405,6 +467,11 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       jobs.set(jobId, job);
       conv.activeJobId = jobId;
       evict();
+      const prevLastJobId = conv.lastJobId;
+      conv.lastJobId = jobId;
+      conv.pageKey = pageKey;
+      const prevCurrent = currentByTab.get(tabId);
+      currentByTab.set(tabId, conv.id);
 
       // 先写热副本，再发网络请求（5.5）；写不进去就不发
       try {
@@ -412,6 +479,9 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       } catch {
         jobs.delete(jobId);
         conv.activeJobId = undefined;
+        conv.lastJobId = prevLastJobId;
+        if (prevCurrent === undefined) currentByTab.delete(tabId);
+        else currentByTab.set(tabId, prevCurrent);
         return refuse('invalid');
       }
       conv.revision++;
@@ -422,6 +492,8 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         messageId: record.messageId,
         conversationId: conv.id,
       });
+      // 同一标签页的其他界面（小窗、侧边栏）随之显示这个任务；这是在任何增量之前发出的
+      hub.toTab(tabId, { type: 'conv/current', conversationId: conv.id, jobId, messageId: record.messageId });
 
       // 页面上下文（5.6、5.9）：接单之后、发请求之前读取。读取期间站点策略变了（设置页改了黑名单），
       // 这次请求取消（D-01：未发出的取消）；用户在读取期间点了停止，同样不再发出
@@ -481,7 +553,8 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         notes: plan.notes.length,
       });
       // 发送计划先于请求推给界面（规则 8）
-      hub.toTab(tabId, { type: 'conv/plan', jobId, contextSnapshotId, plan });
+      job.plan = { type: 'conv/plan', jobId, contextSnapshotId, plan };
+      hub.toTab(tabId, job.plan);
       job.req = {
         model: target.model.model,
         messages: assembly.messages,
@@ -554,6 +627,7 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
 
     forgetTab(tabId: number): void {
       for (const [id, c] of conversations) if (c.tabId === tabId) conversations.delete(id);
+      currentByTab.delete(tabId);
     },
 
     /** 站点策略变更（D-01）：已接单、尚未发出网络请求的任务取消（stopped，policyChanged）；已发出的继续 */

@@ -98,6 +98,12 @@ const PAGE_NOTE_TEXT: Readonly<Record<PageNoteKind, string>> = {
 };
 
 /** 系统提示词：基础规则 + 长度档 + 语言（5.9）。动作提示词与覆盖本版本不接入 */
+/**
+ * 右键 / 快捷键「总结本页」的最小版本（V-02 原型）：固定问题 + 整页档位，复用划词提问的全文装配。
+ * 6.2 的完整总结（按 pageKey 缓存、内容版本标注、要点附块号锚点、总结预算）不在这一版
+ */
+export const SUMMARIZE_PAGE_QUESTION = '总结本页';
+
 export function askSystemPrompt(lengthTier: LengthTier, language: string): string {
   const lang = language === 'auto' ? '用用户提问所用的语言回答。' : `用 ${language} 回答。`;
   return [...BASE_RULES, LENGTH_RULE[lengthTier], lang].join('\n');

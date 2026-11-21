@@ -1,4 +1,5 @@
 // 后台装配：各模块共用一份运行时状态。监听器的注册在 main.ts（顶层同步）。
+import { type CommandTab, createCommands, type MenuInfo } from './commands';
 import { createConv } from './conv';
 import type { BackgroundDeps, SenderLike } from './deps';
 import { createFloatHost } from './float-host';
@@ -8,6 +9,7 @@ import { createJobs } from './jobs';
 import { createOptions } from './options';
 import { createPages } from './pages';
 import { senderRole } from './roles';
+import { createRoute } from './route';
 import { createStore } from './store';
 
 export type Background = ReturnType<typeof createBackground>;
@@ -20,11 +22,15 @@ export function createBackground(deps: BackgroundDeps) {
   const host = createFloatHost(deps, store);
   const pages = createPages(deps);
   const jobs = createJobs(deps, store, hub, pages);
-  const intents = createIntents(deps, store, hub, host, pages);
+  const route = createRoute(deps, store, hub, host);
+  const intents = createIntents(deps, store, hub, host, pages, route);
+  const commands = createCommands(deps, store, hub, host, jobs, route);
   const options = createOptions(deps);
   // 每次启动都收紧一次（5.11）：顶层同步路径里发起，不 await，不阻塞监听器注册；
   // 失败不当作安全保证，设置页写 Key 前会再调一次 settings/ensureLocked 确认
   void deps.lockStorage().catch((e: unknown) => deps.log('storage/lockFailed', { error: errName(e) }));
+  // 就绪状态的内存副本（点「问」时同步决定去向要用，见 route.ts）：被唤醒后尽快从 storage.session 补回
+  void store.warmReadiness().catch((e: unknown) => deps.log('store/warmFailed', { error: errName(e) }));
   return {
     /** 启动扫描完成 */
     ready: jobs.ready,
@@ -33,6 +39,10 @@ export function createBackground(deps: BackgroundDeps) {
       return senderRole(sender, deps.self) === 'options' ? options(raw, sender) : intents(raw, sender);
     },
     onConnect: createConv(deps, store, hub, host, jobs),
+    /** 快捷键（commands.onCommand）：在监听器的同步段里调用，要开侧边栏的当场 open（规则 10） */
+    onCommand: (command: string, tab: CommandTab | undefined) => commands.onCommand(command, tab),
+    /** 右键菜单（contextMenus.onClicked）：同上 */
+    onMenuClicked: (info: MenuInfo, tab: CommandTab | undefined) => commands.onMenuClicked(info, tab),
     /** 诊断与单测：某标签页缓存的页面版本（V-04/V-06 的缓存失效证据） */
     cachedPageVersion: (tabId: number) => pages.cachedVersion(tabId),
     /**

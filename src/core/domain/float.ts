@@ -9,6 +9,14 @@ export function routeOnAsk(state: FloatReadiness): AskRoute {
   return state === 'failedUnsupported' || state === 'failedTransient' ? 'sidepanel' : 'float';
 }
 
+/**
+ * 这一页能不能放小窗：要能注入阅读器。标签页地址看不到（没有主机权限，如浏览器内部页面）或不是网页时不能，
+ * 快捷键、右键改走侧边栏（同步打开，规则 10）
+ */
+export function floatHostable(url: string | undefined): boolean {
+  return url !== undefined && /^(https?|file):/i.test(url);
+}
+
 export const FLOAT_LIMITS = {
   /** loading 超过这么久未完成握手，转 failedTransient（D-02 初值） */
   loadTimeoutMs: 5_000,
@@ -73,11 +81,31 @@ export function bindingMatches(
   );
 }
 
-/** 转到侧边栏：侧边栏订阅成功后才收起小窗（AR-19） */
+/**
+ * 转到侧边栏：侧边栏订阅成功后才收起小窗（AR-19）。存 storage.session（键见 session-keys.ts），短期有效。
+ * conversationId 可选：还没发问的小窗也能转，侧边栏接手这个标签页（contract-v1.3 增量）
+ */
 export interface Handoff {
   handoffId: string;
   windowId: number;
   tabId: number;
-  conversationId: string;
+  conversationId?: string;
   expiresAt: number;
+}
+
+/** 转接的有效期：侧边栏要在这段时间里连上并订阅，否则作废（小窗不收起，已提示用户） */
+export const HANDOFF_TTL_MS = 30_000;
+
+/** 侧边栏带 handoffId 订阅时核对：窗口、标签页、对话都要对上，且未过期 */
+export function handoffMatches(
+  h: Handoff | undefined,
+  sub: { windowId: number; tabId: number; conversationId: string | undefined; now: number },
+): boolean {
+  return (
+    h !== undefined &&
+    h.expiresAt > sub.now &&
+    h.windowId === sub.windowId &&
+    h.tabId === sub.tabId &&
+    (h.conversationId === undefined || h.conversationId === sub.conversationId)
+  );
 }
