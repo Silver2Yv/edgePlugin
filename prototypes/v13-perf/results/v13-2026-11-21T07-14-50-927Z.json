@@ -1,0 +1,1023 @@
+{
+  "env": {
+    "at": "2026-11-21T07:11:09.641Z",
+    "node": "v24.12.0",
+    "os": "win32 10.0.26100",
+    "cpu": "12th Gen Intel(R) Core(TM) i7-12700H x20",
+    "totalMemGB": "15.7",
+    "browser": "Chrome for Testing（headless）",
+    "browserVersionEnabled": "159.0.8154.6",
+    "browserVersionDisabled": "159.0.8154.6",
+    "chromiumPathOverride": "D:/tmp/cft/chrome.exe",
+    "commit": "5af39fbb3663be689d421f3596d287824642ba26",
+    "quick": false,
+    "note": "本机同时有另外两个代理在跑 e2e，存在并发负载；以下数字标「并发负载下的试跑」，不是独占机器的洁净基线。"
+  },
+  "repeats": {
+    "baseline": 10,
+    "selectNoAsk": 12,
+    "askCold": 10,
+    "askWarm": 15,
+    "largePage": 8,
+    "multiFrame": 8,
+    "scroll": 6,
+    "longAnswer": 5
+  },
+  "tabCount": 30,
+  "scenarios": {
+    "bundleSize": {
+      "sentinelGzipBytes": 3734,
+      "readerGzipBytes": 9967,
+      "floatGzipBytes": 155742,
+      "backgroundGzipBytes": 18678
+    },
+    "sentinelLoad": {
+      "ms": 2.599,
+      "matchedEvents": 2,
+      "totalEvents": 2124
+    },
+    "baseline": {
+      "enabled": {
+        "heap": [
+          1771488,
+          1771488,
+          1771488,
+          1771488,
+          1771488,
+          1771488,
+          1771488,
+          1771488,
+          1771488,
+          1771488
+        ],
+        "longtaskCount": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "longtaskTotalMs": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "readerInjected": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "disabled": {
+        "heap": [
+          1481828,
+          1481828,
+          1481828,
+          1481828,
+          1481828,
+          1481828,
+          1481828,
+          1481828,
+          1481828,
+          1481828
+        ],
+        "longtaskCount": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "longtaskTotalMs": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    "selectNoAsk": {
+      "toolbarMs": [
+        76,
+        54,
+        73,
+        65,
+        75,
+        69,
+        95,
+        63,
+        88,
+        83,
+        83,
+        76
+      ],
+      "readerInjected": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "modelCallsDuringScenario": 0
+    },
+    "askFlowArticle": {
+      "cold": [
+        {
+          "toolbarMs": 70,
+          "floatFrameMs": 39,
+          "inputVisibleMs": 99,
+          "requestSentMs": 194,
+          "firstContentMs": 530,
+          "totalMs": 540,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 74,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 57,
+          "requestSentMs": 103,
+          "firstContentMs": 174,
+          "totalMs": 422,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 73,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 70,
+          "requestSentMs": 106,
+          "firstContentMs": 182,
+          "totalMs": 429,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 66,
+          "floatFrameMs": 22,
+          "inputVisibleMs": 77,
+          "requestSentMs": 158,
+          "firstContentMs": 244,
+          "totalMs": 493,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 85,
+          "floatFrameMs": 22,
+          "inputVisibleMs": 72,
+          "requestSentMs": 111,
+          "firstContentMs": 179,
+          "totalMs": 457,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 67,
+          "floatFrameMs": 23,
+          "inputVisibleMs": 50,
+          "requestSentMs": 86,
+          "firstContentMs": 171,
+          "totalMs": 416,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 50,
+          "floatFrameMs": 35,
+          "inputVisibleMs": 58,
+          "requestSentMs": 86,
+          "firstContentMs": 162,
+          "totalMs": 410,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 66,
+          "floatFrameMs": 23,
+          "inputVisibleMs": 74,
+          "requestSentMs": 111,
+          "firstContentMs": 181,
+          "totalMs": 427,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 50,
+          "floatFrameMs": 40,
+          "inputVisibleMs": 61,
+          "requestSentMs": 96,
+          "firstContentMs": 182,
+          "totalMs": 429,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 60,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 76,
+          "requestSentMs": 104,
+          "firstContentMs": 180,
+          "totalMs": 427,
+          "finalState": "completed"
+        }
+      ],
+      "warm": [
+        {
+          "toolbarMs": 23,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 10,
+          "requestSentMs": 51,
+          "firstContentMs": 118,
+          "totalMs": 368,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 21,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 46,
+          "requestSentMs": 81,
+          "firstContentMs": 151,
+          "totalMs": 397,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 23,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 44,
+          "requestSentMs": 79,
+          "firstContentMs": 165,
+          "totalMs": 413,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 19,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 32,
+          "requestSentMs": 62,
+          "firstContentMs": 141,
+          "totalMs": 391,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 22,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 45,
+          "requestSentMs": 71,
+          "firstContentMs": 153,
+          "totalMs": 400,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 14,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 35,
+          "requestSentMs": 59,
+          "firstContentMs": 142,
+          "totalMs": 391,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 18,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 33,
+          "requestSentMs": 57,
+          "firstContentMs": 110,
+          "totalMs": 387,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 24,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 41,
+          "requestSentMs": 75,
+          "firstContentMs": 148,
+          "totalMs": 366,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 32,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 33,
+          "requestSentMs": 64,
+          "firstContentMs": 141,
+          "totalMs": 388,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 21,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 8,
+          "requestSentMs": 37,
+          "firstContentMs": 90,
+          "totalMs": 370,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 16,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 34,
+          "requestSentMs": 52,
+          "firstContentMs": 141,
+          "totalMs": 391,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 21,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 31,
+          "requestSentMs": 52,
+          "firstContentMs": 136,
+          "totalMs": 386,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 14,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 35,
+          "requestSentMs": 54,
+          "firstContentMs": 112,
+          "totalMs": 391,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 16,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 36,
+          "requestSentMs": 56,
+          "firstContentMs": 145,
+          "totalMs": 393,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 18,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 33,
+          "requestSentMs": 75,
+          "firstContentMs": 138,
+          "totalMs": 418,
+          "finalState": "completed"
+        }
+      ]
+    },
+    "askFlowLargePage": {
+      "cold": [
+        {
+          "toolbarMs": 147,
+          "floatFrameMs": 28,
+          "inputVisibleMs": 61,
+          "requestSentMs": 325,
+          "firstContentMs": 413,
+          "totalMs": 643,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 166,
+          "floatFrameMs": 23,
+          "inputVisibleMs": 52,
+          "requestSentMs": 253,
+          "firstContentMs": 347,
+          "totalMs": 588,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 146,
+          "floatFrameMs": 21,
+          "inputVisibleMs": 58,
+          "requestSentMs": 247,
+          "firstContentMs": 333,
+          "totalMs": 581,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 100,
+          "floatFrameMs": 6,
+          "inputVisibleMs": 51,
+          "requestSentMs": 214,
+          "firstContentMs": 296,
+          "totalMs": 545,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 144,
+          "floatFrameMs": 22,
+          "inputVisibleMs": 48,
+          "requestSentMs": 221,
+          "firstContentMs": 312,
+          "totalMs": 560,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 95,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 48,
+          "requestSentMs": 221,
+          "firstContentMs": 296,
+          "totalMs": 542,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 101,
+          "floatFrameMs": 22,
+          "inputVisibleMs": 47,
+          "requestSentMs": 209,
+          "firstContentMs": 275,
+          "totalMs": 548,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 160,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 54,
+          "requestSentMs": 260,
+          "firstContentMs": 322,
+          "totalMs": 601,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 143,
+          "floatFrameMs": 24,
+          "inputVisibleMs": 52,
+          "requestSentMs": 231,
+          "firstContentMs": 308,
+          "totalMs": 554,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 101,
+          "floatFrameMs": 6,
+          "inputVisibleMs": 52,
+          "requestSentMs": 208,
+          "firstContentMs": 294,
+          "totalMs": 543,
+          "finalState": "completed"
+        }
+      ],
+      "warm": [
+        {
+          "toolbarMs": 64,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 34,
+          "requestSentMs": 159,
+          "firstContentMs": 254,
+          "totalMs": 504,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 103,
+          "floatFrameMs": 6,
+          "inputVisibleMs": 38,
+          "requestSentMs": 172,
+          "firstContentMs": 242,
+          "totalMs": 492,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 69,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 43,
+          "requestSentMs": 140,
+          "firstContentMs": 225,
+          "totalMs": 443,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 76,
+          "floatFrameMs": 4,
+          "inputVisibleMs": 43,
+          "requestSentMs": 162,
+          "firstContentMs": 235,
+          "totalMs": 485,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 88,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 42,
+          "requestSentMs": 172,
+          "firstContentMs": 254,
+          "totalMs": 503,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 70,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 46,
+          "requestSentMs": 150,
+          "firstContentMs": 230,
+          "totalMs": 474,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 82,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 44,
+          "requestSentMs": 161,
+          "firstContentMs": 243,
+          "totalMs": 490,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 71,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 42,
+          "requestSentMs": 148,
+          "firstContentMs": 242,
+          "totalMs": 491,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 54,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 12,
+          "requestSentMs": 104,
+          "firstContentMs": 166,
+          "totalMs": 440,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 78,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 10,
+          "requestSentMs": 144,
+          "firstContentMs": 234,
+          "totalMs": 479,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 55,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 7,
+          "requestSentMs": 103,
+          "firstContentMs": 193,
+          "totalMs": 439,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 41,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 5,
+          "requestSentMs": 73,
+          "firstContentMs": 162,
+          "totalMs": 412,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 37,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 29,
+          "requestSentMs": 97,
+          "firstContentMs": 185,
+          "totalMs": 430,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 42,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 37,
+          "requestSentMs": 102,
+          "firstContentMs": 191,
+          "totalMs": 441,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 43,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 38,
+          "requestSentMs": 118,
+          "firstContentMs": 204,
+          "totalMs": 452,
+          "finalState": "completed"
+        }
+      ]
+    },
+    "askFlowMultiFrame": {
+      "cold": [
+        {
+          "toolbarMs": 49,
+          "floatFrameMs": 24,
+          "inputVisibleMs": 79,
+          "requestSentMs": 104,
+          "firstContentMs": 187,
+          "totalMs": 434,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 62,
+          "floatFrameMs": 19,
+          "inputVisibleMs": 63,
+          "requestSentMs": 95,
+          "firstContentMs": 173,
+          "totalMs": 423,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 52,
+          "floatFrameMs": 38,
+          "inputVisibleMs": 59,
+          "requestSentMs": 92,
+          "firstContentMs": 168,
+          "totalMs": 416,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 57,
+          "floatFrameMs": 37,
+          "inputVisibleMs": 62,
+          "requestSentMs": 106,
+          "firstContentMs": 171,
+          "totalMs": 452,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 57,
+          "floatFrameMs": 20,
+          "inputVisibleMs": 63,
+          "requestSentMs": 96,
+          "firstContentMs": 170,
+          "totalMs": 418,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 61,
+          "floatFrameMs": 22,
+          "inputVisibleMs": 68,
+          "requestSentMs": 97,
+          "firstContentMs": 171,
+          "totalMs": 416,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 58,
+          "floatFrameMs": 36,
+          "inputVisibleMs": 62,
+          "requestSentMs": 97,
+          "firstContentMs": 174,
+          "totalMs": 421,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 57,
+          "floatFrameMs": 38,
+          "inputVisibleMs": 60,
+          "requestSentMs": 92,
+          "firstContentMs": 174,
+          "totalMs": 423,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 54,
+          "floatFrameMs": 38,
+          "inputVisibleMs": 68,
+          "requestSentMs": 107,
+          "firstContentMs": 184,
+          "totalMs": 401,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 58,
+          "floatFrameMs": 19,
+          "inputVisibleMs": 76,
+          "requestSentMs": 107,
+          "firstContentMs": 183,
+          "totalMs": 430,
+          "finalState": "completed"
+        }
+      ],
+      "warm": [
+        {
+          "toolbarMs": 16,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 32,
+          "requestSentMs": 58,
+          "firstContentMs": 140,
+          "totalMs": 390,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 14,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 37,
+          "requestSentMs": 53,
+          "firstContentMs": 141,
+          "totalMs": 387,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 13,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 37,
+          "requestSentMs": 54,
+          "firstContentMs": 145,
+          "totalMs": 391,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 15,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 34,
+          "requestSentMs": 53,
+          "firstContentMs": 144,
+          "totalMs": 391,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 17,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 33,
+          "requestSentMs": 55,
+          "firstContentMs": 138,
+          "totalMs": 386,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 11,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 36,
+          "requestSentMs": 49,
+          "firstContentMs": 129,
+          "totalMs": 378,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 14,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 35,
+          "requestSentMs": 47,
+          "firstContentMs": 126,
+          "totalMs": 376,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 21,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 32,
+          "requestSentMs": 51,
+          "firstContentMs": 135,
+          "totalMs": 383,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 20,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 30,
+          "requestSentMs": 44,
+          "firstContentMs": 122,
+          "totalMs": 372,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 19,
+          "floatFrameMs": 3,
+          "inputVisibleMs": 30,
+          "requestSentMs": 53,
+          "firstContentMs": 138,
+          "totalMs": 390,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 12,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 37,
+          "requestSentMs": 50,
+          "firstContentMs": 130,
+          "totalMs": 377,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 20,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 30,
+          "requestSentMs": 51,
+          "firstContentMs": 136,
+          "totalMs": 351,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 11,
+          "floatFrameMs": 2,
+          "inputVisibleMs": 28,
+          "requestSentMs": 40,
+          "firstContentMs": 101,
+          "totalMs": 371,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 16,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 33,
+          "requestSentMs": 52,
+          "firstContentMs": 140,
+          "totalMs": 389,
+          "finalState": "completed"
+        },
+        {
+          "toolbarMs": 13,
+          "floatFrameMs": 1,
+          "inputVisibleMs": 35,
+          "requestSentMs": 58,
+          "firstContentMs": 148,
+          "totalMs": 380,
+          "finalState": "completed"
+        }
+      ]
+    },
+    "multiFrameSubToolbar": {
+      "subFrameToolbarOpened": true
+    },
+    "scrollEnabled": [
+      {
+        "scrollMs": 1829,
+        "longtaskCount": 0,
+        "longtaskTotalMs": 0
+      },
+      {
+        "scrollMs": 1817,
+        "longtaskCount": 0,
+        "longtaskTotalMs": 0
+      },
+      {
+        "scrollMs": 1840,
+        "longtaskCount": 0,
+        "longtaskTotalMs": 0
+      },
+      {
+        "scrollMs": 1801,
+        "longtaskCount": 0,
+        "longtaskTotalMs": 0
+      },
+      {
+        "scrollMs": 1812,
+        "longtaskCount": 0,
+        "longtaskTotalMs": 0
+      },
+      {
+        "scrollMs": 1823,
+        "longtaskCount": 0,
+        "longtaskTotalMs": 0
+      }
+    ],
+    "scrollDisabled": [
+      {
+        "scrollMs": 1825,
+        "longtaskCount": 0,
+        "longtaskTotalMs": 0
+      },
+      {
+        "scrollMs": 1779,
+        "longtaskCount": 0,
+        "longtaskTotalMs": 0
+      },
+      {
+        "scrollMs": 1827,
+        "longtaskCount": 0,
+        "longtaskTotalMs": 0
+      },
+      {
+        "scrollMs": 1810,
+        "longtaskCount": 0,
+        "longtaskTotalMs": 0
+      },
+      {
+        "scrollMs": 1820,
+        "longtaskCount": 0,
+        "longtaskTotalMs": 0
+      },
+      {
+        "scrollMs": 1785,
+        "longtaskCount": 0,
+        "longtaskTotalMs": 0
+      }
+    ],
+    "longAnswer": [
+      {
+        "firstContentMs": 63.09999999962747,
+        "finalState": "completed",
+        "messageCount": 163,
+        "totalBytes": 33681,
+        "heapBefore": 2600912,
+        "heapMid1": 2996712,
+        "heapMid2": 2996712,
+        "heapAfter": 2996712,
+        "heapRecovered": 2996712
+      },
+      {
+        "firstContentMs": 65,
+        "finalState": "completed",
+        "messageCount": 165,
+        "totalBytes": 34109,
+        "heapBefore": 2600912,
+        "heapMid1": 2996944,
+        "heapMid2": 2996944,
+        "heapAfter": 2996944,
+        "heapRecovered": 2996944
+      },
+      {
+        "firstContentMs": 59,
+        "finalState": "completed",
+        "messageCount": 163,
+        "totalBytes": 33681,
+        "heapBefore": 2600900,
+        "heapMid1": 2996956,
+        "heapMid2": 2996956,
+        "heapAfter": 2996956,
+        "heapRecovered": 2996956
+      },
+      {
+        "firstContentMs": 62.30000000074506,
+        "finalState": "completed",
+        "messageCount": 160,
+        "totalBytes": 33007,
+        "heapBefore": 2600924,
+        "heapMid1": 2996956,
+        "heapMid2": 2996956,
+        "heapAfter": 2996956,
+        "heapRecovered": 2996956
+      },
+      {
+        "firstContentMs": 61.80000000074506,
+        "finalState": "completed",
+        "messageCount": 157,
+        "totalBytes": 32397,
+        "heapBefore": 2600920,
+        "heapMid1": 2996956,
+        "heapMid2": 2996956,
+        "heapAfter": 2996956,
+        "heapRecovered": 2996956
+      }
+    ],
+    "thirtyTabs": {
+      "tabCount": 30,
+      "perTabFloatFrameCount": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "maxFloatFrameCountPerTab": 1,
+      "totalHeapBytes": 82319660,
+      "heapMeasuredTabs": 30,
+      "workerEpochBefore": "2e498d05-127b-4139-9ea9-f55511e15681",
+      "workerEpochAfter": "2e498d05-127b-4139-9ea9-f55511e15681",
+      "workerEpochChanged": false
+    },
+    "backgroundWake": {
+      "measurable": false,
+      "reason": "Playwright/CDP 全程连着浏览器时后台不会被 30 秒空闲回收（V-01 已证实）；本脚本全程用 CDP 驱动各场景，workerEpoch 预期全程不变，见 thirtyTabs.workerEpochChanged（应为 false，不代表后台没被唤醒过，而是这条测量路径下测不出来）。要测真实唤醒次数需要 V-01 的「分离子进程」方法，但那样就不能用同一个 Playwright 连接驱动 30 个标签页的交互，本次未做，留给专门的后台生命周期验证（V-01）。"
+    }
+  }
+}
