@@ -350,7 +350,208 @@ test('宿主导航后，旧令牌在新文档里握手失败（按 documentId �
   expect(result).toEqual([{ type: 'conv/rejected', reason: 'badToken', refType: 'conv/helloFloat' }]);
 });
 
-// 小窗私有端口（FLOAT_PORT，tabs.connect）尚未实现（另一个 agent 在做拖动/缩放/Esc 收起），
-// 按任务要求标 fixme 留着：私有端口落地后把下面两个场景补起来。
-test.fixme('小窗私有端口只路由到目标阅读器：错误 frameId/documentId 连接被拒绝（待私有端口合并）', async () => {});
-test.fixme('私有端口消息超限或类型未知时被拒绝，不影响已有连接（待私有端口合并）', async () => {});
+// ───────────── 小窗私有端口（FLOAT_PORT，5.3）：小窗 ↔ 所在标签页的阅读器，tabs.connect 直连 ─────────────
+// 能连到阅读器 runtime.onConnect 的只有扩展页面（tabs.connect）；网页与其他内容脚本没有 tabs.connect。
+// 阅读器端（src/page/float-port.ts）再核对 sender：本扩展 + 路径 /float.html，其余直接断开。
+
+const floatHostOpen = (page: Page) =>
+  page.evaluate(() => document.querySelector('[data-ra-float-host]')?.matches(':popover-open') ?? false);
+
+const waitFloatPortReady = (page: Page) =>
+  expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (document.querySelector('[data-ra-float-host]') as HTMLElement | null)?.dataset.raFloatPortReady ===
+          'true',
+      ),
+    )
+    .toBe(true);
+
+/** 等小窗 frame 出现在 page.frames() 里再取（iframe 的 src 写进 DOM 之后，Edge 上要稍晚才列出这个 frame） */
+async function currentFloatFrame(page: Page): Promise<import('@playwright/test').Frame> {
+  const find = () => page.frames().find((f) => f.url().includes('float.html'));
+  await expect.poll(() => find() !== undefined, { message: '小窗 frame 出现' }).toBe(true);
+  return find() as import('@playwright/test').Frame;
+}
+
+/** 顶层框架当前的 documentId（scripting.executeScript 的注入结果里带） */
+const topDocumentId = (sw: Worker, tabId: number) =>
+  sw.evaluate(async (tab) => {
+    const [r] = await chrome.scripting.executeScript({
+      target: { tabId: tab, frameIds: [0] },
+      func: () => 0,
+    });
+    return r?.documentId;
+  }, tabId);
+
+interface PortProbe {
+  received: unknown[];
+  disconnected: boolean;
+  threw: boolean;
+}
+
+/** 在某个扩展页面里向标签页开一条 FLOAT_PORT，收集 600 ms 内的回复与是否被断开，最后自己断开 */
+const probeFloatPort = (
+  where: Page | import('@playwright/test').Frame,
+  target: { tabId: number; frameId: number; documentId?: string },
+) =>
+  where.evaluate(
+    (t) =>
+      new Promise<PortProbe>((resolve) => {
+        let port: ReturnType<typeof chrome.tabs.connect>;
+        try {
+          port = chrome.tabs.connect(t.tabId, {
+            name: 'float',
+            frameId: t.frameId,
+            ...(t.documentId === undefined ? {} : { documentId: t.documentId }),
+          });
+        } catch {
+          resolve({ received: [], disconnected: true, threw: true });
+          return;
+        }
+        const out: PortProbe = { received: [], disconnected: false, threw: false };
+        port.onMessage.addListener((m) => out.received.push(m));
+        port.onDisconnect.addListener(() => {
+          void chrome.runtime.lastError; // 没有接收方时浏览器在这里报错，读掉以免控制台告警
+          out.disconnected = true;
+        });
+        setTimeout(() => {
+          if (!out.disconnected) port.disconnect();
+          resolve(out);
+        }, 600);
+      }),
+    target,
+  );
+
+test('小窗私有端口只路由到目标阅读器：错误 frameId / 过期 documentId / 非小窗来源的连接拿不到回应，原连接不受影响', async ({
+  context,
+  page,
+  serviceWorker,
+}) => {
+  await waitSentinelRegistered(serviceWorker);
+  await routeSite(page);
+  await page.goto(`${SITE}a`);
+  const cdp1 = await context.newCDPSession(page);
+  await selectAndClickAsk(page, cdp1);
+  await cdp1.detach();
+  const frameA = await currentFloatFrame(page);
+  const tabId = await frameA.evaluate(async () => (await chrome.tabs.getCurrent())?.id);
+  if (tabId === undefined) throw new Error('小窗里取不到所在标签页');
+  const staleDoc = await topDocumentId(serviceWorker, tabId);
+  expect(staleDoc).toBeTruthy();
+
+  // 同一标签页导航到新文档，重新划词点「问」，建出新文档里的小窗与私有端口
+  await page.goto(`${SITE}b`);
+  const cdp2 = await context.newCDPSession(page);
+  await selectAndClickAsk(page, cdp2);
+  await cdp2.detach();
+  await waitFloatPortReady(page);
+  const frame = await currentFloatFrame(page);
+  const currentDoc = await topDocumentId(serviceWorker, tabId);
+  expect(currentDoc).not.toBe(staleDoc);
+
+  // 1. 错误 frameId：没有接收方，连接被浏览器断开，收不到任何 float/rect
+  const wrongFrame = await probeFloatPort(frame, { tabId, frameId: 9999 });
+  expect(wrongFrame.received).toEqual([]);
+  expect(wrongFrame.disconnected).toBe(true);
+
+  // 2. 导航前的 documentId：旧文档已不存在，同样没有接收方
+  const staleProbe = await probeFloatPort(frame, { tabId, frameId: 0, documentId: staleDoc as string });
+  expect(staleProbe.received).toEqual([]);
+  expect(staleProbe.disconnected).toBe(true);
+
+  // 3. 本扩展的其他页面（设置页）连到正确的标签页与框架：阅读器核对 sender 不是 float.html，直接断开
+  const options = await context.newPage();
+  await options.goto(`chrome-extension://${EXTENSION_ID}/options.html`);
+  const fromOptions = await probeFloatPort(options, { tabId, frameId: 0 });
+  expect(fromOptions.received).toEqual([]);
+  expect(fromOptions.disconnected).toBe(true);
+  await options.close();
+
+  // 被拒的连接没有顶替原连接：焦点在小窗里按 Esc，经小窗自己的私有端口收起
+  await page.bringToFront();
+  expect(await floatHostOpen(page)).toBe(true);
+  const input = frame.getByLabel('输入问题');
+  await input.click();
+  await input.press('Escape');
+  await expect.poll(() => floatHostOpen(page)).toBe(false);
+
+  // 对照：同样的探测用当前 documentId 从小窗发起，能连上并收到初始 float/rect（上面的「拒绝」不是探测方法本身失效）
+  const ok = await probeFloatPort(frame, { tabId, frameId: 0, documentId: currentDoc as string });
+  expect(ok.disconnected).toBe(false);
+  expect(ok.received).toEqual([expect.objectContaining({ type: 'float/rect', settled: false })]);
+});
+
+test('私有端口上类型未知、形状不对、超出范围、超大的消息被丢弃，无副作用，同一连接之后的合法消息照常生效', async ({
+  context,
+  page,
+  serviceWorker,
+}) => {
+  await waitSentinelRegistered(serviceWorker);
+  await routeSite(page);
+  await page.goto(`${SITE}a`);
+  const cdp = await context.newCDPSession(page);
+  await selectAndClickAsk(page, cdp);
+  await cdp.detach();
+  await waitFloatPortReady(page);
+  const frame = await currentFloatFrame(page);
+
+  // 从小窗页面自己开一条私有端口（顶替小窗原来那条，阅读器同一时刻只服务最近一次连接）。
+  // 阅读器对每条收到的消息都回一次当前 rect，不论消息是否合法：据此逐条核对「丢弃且无副作用」
+  const result = await frame.evaluate(async () => {
+    const tab = await chrome.tabs.getCurrent();
+    if (tab?.id === undefined) throw new Error('取不到所在标签页');
+    const port = chrome.tabs.connect(tab.id, { name: 'float', frameId: 0 });
+    const rects: { w: number; h: number; x: number; y: number }[] = [];
+    let disconnected = false;
+    port.onMessage.addListener((m: { w: number; h: number; x: number; y: number }) => rects.push(m));
+    port.onDisconnect.addListener(() => {
+      disconnected = true;
+    });
+    const waitFor = (n: number) =>
+      new Promise<void>((resolve) => {
+        const start = Date.now();
+        const t = setInterval(() => {
+          if (rects.length >= n || disconnected || Date.now() - start > 3000) {
+            clearInterval(t);
+            resolve();
+          }
+        }, 20);
+      });
+    await waitFor(1); // 连接建立时的初始 rect
+    const bad: unknown[] = [
+      { type: 'float/evil' }, // 未知类型
+      'float/collapse', // 不是对象
+      null,
+      { type: 'float/collapse', extra: 1 }, // 多余字段
+      { type: 'float/resize', w: '320', h: 260 }, // 类型不对
+      { type: 'float/resize', w: 10, h: 10 }, // 低于最小尺寸
+      { type: 'float/reposition', x: Number.NaN, y: 0 },
+      { type: 'float/resize', w: 320, h: 260, pad: 'x'.repeat(200_000) }, // 约 200 KB，且带多余字段
+    ];
+    for (const m of bad) port.postMessage(m);
+    await waitFor(1 + bad.length);
+    const afterBad = rects.length;
+    port.postMessage({ type: 'float/resize', w: 321, h: 261 });
+    await waitFor(afterBad + 1);
+    return {
+      initial: rects[0],
+      afterBadRects: rects.slice(1, afterBad),
+      final: rects[afterBad],
+      disconnected,
+    };
+  });
+
+  expect(result.disconnected).toBe(false);
+  expect(result.afterBadRects).toHaveLength(8);
+  // 每条非法消息之后，位置尺寸都与初始一致；也没有触发收起
+  for (const r of result.afterBadRects) expect(r).toEqual(result.initial);
+  expect(await floatHostOpen(page)).toBe(true);
+  // 同一连接上的合法消息照常生效
+  expect(result.final).toEqual(expect.objectContaining({ w: 321, h: 261 }));
+  const width = await page.evaluate(
+    () => (document.querySelector('[data-ra-float-host]') as HTMLElement | null)?.style.width,
+  );
+  expect(width).toBe('321px');
+});
