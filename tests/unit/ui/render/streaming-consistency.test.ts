@@ -51,7 +51,8 @@ const FIXTURES: Array<{ name: string; text: string; allowedIds?: ReadonlySet<str
 describe('V-10 流式一致性：增量结果 == 一次性完整渲染', () => {
   for (const fixture of FIXTURES) {
     for (const strategy of CHUNK_STRATEGIES) {
-      it(`${fixture.name} × ${strategy.name}`, () => {
+      // 超长代码块逐字符输入要渲染上万次，本机约 4 秒，CI 机器上会超过默认的 5 秒
+      it(`${fixture.name} × ${strategy.name}`, { timeout: 20_000 }, () => {
         const allowedIds = fixture.allowedIds ?? new Set<string>();
         const expected = oneShotHtml(fixture.text, allowedIds);
         const { html: actual, blocks } = streamedFinalHtml(fixture.text, allowedIds, strategy.split);
