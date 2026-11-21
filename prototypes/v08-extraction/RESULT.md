@@ -29,7 +29,7 @@
 | accordion-govuk | 折叠内容（手风琴） | [GOV.UK Design System Accordion 组件示例](https://design-system.service.gov.uk/components/accordion/) | 否 |
 | adv-forum-thread | 反例：论坛串 | [Discourse 论坛讨论串（discuss.python.org，虚拟滚动/异步加载）](https://discuss.python.org/c/committers/5) | 是 |
 | adv-login-wall | 反例：登录墙 | [LinkedIn 公开主页（未登录只显示截断内容并提示登录）——沙箱内多个候选均被反爬/地域拦截，记录为环境阻塞](https://www.huxiu.com/article/vip.html) | 是 |
-| adv-readonly-textarea | 反例：只读 textarea 代码页 | [本地构造：正文整体位于 <textarea readonly> 内（真实公开网络上该边界场景不稳定，按架构 M6 自建最小复现页，见 index.json 说明）](file://D:/CC_workspace/edgePlugin/prototypes/v08-extraction/src/fixtures/readonly-textarea.html) | 是 |
+| adv-readonly-textarea | 反例：只读 textarea 代码页 | [本地构造：正文整体位于 <textarea readonly> 内（真实公开网络上该边界场景不稳定，按架构 M6 自建最小复现页，见 index.json 说明）](src/fixtures/readonly-textarea.html) | 是 |
 | adv-spa-empty | 反例：SPA 首页 | [Excalidraw（纯 canvas 应用，初始文本几乎为空）](https://excalidraw.com/) | 是 |
 | arxiv-abs | 文献页 | [arXiv 摘要页（Attention Is All You Need）](https://arxiv.org/abs/1706.03762) | 否 |
 | arxiv-html | 文献页 | [arXiv HTML 全文版（Attention Is All You Need）](https://arxiv.org/html/1706.03762) | 否 |
