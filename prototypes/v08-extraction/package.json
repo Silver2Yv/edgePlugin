@@ -5,8 +5,9 @@
   "type": "module",
   "description": "V-08 原型：PageDoc 正文抽取方案对比（自研 / Readability 辅助 / Defuddle 克隆映射）。只用于本地验证，不随主仓库发布。",
   "scripts": {
-    "fetch": "node src/fetch-samples.mjs",
-    "eval": "node src/run-eval.mjs"
+    "bundle": "node src/build-bundle.mjs",
+    "extract": "node src/fetch-and-extract.mjs",
+    "metrics": "node src/compute-metrics.mjs"
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",

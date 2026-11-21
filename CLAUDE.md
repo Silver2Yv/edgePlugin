@@ -1,7 +1,15 @@
 # CLAUDE.md — 阅读助手扩展
 
-AI 阅读助手浏览器扩展（Chrome / Edge，Manifest V3，最低 141）。架构与决策以 `docs/` 为准：
-`docs/架构设计/ARCHITECTURE.md`（架构）、`docs/需求分析梳理/DECISIONS.md`（决策）、`docs/架构设计/VALIDATION_MATRIX.md`（验证用例）。
+AI 阅读助手浏览器扩展（Chrome / Edge，Manifest V3，最低 141）。原型验证已完成，当前阶段是核心功能开发。以 `docs/` 为准：
+
+| 要查什么 | 看哪里 |
+| --- | --- |
+| 代码现状、模块地图、测试资产、下一步 | `docs/核心功能开发/HANDOFF.md` |
+| 架构（v1.2） | `docs/架构设计/ARCHITECTURE.md` |
+| 为什么这么定 | `docs/需求分析梳理/DECISIONS.md`（冲突时编号大的为准） |
+| 需求与验收 | `docs/需求分析梳理/FINAL_PLAN.md` |
+| 已接受的降级、带进本阶段的事项 | `docs/原型验证/PROTOTYPE_REPORT.md` 第 3、4 节 |
+| 验证用例与结果模板 | `docs/架构设计/VALIDATION_MATRIX.md` |
 
 ## 常用命令
 
@@ -13,7 +21,14 @@ AI 阅读助手浏览器扩展（Chrome / Edge，Manifest V3，最低 141）。�
 | `pnpm test` / `pnpm test:e2e` | 单元测试（Vitest）/ 端到端（Playwright，需先 build） |
 | `pnpm mock-relay` | 启动模拟中转站（`tests/mock-relay/`） |
 
-本机 Playwright 自带 Chromium 若无法启动，设 `E2E_CHROMIUM_PATH` 指向一份可用的 chrome.exe 副本。
+本机 Playwright 自带 Chromium 若无法启动，设 `E2E_CHROMIUM_PATH` 指向一份可用的 chrome.exe 副本。`E2E_BROWSER=msedge` 改用本机安装的 Edge（有界面）。
+
+## 测试踩坑
+
+- Playwright 的调试协议连着时后台不会空闲回收。模拟回收用 CDP `ServiceWorker.stopAllWorkers`，之后用 `context.serviceWorkers()[0]` 取新的后台；真实回收要按 `prototypes/v01-lifecycle/` 的分离进程测法。
+- 侧边栏页面不在 `context.pages()` 里，经 `tests/e2e/sidepanel-helpers.ts` 用调试协议附加。Playwright 按不出扩展快捷键、点不了原生右键菜单，用 `dispatchCommand` / `dispatchMenu` 在后台直接触发（没有用户手势），真实按键要用户手动确认。
+- 有界面的 Edge 上焦点、拖动类用例偶发失败（窗口被遮挡时不出新帧），以无界面 CfT 结果为准，Edge 上复跑确认。
+- Preact 的数字样式值要写成带 `px` 的字符串（`tests/unit/ui/style-units.test.ts` 守住）。
 
 ## 不可违反的架构规则（ARCHITECTURE 4.3）
 
@@ -41,12 +56,12 @@ AI 阅读助手浏览器扩展（Chrome / Edge，Manifest V3，最低 141）。�
 | `src/platform/` | 存储、消息、数据库、访问级别 | `core/` |
 | `src/entrypoints/` | WXT 入口，只做装配 | 以上全部 |
 
-`pnpm check:deps` 守住：`core` 纯净、`page` 不引 `ui`、哨兵依赖链无第三方包。哨兵 gzip ≤ 10 KB 由 `pnpm check:size` 守住。
+`pnpm check:deps` 守住：`core` 纯净、`page` 不引 `ui`、哨兵依赖链无第三方包。哨兵 gzip ≤ 10 KB 由 `pnpm check:size` 守住；ARCHITECTURE 5.15 其余性能与体积数字是参考值，不是硬门槛（决策 081）。
 
 ## 约定
 
 - WXT 自动导入已关闭（`imports: false`）：扩展 API 从 `wxt/browser` 显式导入，`define*` 从 `wxt/utils/*` 导入。
-- 消息协议只在 `src/core/domain/messages.ts` 定义；后台入口做运行时校验，未知类型与超限消息拒绝且无副作用。
+- 消息协议只在 `src/core/domain/messages.ts` 定义；后台入口做运行时校验，未知类型与超限消息拒绝且无副作用。改了协议就打下一个 `contract-v1.x` 注解 tag（现为 v1.3）。
 - 改清单权限要同步 `scripts/manifest-baseline.json`，并在 PR 描述里标出。
 - 文档用中文、表格风格。新决策追加到 `DECISIONS.md`，编号顺延。
 

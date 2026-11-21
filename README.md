@@ -2,12 +2,12 @@
 
 > **先读 [`docs/README.md`](docs/README.md)。** 它是全部文档的唯一入口，包含「按角色选路径」、文件清单、冲突时的裁决顺序和编号速查。
 >
-> 当前阶段：**骨架、契约与原型验证已完成（2026-11-21），下一步是核心功能实施。** 验证结论见 [`docs/原型验证/PROTOTYPE_REPORT.md`](docs/原型验证/PROTOTYPE_REPORT.md)，架构为 v1.2。
+> 当前阶段：**核心功能开发**（骨架、契约与原型验证已在 2026-11-21 完成）。代码现状与下一步见 [`docs/核心功能开发/HANDOFF.md`](docs/核心功能开发/HANDOFF.md)；验证结论见 [`docs/原型验证/PROTOTYPE_REPORT.md`](docs/原型验证/PROTOTYPE_REPORT.md)；架构为 v1.2。
 >
 > 目录：
 > - [`src/`](src/) — 扩展代码（WXT + Preact，Manifest V3，Chrome / Edge 141 起）；目录分工与依赖方向见 [`CLAUDE.md`](CLAUDE.md)
 > - [`tests/`](tests/) — 单元测试（Vitest）、端到端（Playwright）、模拟中转站
-> - [`prototypes/`](prototypes/) — 原型与测量脚本（V-01、V-08、V-09、V-10、V-13、公司网络诊断、问题建议）
+> - [`prototypes/`](prototypes/) — 原型与测量脚本，索引见 [`prototypes/README.md`](prototypes/README.md)
 > - [`docs/需求分析梳理/`](docs/需求分析梳理/) — 需求定稿（`FINAL_PLAN.md`）与 81 条决策（`DECISIONS.md`）
 > - [`docs/架构设计/`](docs/架构设计/) — 架构文档、验证矩阵、评审与处置
 > - [`docs/原型验证/`](docs/原型验证/) — 原型验证总报告与逐项记录

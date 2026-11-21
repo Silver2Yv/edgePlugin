@@ -1,7 +1,7 @@
 # 技术栈与架构对抗性评审
 
 > 日期：2026-11-14
-> **状态：历史评审，已全部处置。** 对象是 `ARCHITECTURE.md` v1.0（现行为 v1.1）。26 项发现的处置见 [`REVIEW_RESPONSE.md`](./REVIEW_RESPONSE.md)；本文只保留原始论证与证据，不必先读。仍未关闭、需要实测的事项见 `REVIEW_RESPONSE.md` 第 6 节。
+> **状态：历史评审，已全部处置。** 对象是 `ARCHITECTURE.md` v1.0（现行为 v1.2）。26 项发现的处置见 [`REVIEW_RESPONSE.md`](./REVIEW_RESPONSE.md)；本文只保留原始论证与证据，不必先读。仍未关闭、需要实测的事项见 `REVIEW_RESPONSE.md` 第 6 节。
 > 对象：ARCHITECTURE.md v1.0；FINAL_PLAN.md v1.3；DECISIONS.md 001–058。
 > 定位：评审意见，不替代原架构，不把建议自动变成已批准的需求。
 > 配套：[原型与验收矩阵](./VALIDATION_MATRIX.md)。  
