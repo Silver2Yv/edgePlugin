@@ -1,7 +1,7 @@
 // 后台各模块的依赖（扩展接口、网络、时间、随机数）。真实实现在 browser-deps.ts，
 // 其余模块只依赖这里的接口，单测换成假的。
 
-import type { BackgroundToContent } from '@/core/domain/messages';
+import type { BackgroundToContent, BackgroundToPages } from '@/core/domain/messages';
 import type { MigrateResult } from '@/core/domain/settings';
 import type { InterfaceType, ModelAdapter } from '@/core/llm/adapter';
 
@@ -10,7 +10,7 @@ export interface SenderLike {
   id?: string | undefined;
   url?: string | undefined;
   origin?: string | undefined;
-  tab?: { id?: number | undefined } | undefined;
+  tab?: { id?: number | undefined; windowId?: number | undefined } | undefined;
   frameId?: number | undefined;
   documentId?: string | undefined;
   documentLifecycle?: string | undefined;
@@ -50,6 +50,22 @@ export interface BackgroundDeps {
    * 发问前决定读不读页面（4.1）。取不到返回 undefined。可选只是为了不打扰只测别的模块的单测，真实实现一定提供
    */
   getTabUrl?(tabId: number): Promise<string | undefined>;
+  /**
+   * 打开指定窗口的侧边栏（sidePanel.open）。必须在用户手势的同步路径上调用，之前不得 await（规则 10）：
+   * 调用方在事件处理的同步段里直接调它，再处理返回的 Promise。没有手势时 Promise 被拒
+   */
+  openSidePanel(windowId: number): Promise<void>;
+  /** 标签页所在窗口（tabs.get）；标签页不在了返回 undefined */
+  tabWindow(tabId: number): Promise<number | undefined>;
+  /** 窗口是否存在（windows.get） */
+  windowExists(windowId: number): Promise<boolean>;
+  /**
+   * 按 documentId 反查侧边栏所在窗口（runtime.getContexts，5.4、5.12）。反查不了返回 undefined——
+   * Chrome 159 / Edge 157 实测侧边栏的 windowId 是 -1，端口 sender 也不带 documentId（V-11）
+   */
+  panelWindowOf(documentId: string): Promise<number | undefined>;
+  /** 广播给扩展页面（runtime.sendMessage）；没有页面在收时不算失败 */
+  notifyPages(msg: BackgroundToPages): Promise<void>;
   /** 指令只发给指定框架的指定文档；文档已不在时失败 */
   sendToFrame(tabId: number, frameId: number, documentId: string, msg: BackgroundToContent): Promise<void>;
   fetch(url: string, init: RequestInit): Promise<Response>;

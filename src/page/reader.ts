@@ -1,9 +1,11 @@
 // 阅读器（ARCHITECTURE 4.3 规则 1-5、5.3）：只在顶层框架，由后台注入。
-// 接小窗相关指令与页面读取（page/read）；定位高亮、截图框选（4.2）这轮不做。不发网络请求，不持有对话内容。
+// 接小窗相关指令、网页提示（page/notice）与页面读取（page/read）；定位高亮、截图框选（4.2）这轮不做。
+// 不发网络请求，不持有对话内容。
 import { browser } from 'wxt/browser';
 import { backgroundToContent } from '@/core/domain/messages';
 import { createFloatHost } from './float-host';
 import { attachFloatPort } from './float-port';
+import { createPageNotice } from './notice';
 import { createPageReader } from './page-read';
 
 const INJECTED = Symbol.for('readingAssistant.readerInjected');
@@ -13,13 +15,18 @@ export function startReader(): void {
   if (g[INJECTED]) return;
   g[INJECTED] = true;
 
-  const floatHost = createFloatHost((result) => {
-    const msg: { type: 'float/loadResult'; result: 'ready' | 'failedTransient' } = {
-      type: 'float/loadResult',
-      result,
-    };
-    void browser.runtime.sendMessage(msg);
-  });
+  const notice = createPageNotice();
+  const floatHost = createFloatHost(
+    (result) => {
+      const msg: { type: 'float/loadResult'; result: 'ready' | 'failedTransient' } = {
+        type: 'float/loadResult',
+        result,
+      };
+      void browser.runtime.sendMessage(msg);
+    },
+    // 用户等着的小窗用不了：在网页上提示改用侧边栏（选区后台已存下，侧边栏打开时带上引用）
+    () => notice.show('floatFailed'),
+  );
   attachFloatPort(floatHost);
 
   // 点网页别处或在网页里按 Esc 收起小窗（6.1：隐藏，不销毁）。小窗内部的事件发生在 iframe 自己的文档里，
@@ -52,6 +59,11 @@ export function startReader(): void {
         break;
       case 'float/hide':
         floatHost.hide();
+        break;
+      case 'page/notice':
+        // 本该改用侧边栏、浏览器却没让后台打开时（5.2）：提示用户自己打开
+        floatHost.hide();
+        notice.show(r.value.kind);
         break;
       case 'page/read':
         // 页面读取（5.6）：抽取在时间片里做，结果经 page/docPart / page/docUnchanged 回传

@@ -1,5 +1,6 @@
-// 小窗纯逻辑（5.3 小窗、5.5 任务与恢复）：增量合并、任务状态迁移、握手/重连状态机、
-// 以及发给后台的消息构造。不碰扩展 API、不碰 DOM，便于单测；FloatApp.tsx 只做装配与副作用。
+// 小窗与侧边栏共用的纯逻辑（5.3 小窗、5.4 侧边栏、5.5 任务与恢复）：增量合并、任务状态迁移、握手/重连状态机、
+// 订阅切换（侧边栏跟随标签页）、转接（6.4），以及发给后台的消息构造。不碰扩展 API、不碰 DOM，便于单测；
+// FloatApp.tsx / SidePanelApp.tsx 只做装配与副作用。
 import type { ContextTier, LengthTier, ThinkingLevel } from '@/core/context/plan';
 import { TOKEN_PATTERN } from '@/core/domain/float';
 import { isTerminal, type JobState } from '@/core/domain/job';
@@ -7,6 +8,7 @@ import type {
   BackgroundToClient,
   ClientToBackground,
   FloatToReader,
+  PanelNoticeKind,
   RejectReason,
 } from '@/core/domain/messages';
 import { PROTOCOL_VERSION } from '@/core/domain/messages';
@@ -159,6 +161,10 @@ export function rejectReasonText(reason: RejectReason): string {
       return '连接已失效';
     case 'notOwner':
       return '无权限操作该任务';
+    case 'busy':
+      return '回答进行中，请等这一轮答完或先停止';
+    case 'gone':
+      return '后台重启过，这段对话没法转过去，回答仍留在这里';
     default:
       return '未知原因';
   }
@@ -189,12 +195,68 @@ export interface QuoteView {
   originalLength: number;
 }
 
+// ───────────── 侧边栏顶部说明（5.4 降级提示） ─────────────
+
+/** 「加载失败」与「网站不支持」分开说，不把前者说成后者（V-02） */
+export const PANEL_NOTICE_TEXT: Readonly<Record<PanelNoticeKind, string>> = {
+  floatTransient: '小窗这次没能加载出来，已改在侧边栏继续。',
+  floatUnsupported: '这个网站放不了小窗，已改在侧边栏继续。',
+  noConnection: '请先在设置里添加连接',
+  requestRefused: '这次请求没有发出，请重新试一次',
+};
+
+// ───────────── 转接（6.4） ─────────────
+
+/** 转接发出后等侧边栏接手多久，没接上就提示一行（小窗不收起） */
+export const HANDOFF_SLOW_MS = 5_000;
+
+/**
+ * 小窗这边的转接进度：handoff/created 带回编号，handoff/done 对上编号才收起。
+ * sent：handoff/start 发出去没有。点击时连接没就绪（后台被回收后闲着）先记下，重连就绪后再发
+ */
+export interface HandoffView {
+  handoffId: string | null;
+  sent: boolean;
+  slow: boolean;
+  done: boolean;
+}
+
+/** 侧边栏收到的待接转接（handoff/pending） */
+export interface IncomingHandoff {
+  handoffId: string;
+  tabId: number;
+  conversationId?: string;
+}
+
+/** 面板加载后，这个窗口来了一次「开关侧边栏」命令（at）：面板在命令之前就已存在，就该自行关闭（5.4） */
+export function shouldCloseOnToggle(panelCreatedAt: number, commandAt: number): boolean {
+  return commandAt > panelCreatedAt;
+}
+
 // ───────────── 整体状态与归约 ─────────────
 
 export interface FloatState {
   connPhase: ConnPhase;
   quote: QuoteView | null;
   job: JobView | null;
+  /** 正在显示的对话（conv/accepted、conv/subscribed、conv/current 给出）；转接与侧边栏续问用它 */
+  conversationId: string | null;
+  /**
+   * 侧边栏要订阅的标签页（小窗为 null，订阅的标签页由令牌决定）。换了之后、收到这个标签页的 conv/subscribed 之前，
+   * 到达的推送都属于旧标签页，丢弃（targetConfirmed 为 false）
+   */
+  target: number | null;
+  targetConfirmed: boolean;
+  /** 每换一次订阅加一；侧边栏据此（重新）发 conv/subscribe，同一标签页地址变了也要重订 */
+  targetSeq: number;
+  /** 订阅附带的转接：侧边栏带着它订阅，后台据此通知小窗收起 */
+  subscribeHandoff: IncomingHandoff | null;
+  /** 侧边栏收到、还没处理的待接转接 */
+  incomingHandoff: IncomingHandoff | null;
+  /** 侧边栏顶部的一行说明 */
+  notice: PanelNoticeKind | null;
+  /** 小窗发起的转接 */
+  handoff: HandoffView | null;
   /** 已发出但还没收到 conv/accepted / conv/rejected 的发问 */
   pendingClientRequestId: string | null;
   /** 连接未就绪时存下的待发问（只存一个，新的覆盖旧的）；重连并收到这次订阅的 conv/snapshot 后发出 */
@@ -210,11 +272,24 @@ export function initialFloatState(hasToken: boolean): FloatState {
     connPhase: hasToken ? 'connecting' : 'noToken',
     quote: null,
     job: null,
+    conversationId: null,
+    target: null,
+    targetConfirmed: true,
+    targetSeq: 0,
+    subscribeHandoff: null,
+    incomingHandoff: null,
+    notice: null,
+    handoff: null,
     pendingClientRequestId: null,
     queuedAsk: null,
     snapshotSeq: 0,
     actionError: null,
   };
+}
+
+/** 侧边栏的初始状态：没有令牌，连上后跟随本窗口的活动标签页 */
+export function initialPanelState(): FloatState {
+  return { ...initialFloatState(true), targetConfirmed: false };
 }
 
 export type FloatAction =
@@ -223,7 +298,15 @@ export type FloatAction =
   | { kind: 'wake' }
   | { kind: 'askSent'; clientRequestId: string }
   | { kind: 'queueAsk'; ask: QueuedAsk }
-  | { kind: 'localError'; message: string };
+  | { kind: 'localError'; message: string }
+  /** 侧边栏换订阅：跟随切换标签页、地址变化，或接手转接 */
+  | { kind: 'retarget'; tabId: number; handoff?: IncomingHandoff }
+  /** 小窗点了「转到侧边栏」（已同步 open）；handoff/start 等连接就绪再发 */
+  | { kind: 'handoffStarted' }
+  | { kind: 'handoffSent' }
+  | { kind: 'handoffSlow' }
+  /** 转接结束（已收起，或放弃） */
+  | { kind: 'handoffClear' };
 
 export function floatReducer(state: FloatState, action: FloatAction): FloatState {
   switch (action.kind) {
@@ -246,6 +329,35 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
       return { ...state, queuedAsk: action.ask, actionError: null };
     case 'localError':
       return { ...state, actionError: action.message };
+    case 'retarget': {
+      const sameTab = action.tabId === state.target;
+      const base: FloatState = {
+        ...state,
+        target: action.tabId,
+        targetConfirmed: false,
+        targetSeq: state.targetSeq + 1,
+        subscribeHandoff: action.handoff ?? null,
+        incomingHandoff: null,
+      };
+      // 换了标签页：立刻清掉旧标签页的内容，不让它在新订阅回来之前冒充新页面的对话
+      return sameTab
+        ? base
+        : { ...base, quote: null, job: null, conversationId: null, notice: null, actionError: null };
+    }
+    case 'handoffStarted':
+      return {
+        ...state,
+        handoff: { handoffId: null, sent: false, slow: false, done: false },
+        actionError: null,
+      };
+    case 'handoffSent':
+      return state.handoff ? { ...state, handoff: { ...state.handoff, sent: true } } : state;
+    case 'handoffSlow':
+      return state.handoff && !state.handoff.done
+        ? { ...state, handoff: { ...state.handoff, slow: true } }
+        : state;
+    case 'handoffClear':
+      return { ...state, handoff: null };
     case 'server':
       return applyServerMessage(state, action.msg);
     default:
@@ -253,10 +365,44 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
   }
 }
 
+/** 换订阅之后、新标签页的 conv/subscribed 到达之前，只认这几种（其余属于旧标签页） */
+const UNGATED: ReadonlySet<BackgroundToClient['type']> = new Set<BackgroundToClient['type']>([
+  'conv/ready',
+  'conv/rejected',
+  'handoff/pending',
+]);
+
 function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatState {
+  if (!state.targetConfirmed && !UNGATED.has(msg.type)) {
+    if (msg.type !== 'conv/subscribed' || msg.tabId !== state.target) return state;
+  }
   switch (msg.type) {
     case 'conv/ready':
       return { ...state, connPhase: onReady(msg.protocolVersion) };
+    case 'conv/subscribed':
+      return applySubscribed(state, msg);
+    case 'conv/current':
+      if (msg.jobId === state.job?.jobId) return { ...state, conversationId: msg.conversationId };
+      // 自己刚发的问还没回 conv/accepted：不被别的界面发起的任务换掉
+      if (state.pendingClientRequestId !== null) return state;
+      return { ...state, conversationId: msg.conversationId, job: createJobView(msg.jobId, msg.messageId) };
+    case 'conv/notice':
+      return { ...state, notice: msg.kind };
+    case 'handoff/created':
+      return state.handoff ? { ...state, handoff: { ...state.handoff, handoffId: msg.handoffId } } : state;
+    case 'handoff/done':
+      return state.handoff && state.handoff.handoffId === msg.handoffId
+        ? { ...state, handoff: { ...state.handoff, done: true } }
+        : state;
+    case 'handoff/pending':
+      return {
+        ...state,
+        incomingHandoff: {
+          handoffId: msg.handoffId,
+          tabId: msg.tabId,
+          ...(msg.conversationId === undefined ? {} : { conversationId: msg.conversationId }),
+        },
+      };
     case 'conv/quote':
       return {
         ...state,
@@ -273,6 +419,7 @@ function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatSt
         ...state,
         pendingClientRequestId: null,
         actionError: null,
+        conversationId: msg.conversationId,
         job: createJobView(msg.jobId, msg.messageId),
       };
     case 'conv/delta':
@@ -287,14 +434,51 @@ function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatSt
       return msg.done ? { ...state, snapshotSeq: state.snapshotSeq + 1 } : state;
     case 'conv/rejected':
       return applyRejected(state, msg);
-    // 侧边栏专属的 handoff/* history/* favorite/* citation/*：小窗不处理
+    // history/* favorite/* citation/*：本版本不处理
     default:
       return state;
   }
 }
 
+type SubscribedMsg = Extract<BackgroundToClient, { type: 'conv/subscribed' }>;
+
+/**
+ * 订阅生效。侧边栏换了订阅（有 target 且还没确认）：这次订阅的初始推送完整描述了要显示的东西——任务、对话、引用、
+ * 说明都以它为准，没带的就是没有（换了页面、没发过问）。小窗、以及侧边栏断线重连后的重订（没换标签页）：只补不删
+ * （后台重启后内存里没有对话，照旧显示上一次的回答）。
+ * 同一个任务保留已有的视图，补发的增量按 seq 去重；换了任务从 0 开始续播
+ */
+function applySubscribed(state: FloatState, msg: SubscribedMsg): FloatState {
+  const job = msg.job
+    ? state.job?.jobId === msg.job.jobId
+      ? state.job
+      : createJobView(msg.job.jobId, msg.job.messageId)
+    : null;
+  if (state.target === null || state.targetConfirmed) {
+    return { ...state, job: job ?? state.job, conversationId: msg.conversationId ?? state.conversationId };
+  }
+  return {
+    ...state,
+    targetConfirmed: true,
+    job,
+    conversationId: msg.conversationId ?? null,
+    quote: null,
+    notice: null,
+  };
+}
+
 function applyRejected(state: FloatState, msg: RejectedMsg): FloatState {
   if (msg.refType === 'conv/resumeFloat') return { ...state, connPhase: onResumeRejected() };
+  // 握手失败（令牌无效、过期）：不再停在「连接中」，提示重开或转到侧边栏
+  if (msg.refType === 'conv/helloFloat') return { ...state, connPhase: onResumeRejected() };
+  if (msg.refType === 'handoff/start')
+    return { ...state, handoff: null, actionError: `没能转到侧边栏：${rejectReasonText(msg.reason)}` };
+  if (msg.refType === 'conv/subscribe' && state.target !== null)
+    return {
+      ...state,
+      targetConfirmed: true,
+      actionError: `没能显示这个标签页：${rejectReasonText(msg.reason)}`,
+    };
   if (state.job && msg.refId === state.job.jobId) {
     const actionError =
       msg.refType === 'conv/retry'
@@ -320,10 +504,27 @@ export function subscribeMessage(job: JobView | null): ClientToBackground {
     : { type: 'conv/subscribe' };
 }
 
+/**
+ * 侧边栏的订阅：指定标签页；接手转接时带上转接的对话与编号。不带 resume——后台从 0 补发接上的任务，
+ * 已显示过的部分按 seq 去重（换订阅期间被丢掉的推送也因此补得回来）
+ */
+export function panelSubscribeMessage(state: FloatState): ClientToBackground | null {
+  if (state.target === null) return null;
+  const h = state.subscribeHandoff;
+  return {
+    type: 'conv/subscribe',
+    tabId: state.target,
+    ...(h?.conversationId === undefined ? {} : { conversationId: h.conversationId }),
+    ...(h ? { handoffId: h.handoffId } : {}),
+  };
+}
+
 export interface AskParams {
   clientRequestId: string;
   text: string;
   quote: QuoteView | null;
+  /** 接着这个对话问（侧边栏）；不填是新对话（小窗每次发问都是新对话） */
+  conversationId?: string | null;
   lengthTier: LengthTier;
   thinking: ThinkingLevel;
   model: ModelRef;
@@ -335,6 +536,7 @@ export function buildAskMessage(p: AskParams): ClientToBackground {
   return {
     type: 'conv/ask',
     clientRequestId: p.clientRequestId,
+    ...(p.conversationId ? { conversationId: p.conversationId } : {}),
     actionId: 'ask',
     text: p.text,
     ...(p.quote ? { selectionRevision: p.quote.selectionRevision } : {}),

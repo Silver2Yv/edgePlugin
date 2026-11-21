@@ -1,6 +1,7 @@
 // 意图通道（runtime.onMessage，5.12）：内容脚本（哨兵 / 阅读器）→ 后台。
 // 角色与身份只取自 sender（规则 7）；每条消息先过 parseFrom，拒绝时不写入、不发指令。
 import { BUILTIN_ACTIONS } from '@/core/domain/actions';
+import { routeOnAsk } from '@/core/domain/float';
 import {
   type ContentToBackground,
   contentToBackground,
@@ -16,6 +17,7 @@ import type { Hub } from './hub';
 import type { Pages } from './pages';
 import { quoteOf } from './quote';
 import { senderRole } from './roles';
+import type { Route } from './route';
 import type { Store } from './store';
 
 /** 意图的应答。config/get 直接回 PageConfig */
@@ -26,9 +28,18 @@ interface ContentSender {
   frameId: number;
   documentId: string | undefined;
   url: string | undefined;
+  /** 标签页所在窗口（sender.tab，浏览器给的） */
+  windowId: number | undefined;
 }
 
-export function createIntents(deps: BackgroundDeps, store: Store, hub: Hub, host: FloatHost, pages: Pages) {
+export function createIntents(
+  deps: BackgroundDeps,
+  store: Store,
+  hub: Hub,
+  host: FloatHost,
+  pages: Pages,
+  route: Route,
+) {
   const refuse = (reason: RejectReason, detail?: Record<string, unknown>): IntentResponse => {
     deps.log('intent/rejected', { reason, ...detail });
     return { ok: false, reason };
@@ -46,7 +57,7 @@ export function createIntents(deps: BackgroundDeps, store: Store, hub: Hub, host
     // 子框架取「顶层站点与框架来源」更严（4.1、AR-14）；顶层框架两者相同，不必再查标签页地址
     const topUrl = s.frameId === 0 ? s.url : await deps.getTabUrl?.(s.tabId).catch(() => undefined);
     const siteLevel = frameSiteLevel(topUrl, s.url, settings.sites);
-    return { siteLevel, toolbarActions, askRoute: 'float' };
+    return { siteLevel, toolbarActions, askRoute: routeOnAsk(store.readinessNow(s.tabId)) };
   }
 
   async function handle(msg: ContentToBackground, s: ContentSender): Promise<IntentResponse> {
@@ -61,6 +72,9 @@ export function createIntents(deps: BackgroundDeps, store: Store, hub: Hub, host
       case 'action/click': {
         // 本版本只接「问」；其他动作回拒绝
         if (msg.actionId !== 'ask') return refuse('notAllowed', { type: msg.type });
+        // 去向（5.2）：小窗失败过就改用侧边栏。打开侧边栏必须在这条点击消息的同步段里发出（规则 10），
+        // 先于一切 await（见 route.ts）
+        const d = route.decide(s.tabId, s.windowId);
         const sel = {
           frameId: s.frameId,
           ...(s.documentId === undefined ? {} : { documentId: s.documentId }),
@@ -72,8 +86,13 @@ export function createIntents(deps: BackgroundDeps, store: Store, hub: Hub, host
           at: deps.now(),
         };
         const saved = store.putSelection(s.tabId, sel);
-        // 小窗已订阅（预热过、握手过）就直接换引用
+        // 小窗、侧边栏已订阅就直接换引用
         hub.toTab(s.tabId, quoteOf(sel));
+        if (d.toPanel) {
+          await route.finish(s.tabId, d);
+          await saved;
+          return { ok: true };
+        }
         try {
           await host.show(s.tabId);
         } catch (e) {
@@ -91,6 +110,11 @@ export function createIntents(deps: BackgroundDeps, store: Store, hub: Hub, host
           await store.setReadiness(s.tabId, 'ready');
         } else {
           host.markFloatFailed(s.tabId);
+          // 用户接着用快捷键或图标打开侧边栏时，顶部说明原因（网页上已经提示过怎么继续）
+          store.putNotice(
+            s.tabId,
+            msg.result === 'failedUnsupported' ? 'floatUnsupported' : 'floatTransient',
+          );
           await store.deleteBinding(s.tabId);
           await store.setReadiness(s.tabId, msg.result);
         }
@@ -120,7 +144,13 @@ export function createIntents(deps: BackgroundDeps, store: Store, hub: Hub, host
     const tabId = sender.tab?.id;
     const frameId = sender.frameId;
     if (tabId === undefined || frameId === undefined) return refuse('notAllowed', { role });
-    return handle(parsed.msg, { tabId, frameId, documentId: sender.documentId, url: sender.url });
+    return handle(parsed.msg, {
+      tabId,
+      frameId,
+      documentId: sender.documentId,
+      url: sender.url,
+      windowId: sender.tab?.windowId,
+    });
   };
 }
 

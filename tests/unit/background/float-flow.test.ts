@@ -204,7 +204,7 @@ describe('对话端口握手', () => {
     expect(wrong.received[0]).toMatchObject({ type: 'conv/rejected', reason: 'badToken' });
   });
 
-  it('subscribe：先推当前选区，最后回快照（snapshot 是初始推送推完的标志）', async () => {
+  it('subscribe：先发订阅标记，再推当前选区，最后回快照（snapshot 是初始推送推完的标志）', async () => {
     const h = makeHarness();
     await h.message(selectionReady());
     await h.message(click());
@@ -213,9 +213,10 @@ describe('对话端口握手', () => {
     c.send({ type: 'conv/helloFloat', token });
     c.send({ type: 'conv/subscribe', tabId: TAB + 1 });
     c.send({ type: 'conv/subscribe' });
-    await until(() => c.received.length === 4);
+    await until(() => c.received.length === 5);
     expect(c.received.slice(1)).toEqual([
       { type: 'conv/rejected', reason: 'notOwner', refType: 'conv/subscribe' },
+      { type: 'conv/subscribed', tabId: TAB },
       { type: 'conv/quote', selectionRevision: 1, text: SELECTED, truncated: false, originalLength: 13 },
       { type: 'conv/snapshot', messages: [], done: true, conversationRevision: 0 },
     ]);

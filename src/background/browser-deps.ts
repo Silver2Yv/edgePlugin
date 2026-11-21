@@ -50,6 +50,32 @@ export function browserDeps(): BackgroundDeps {
     loadSettings,
     injectReader,
     getTabUrl: async (tabId) => (await browser.tabs.get(tabId)).url,
+    // 不包 async：调用方在手势的同步段里调它，open 必须在这一刻发出（规则 10）
+    openSidePanel: (windowId) => browser.sidePanel.open({ windowId }),
+    tabWindow: (tabId) =>
+      browser.tabs.get(tabId).then(
+        (t) => t.windowId,
+        () => undefined,
+      ),
+    windowExists: (windowId) =>
+      browser.windows.get(windowId).then(
+        () => true,
+        () => false,
+      ),
+    panelWindowOf: async (documentId) => {
+      const ctx = await browser.runtime.getContexts({
+        contextTypes: [browser.runtime.ContextType.SIDE_PANEL],
+        documentIds: [documentId],
+      });
+      const w = ctx[0]?.windowId;
+      return w !== undefined && w >= 0 ? w : undefined;
+    },
+    // 没有扩展页面在听时 sendMessage 会报「Receiving end does not exist」，这不是失败
+    notifyPages: (msg) =>
+      browser.runtime.sendMessage(msg).then(
+        () => undefined,
+        () => undefined,
+      ),
     sendToFrame: async (tabId, frameId, documentId, msg) => {
       await browser.tabs.sendMessage(tabId, msg, { frameId, documentId });
     },

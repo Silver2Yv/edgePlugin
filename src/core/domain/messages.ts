@@ -185,6 +185,11 @@ export const backgroundToContent = tagged({
     focusInput: bool,
   }),
   'float/hide': obj({ type: lit('float/hide') }),
+  /**
+   * 在网页上显示一行不挡输入的提示（M4，contract-v1.3 增量）：小窗用不了、本该改用侧边栏，
+   * 但浏览器没让后台打开侧边栏时，告诉用户用快捷键或工具栏图标在侧边栏继续。只带原因，不带任何对话内容（规则 4）
+   */
+  'page/notice': obj({ type: lit('page/notice'), kind: oneOf(['floatFailed', 'floatUnsupported']) }),
   'capture/start': obj({ type: lit('capture/start'), captureId: id }),
   'capture/hideOverlay': obj({ type: lit('capture/hideOverlay'), captureId: id }),
 });
@@ -227,11 +232,17 @@ export const clientToBackground = tagged({
    */
   'conv/resumeFloat': obj({ type: lit('conv/resumeFloat') }),
   /**
-   * 侧边栏：windowId 只作提示，后台用 runtime.getContexts 按 sender.documentId 反查真实窗口。
-   * 不需要令牌，断线重连时再发一次即可
+   * 侧边栏：windowId 是面板用 windows.getCurrent() 取到的本窗口。后台能反查时（runtime.getContexts 按
+   * sender.documentId 给出窗口）以反查为准、对不上就拒绝；Chrome 159 / Edge 157 实测侧边栏端口的 sender 不带
+   * documentId、getContexts 给侧边栏的 windowId 是 -1，反查不了，只能核对这个窗口存在（V-11、决策 072）。
+   * 不需要令牌，断线重连时再发一次即可；后台不填 windowId 的一律拒绝
    */
   'conv/helloSidepanel': obj({ type: lit('conv/helloSidepanel'), windowId: opt(int({ min: 0 })) }),
-  /** 订阅：小窗只能订阅令牌绑定标签页的对话；侧边栏只能订阅本窗口的标签页 */
+  /**
+   * 订阅：小窗只能订阅令牌绑定标签页的对话；侧边栏只能订阅本窗口的标签页（tabId 必填，后台按 tabs.get 核对窗口）。
+   * 同一端口再次订阅即换订阅（侧边栏跟随切换标签页），旧标签页的推送随即停止。
+   * handoffId：侧边栏接手小窗的转接（6.4）；订阅的初始推送发完后，后台才通知小窗 handoff/done
+   */
   'conv/subscribe': obj({
     type: lit('conv/subscribe'),
     conversationId: opt(id),
@@ -251,8 +262,11 @@ export const clientToBackground = tagged({
     thinking: opt(thinking),
   }),
   'conv/setModel': obj({ type: lit('conv/setModel'), conversationId: id, model: modelRef }),
-  /** 小窗点「转到侧边栏」：后台生成 handoffId */
-  'handoff/start': obj({ type: lit('handoff/start'), conversationId: id }),
+  /**
+   * 小窗点「转到侧边栏」：后台生成 handoffId，绑定 windowId + tabId + conversationId（6.4、AR-19）。
+   * contract-v1.3 增量：conversationId 改为可选——还没发问的小窗也能转（侧边栏接手本标签页与引用）
+   */
+  'handoff/start': obj({ type: lit('handoff/start'), conversationId: opt(id) }),
   /** 仅侧边栏 */
   'history/query': obj({
     type: lit('history/query'),
@@ -276,6 +290,32 @@ export type ClientToBackground = Infer<typeof clientToBackground>;
 /** 后台 → 小窗 / 侧边栏。后台自己产出，不做运行时校验，只用类型约束 */
 export type BackgroundToClient =
   | { type: 'conv/ready'; role: 'float' | 'sidepanel'; protocolVersion: typeof PROTOCOL_VERSION }
+  | {
+      /**
+       * contract-v1.3 增量：订阅生效，是每次订阅初始推送的第一条。之后的推送属于 tabId 这个标签页；
+       * 侧边栏换标签页后，收到新标签页的这一条之前到达的推送都是旧标签页的，丢弃。
+       * job：这次订阅接上的任务（续播的那个，或该对话最近一次任务），随后按 seq 补发它的增量
+       */
+      type: 'conv/subscribed';
+      tabId: number;
+      conversationId?: string;
+      job?: { jobId: string; messageId: string };
+    }
+  | {
+      /**
+       * contract-v1.3 增量：标签页上接了一个新任务（不论哪个界面发问的），推给该标签页的所有订阅者，
+       * 让小窗与侧边栏显示同一个任务。发问的端口另外收到 conv/accepted
+       */
+      type: 'conv/current';
+      conversationId: string;
+      jobId: string;
+      messageId: string;
+    }
+  | {
+      /** contract-v1.3 增量：侧边栏顶部的一行说明（5.4 降级提示），只带原因 */
+      type: 'conv/notice';
+      kind: PanelNoticeKind;
+    }
   | {
       type: 'conv/snapshot';
       /** 新对话时为空 */
@@ -322,6 +362,16 @@ export type BackgroundToClient =
     }
   | { type: 'handoff/created'; handoffId: string }
   | { type: 'handoff/done'; handoffId: string }
+  | {
+      /**
+       * contract-v1.3 增量：本窗口有一个待接的转接（6.4）。侧边栏连上时（conv/ready 之后）、或转接发起时已连着，
+       * 后台推给该窗口的侧边栏；侧边栏用它带 handoffId 订阅
+       */
+      type: 'handoff/pending';
+      handoffId: string;
+      tabId: number;
+      conversationId?: string;
+    }
   | { type: 'history/page'; queryId: string; items: readonly ConversationRecord[]; done: boolean }
   | { type: 'favorite/saved'; favoriteId: string }
   | { type: 'citation/located'; requestId: string; level: 'exact' | 'fuzzy' | 'scroll' | 'none' }
@@ -332,6 +382,27 @@ export type BackgroundToClient =
       /** 被拒消息里的关联编号（clientRequestId、jobId、queryId 等），界面据此把对应操作标为失败 */
       refId?: string;
     };
+
+/**
+ * 侧边栏顶部说明的原因（contract-v1.3 增量）。「加载失败」与「网站不支持」分开，不把前者说成后者（V-02）
+ * | floatTransient | 小窗这次没加载出来（超时等偶发失败），这次改用侧边栏 |
+ * | floatUnsupported | 网站结构性不能放小窗（按站点记住） |
+ * | noConnection | 后台替侧边栏发起的请求（右键「总结本页」）没有可用的连接 |
+ * | requestRefused | 后台替侧边栏发起的请求被拒（其余原因） |
+ */
+export type PanelNoticeKind = 'floatTransient' | 'floatUnsupported' | 'noConnection' | 'requestRefused';
+
+/**
+ * 后台 → 扩展页面的广播（runtime.sendMessage，contract-v1.3 增量）。后台自己产出，只用类型约束；
+ * 接收方核对 sender.id 是本扩展且不在标签页里。
+ * sidepanel/toggle：开关快捷键（5.4）。后台在命令处理里同步 open() 之后发出；at 是命令到达的时间，
+ * 该窗口里在这之前就已存在的面板自行 window.close()（这次 open 新开的面板晚于 at，不受影响）。
+ * sidepanel/wake：有东西要交给这个窗口的侧边栏（转接、改走侧边栏、总结本页）。面板若因后台被回收断了线、
+ * 正闲着没重连（不主动唤醒后台，5.4），收到后立即重连并重新订阅
+ */
+export type BackgroundToPages =
+  | { type: 'sidepanel/toggle'; windowId: number; at: number }
+  | { type: 'sidepanel/wake'; windowId: number };
 
 // ───────────── 设置页 / 欢迎页 → 后台（runtime.sendMessage，一问一答） ─────────────
 
@@ -441,7 +512,20 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
   unknown: new Set(),
 };
 
-export type RejectReason = 'tooLarge' | 'invalid' | 'notAllowed' | 'notHandshaken' | 'badToken' | 'notOwner';
+/**
+ * busy（contract-v1.3 增量）：同一对话正有回答在生成（决策 062）。两个界面几乎同时向同一对话发问时，
+ * 后到的那一条收到它（V-03），界面据此提示「回答进行中」，而不是笼统的「消息格式不对」。
+ * gone（contract-v1.3 增量）：要转到侧边栏的对话后台已经没有了（后台被回收重启过，本版本对话只在内存）
+ */
+export type RejectReason =
+  | 'tooLarge'
+  | 'invalid'
+  | 'notAllowed'
+  | 'notHandshaken'
+  | 'badToken'
+  | 'notOwner'
+  | 'busy'
+  | 'gone';
 
 /** JSON 序列化后的 UTF-8 字节数；序列化失败（循环引用、BigInt）返回 Infinity */
 export function messageBytes(msg: unknown): number {
