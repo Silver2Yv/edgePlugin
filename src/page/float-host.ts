@@ -111,6 +111,11 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
   /** 当前位置与尺寸；build() 之后才有值 */
   let rect: FloatRect | null = null;
   let rectSettledCb: ((rect: FloatRect) => void) | null = null;
+  /**
+   * 位置是用户定的（这个页面里拖过小窗，或按「记住位置」恢复过）：之后再打开小窗保持这个位置，
+   * 不再贴着选区重新摆放（用户在 Edge 实测：拖过之后收起再打开，位置回到了选区旁边）。新页面重新开始
+   */
+  let pinned = false;
 
   const viewport = (): Size => ({ width: window.innerWidth, height: window.innerHeight });
 
@@ -127,6 +132,7 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
   function attachHandle(
     el: HTMLElement,
     onDrag: (dx: number, dy: number, startRect: FloatRect) => FloatRect,
+    movesWindow: boolean,
   ): void {
     let start: { x: number; y: number; rect: FloatRect } | null = null;
     el.addEventListener('pointerdown', (e) => {
@@ -143,6 +149,8 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
     });
     const end = (): void => {
       if (!start) return;
+      if (movesWindow && rect && (rect.left !== start.rect.left || rect.top !== start.rect.top))
+        pinned = true;
       start = null;
       if (iframe) iframe.style.pointerEvents = '';
       if (rect) rectSettledCb?.(rect);
@@ -224,11 +232,15 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
       pointerEvents: 'none',
     });
     dragHandle.append(grip);
-    attachHandle(dragHandle, (dx, dy, startRect) => ({
-      ...startRect,
-      left: startRect.left + dx,
-      top: startRect.top + dy,
-    }));
+    attachHandle(
+      dragHandle,
+      (dx, dy, startRect) => ({
+        ...startRect,
+        left: startRect.left + dx,
+        top: startRect.top + dy,
+      }),
+      true,
+    );
 
     const resizeHandle = document.createElement('div');
     resizeHandle.dataset.testid = 'float-resize-handle';
@@ -243,11 +255,15 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
       background:
         'linear-gradient(135deg, transparent 0 52%, #b5b5b5 52% 60%, transparent 60% 72%, #b5b5b5 72% 80%, transparent 80%)',
     });
-    attachHandle(resizeHandle, (dx, dy, startRect) => ({
-      ...startRect,
-      width: startRect.width + dx,
-      height: startRect.height + dy,
-    }));
+    attachHandle(
+      resizeHandle,
+      (dx, dy, startRect) => ({
+        ...startRect,
+        width: startRect.width + dx,
+        height: startRect.height + dy,
+      }),
+      false,
+    );
 
     shadow.append(dragHandle, resizeHandle);
     document.documentElement.append(h);
@@ -284,7 +300,12 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
         if (token === undefined) return; // 没令牌造不出小窗
         build(token);
       }
-      reposition();
+      if (pinned) {
+        // 位置由用户定过：留在原处，只夹回视口（窗口可能缩小过）
+        if (rect !== null) applyRect(clampRect(rect, viewport()));
+      } else {
+        reposition();
+      }
       if (host !== null && !host.matches(':popover-open')) host.showPopover();
       // 聚焦 iframe 元素而不是 contentWindow：元素 focus() 会先更新布局，刚显示出来的小窗也能拿到焦点；
       // 对刚从隐藏变为显示的 iframe 调 contentWindow.focus() 有时不生效，按键会落到网页里（e2e 复现）
@@ -306,6 +327,8 @@ export function createFloatHost(onLoadResult: (result: FloatLoadResult) => void)
     },
     reposition(x, y) {
       if (host === null || rect === null) return null;
+      // 来自小窗按「记住位置」的恢复：同样算用户定的位置
+      pinned = true;
       applyRect(clampRect({ ...rect, left: x, top: y }, viewport()));
       return rect;
     },

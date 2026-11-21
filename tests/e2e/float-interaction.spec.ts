@@ -298,6 +298,55 @@ test('往里缩小：把手往左上拖进小窗内容区也能缩，按住把�
   await expect.poll(() => floatHostOpen(page)).toBe(false);
 });
 
+test('拖过之后收起再打开：同一页面里保持拖过的位置和大小；没拖过时跟着选区走', async ({
+  page,
+  serviceWorker,
+  context,
+}) => {
+  await setup(page, serviceWorker);
+  const cdp = await context.newCDPSession(page);
+  await selectAndOpenFloat(page, cdp);
+  await waitFloatPortReady(page);
+  const first = await floatHostRect(page);
+
+  // 没拖过：收起后在别的段落选字再打开，小窗跟着新选区走（选区在上方一段，位置随之变化）
+  await page.mouse.click(5, 5);
+  await expect.poll(() => floatHostOpen(page)).toBe(false);
+  await page.locator('#p1').click({ clickCount: 3 });
+  await clickToolbarButton(cdp, page, '问');
+  await expect.poll(() => floatHostOpen(page)).toBe(true);
+  const followed = await floatHostRect(page);
+  expect(followed?.top).not.toBeCloseTo(first?.top ?? 0, 0);
+
+  // 拖到别处，再缩放一下
+  const drag = await hostHandleCenter(cdp, 'float-drag-handle');
+  await page.mouse.move(drag.x, drag.y);
+  await page.mouse.down();
+  await page.mouse.move(drag.x + 200, drag.y + 30, { steps: 8 });
+  await page.mouse.up();
+  const resize = await hostHandleCenter(cdp, 'float-resize-handle');
+  await page.mouse.move(resize.x, resize.y);
+  await page.mouse.down();
+  await page.mouse.move(resize.x - 40, resize.y - 50, { steps: 8 });
+  await page.mouse.up();
+  const dragged = await floatHostRect(page);
+
+  // 收起，再在另一段选字打开：位置和大小都保持拖过的样子
+  for (const id of ['#target', '#p1']) {
+    await page.mouse.click(5, 5);
+    await expect.poll(() => floatHostOpen(page)).toBe(false);
+    await page.locator(id).click({ clickCount: 3 });
+    await clickToolbarButton(cdp, page, '问');
+    await expect.poll(() => floatHostOpen(page)).toBe(true);
+    const reopened = await floatHostRect(page);
+    expect(reopened?.left).toBeCloseTo(dragged?.left ?? 0, 0);
+    expect(reopened?.top).toBeCloseTo(dragged?.top ?? 0, 0);
+    expect(reopened?.width).toBeCloseTo(dragged?.width ?? 0, 0);
+    expect(reopened?.height).toBeCloseTo(dragged?.height ?? 0, 0);
+  }
+  await cdp.detach();
+});
+
 test('收起再打开草稿不丢：隐藏是 popover 隐藏而不是销毁 iframe', async ({ page, serviceWorker, context }) => {
   await setup(page, serviceWorker);
   const cdp = await context.newCDPSession(page);
