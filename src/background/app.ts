@@ -12,6 +12,7 @@ import { createHub } from './hub';
 import { createIntents } from './intents';
 import { createJobs } from './jobs';
 import { createOptions } from './options';
+import { createPageImages } from './page-images';
 import { createPages } from './pages';
 import { senderRole } from './roles';
 import { createRoute } from './route';
@@ -36,7 +37,9 @@ export function createBackground(deps: BackgroundDeps) {
   const route = createRoute(deps, store, hub, host);
   // 框选截图（5.13）：发问时 jobs 从它取待确认的截图
   const capture = createCapture(deps, store, hub, host, route);
-  const jobs = createJobs(deps, store, hub, pages, capture);
+  // 页面图片（E2）：发问时 jobs 按设置开关向阅读器要选区所在块的图片并取回
+  const pageImages = createPageImages(deps);
+  const jobs = createJobs(deps, store, hub, pages, capture, pageImages);
   // 收藏（G1–G3、G6，history 块）
   const favorites = createFavorites(deps);
   const history = createHistory(deps, jobs);

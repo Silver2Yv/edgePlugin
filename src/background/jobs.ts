@@ -11,6 +11,8 @@
 //
 // 对话属于页面（pageKey），不属于标签页（5.11、D12）。不指定对话的发问与订阅按续接规则（D13，core/domain/conversation.ts）
 // 找该页最近的对话。后台重启后对话与历史从库里重建，续接照常带历史；跨重启重试仍不支持（决策 070，不落盘原始请求）。
+
+import { base64ToBytes, parseDataUrl } from '@/core/capture/data-url';
 import { toPageKey } from '@/core/context/page-key';
 import { defaultBudget } from '@/core/context/plan';
 import type { ActionId } from '@/core/domain/actions';
@@ -33,7 +35,9 @@ import {
 } from '@/core/domain/job';
 import type { BackgroundToClient, ClientToBackground, RejectReason } from '@/core/domain/messages';
 import {
+  type BlobRecord,
   type ConversationRecord,
+  type MessageImage,
   type MessageRecord,
   type PageRecord,
   SNAPSHOT_TTL_MS,
@@ -59,6 +63,7 @@ import type { DbWrites } from '@/platform/conv-db';
 import type { Capture, TakenCapture } from './capture';
 import type { BackgroundDeps } from './deps';
 import type { Hub } from './hub';
+import type { FetchedPageImage, PageImages } from './page-images';
 import type { PageContext, Pages } from './pages';
 import { loadQuirks, recordQuirk } from './quirk-store';
 import { quotePreviewOf } from './quote';
@@ -209,7 +214,14 @@ const thinkingParam = (t: AskMsg['thinking']): NonNullable<ChatRequest['thinking
 
 export type Jobs = ReturnType<typeof createJobs>;
 
-export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: Pages, capture?: Capture) {
+export function createJobs(
+  deps: BackgroundDeps,
+  store: Store,
+  hub: Hub,
+  pages: Pages,
+  capture?: Capture,
+  pageImages?: PageImages,
+) {
   const db = deps.db;
   const epoch = deps.newId();
   const jobs = new Map<string, Job>();
@@ -454,8 +466,16 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
     };
   }
 
-  /** 装配后写库：用户消息的实际发送全文、助手消息的计划、页面记录、实际发送的块（快照）。失败只记日志，终态再写一次消息 */
-  function saveAssembly(job: Job, ctx: PageContext, a: Accepted): void {
+  /**
+   * 装配后写库：用户消息的实际发送全文、助手消息的计划、页面记录、实际发送的块（快照）。失败只记日志，终态再写一次消息。
+   * extraBlobs：这一问附带的页面图片（E2），装配时才取到，与用户消息（已含它们的引用）在同一个事务里写入
+   */
+  function saveAssembly(
+    job: Job,
+    ctx: PageContext,
+    a: Accepted,
+    extraBlobs: readonly BlobRecord[] = [],
+  ): void {
     const plan = job.plan?.plan;
     const page = ctx.page;
     const now = deps.now();
@@ -483,6 +503,7 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         w.pages = [pageRecordOf(a.pageKey, page?.title ?? '', old)];
       }
       if (snapshot) w.snapshots = [snapshot];
+      if (extraBlobs.length > 0) w.blobs = [...extraBlobs];
       await db.write(w);
     }).catch((e: unknown) => deps.log('db/assemblyFailed', { error: errName(e) }));
   }
@@ -1102,6 +1123,31 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         transition(job, 'stopped', { stopReason: 'policyChanged' });
         return;
       }
+      // 页面图片（E2，contract-v1.5 增量）：开关开着、站点允许读取、且这次请求确实带了选区所在块时才取；
+      // 模型明确看不了图（能力表 vision 为 no）时不取、写一句说明；unknown 照发。取图失败只跳过那一张，不影响这次请求
+      let fetchedImages: readonly FetchedPageImage[] = [];
+      const imageNotes: string[] = [];
+      if (
+        pageImages &&
+        settings.context.includePageImages &&
+        ctx.page &&
+        !ctx.siteNoRead &&
+        ctx.selectionBlockIds.length > 0
+      ) {
+        if (effectiveCapabilities(target.conn, target.model.model).vision === 'no') {
+          imageNotes.push('当前模型不支持看图，没有附带页面里的图片');
+        } else {
+          const got = await pageImages.collect(
+            tabId,
+            ctx.page.documentId,
+            ctx.selectionBlockIds,
+            ctx.page.contentVersion,
+          );
+          fetchedImages = got.images;
+          imageNotes.push(...got.notes);
+          if (isTerminal(job.record.state)) return;
+        }
+      }
       const assembly = assembleAsk({
         question: msg.text,
         ...(selection
@@ -1125,11 +1171,14 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         selectionBlockIds: ctx.selectionBlockIds,
         siteNoRead: ctx.siteNoRead,
         previousFullPage: conv.lastFullPage,
-        extraNotes: ctx.notes,
+        extraNotes: [...ctx.notes, ...imageNotes],
         actionId: msg.actionId as ActionId,
         promptOverrides: settings.promptOverrides,
         customActions: settings.customActions,
         ...(a.image ? { image: { dataUrl: a.image.dataUrl } } : {}),
+        ...(fetchedImages.length > 0
+          ? { pageImages: fetchedImages.map((i) => ({ url: i.url, dataUrl: i.dataUrl })) }
+          : {}),
       });
       conv.lastFullPage = assembly.sentFullPage;
       job.userText = assembly.userText;
@@ -1157,8 +1206,28 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       // 发送计划先于请求推给界面（规则 8）
       job.plan = { type: 'conv/plan', jobId, contextSnapshotId, plan };
       hub.toTab(tabId, job.plan);
-      job.userMessage = { ...job.userMessage, sentText: assembly.userText };
-      saveAssembly(job, ctx, a);
+      // 页面图片随这一问存进库（与截图同样：blobs 表 + 用户消息引用，删对话时解引用）
+      const imageRefs: MessageImage[] = [];
+      const imageBlobs: BlobRecord[] = [];
+      for (const img of fetchedImages) {
+        const parsed = parseDataUrl(img.dataUrl);
+        if (!parsed) continue;
+        const blobId = deps.newId();
+        imageRefs.push({ blobId, mime: img.mime, width: img.width, height: img.height });
+        imageBlobs.push({
+          id: blobId,
+          mime: img.mime,
+          data: new Blob([base64ToBytes(parsed.base64) as BlobPart], { type: img.mime }),
+          refCount: 1,
+          createdAt: deps.now(),
+        });
+      }
+      job.userMessage = {
+        ...job.userMessage,
+        sentText: assembly.userText,
+        ...(imageRefs.length > 0 ? { images: [...(job.userMessage.images ?? []), ...imageRefs] } : {}),
+      };
+      saveAssembly(job, ctx, a, imageBlobs);
       job.req = {
         model: target.model.model,
         messages: assembly.messages,

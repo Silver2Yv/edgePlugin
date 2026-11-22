@@ -7,6 +7,7 @@ import { makeAnchor } from '@/core/anchor/anchor';
 import { splitByJsonBytes } from '@/core/domain/bytes';
 import { JOB_LIMITS } from '@/core/domain/job';
 import type { ContentToBackground } from '@/core/domain/messages';
+import { MAX_PAGE_IMAGES } from '@/core/domain/messages';
 import { type ExtractResult, extractPage } from './extract';
 import { getLastSelectionRevision } from './selection-bus';
 import { evaluateSelection } from './selection-policy';
@@ -15,6 +16,38 @@ type Send = (msg: ContentToBackground) => Promise<unknown>;
 type Anchored = Extract<ContentToBackground, { type: 'selection/anchored' }>;
 
 const MAX_ANCHOR_BLOCKS = 200;
+/** 太小的装饰图（图标、分隔线之类）跳过（E2）：按实际解码出的像素尺寸判断，不看 CSS 显示尺寸 */
+const MIN_PAGE_IMAGE_PX = 32;
+
+/**
+ * 选区所在块里已经加载出来的图片地址（E2，contract-v1.5 增量）：只取「页面自己已经渲染出的图」
+ * （img.complete && naturalWidth > 0），用 currentSrc（跟着 srcset/picture 解析出的那张），只收 http/https，
+ * 按文档顺序去重；小于 MIN_PAGE_IMAGE_PX 的装饰图跳过；最多 MAX_PAGE_IMAGES 张。
+ * contentVersion 对不上最近一次抽取就返回空（不把旧块号套到新内容上，同 V-06 的顾虑）
+ */
+export function imagesInBlocks(
+  last: ExtractResult | undefined,
+  blockIds: readonly string[],
+  contentVersion: string,
+): string[] {
+  if (!last || last.report.contentVersion !== contentVersion) return [];
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const id of blockIds) {
+    const el = last.elements.get(id);
+    if (!el) continue;
+    for (const img of el.querySelectorAll('img')) {
+      if (urls.length >= MAX_PAGE_IMAGES) return urls;
+      if (!(img instanceof HTMLImageElement) || !img.complete || img.naturalWidth <= 0) continue;
+      if (img.naturalWidth < MIN_PAGE_IMAGE_PX || img.naturalHeight < MIN_PAGE_IMAGE_PX) continue;
+      const src = img.currentSrc || img.src;
+      if (!/^https?:\/\//i.test(src) || seen.has(src)) continue;
+      seen.add(src);
+      urls.push(src);
+    }
+  }
+  return urls;
+}
 
 function scrollRatioOf(el: Element): number {
   const h = document.documentElement.scrollHeight || 1;
@@ -64,6 +97,8 @@ export function anchorSelection(r: ExtractResult, revision: number | undefined):
 
 export function createPageReader(send: Send) {
   let running: Promise<ExtractResult> | undefined;
+  /** 最近一次完成的抽取结果：page/images 据此在不重新抽取的情况下查图片（E2） */
+  let last: ExtractResult | undefined;
 
   return {
     async read(readId: string, knownContentVersion: string | undefined): Promise<void> {
@@ -71,6 +106,7 @@ export function createPageReader(send: Send) {
         running = undefined;
       });
       const r = await running;
+      last = r;
       const anchored = anchorSelection(r, getLastSelectionRevision());
       if (anchored) await send(anchored);
       const { contentVersion } = r.report;
@@ -82,6 +118,11 @@ export function createPageReader(send: Send) {
       for (const [index, data] of parts.entries()) {
         await send({ type: 'page/docPart', readId, index, total: parts.length, data });
       }
+    },
+
+    /** page/images 的同步应答（E2）：块号与版本对不上最近一次抽取就是空数组 */
+    imagesIn(blockIds: readonly string[], contentVersion: string): string[] {
+      return imagesInBlocks(last, blockIds, contentVersion);
     },
   };
 }

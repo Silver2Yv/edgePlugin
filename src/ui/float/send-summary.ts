@@ -15,6 +15,11 @@ export interface SendSummary {
   details: string[];
 }
 
+/** 展开明细里单个图片地址最多显示的字数，超出的用省略号（完整地址仍在计划里） */
+const URL_SHOWN_CHARS = 120;
+export const shortUrl = (u: string): string =>
+  [...u].length <= URL_SHOWN_CHARS ? u : `${[...u].slice(0, URL_SHOWN_CHARS).join('')}…`;
+
 /**
  * selectedChars：这次发问选中了多少字（来自对应的用户消息）；不知道时，没带页面内容的请求用计划里的
  * 已发送字数代替（那时发送的只有选中文字）
@@ -42,6 +47,10 @@ export function sendSummary(plan: RequestContextPlan, selectedChars: number | nu
   }
   // 框选截图（E1、5.9 图片单列）：附了几张图照实写
   if (plan.imageCount > 0) parts.push(T.capture.sent(plan.imageCount));
+  // 网页图片（E2）：地址只在展开明细里列出，过长的截断
+  const pageUrls = plan.pageImageUrls ?? [];
+  if (pageUrls.length > 0)
+    extra.push(T.capture.pageImagesHeading(pageUrls.length), ...pageUrls.map(shortUrl));
   if (plan.droppedHistoryTurns > 0) extra.push(T.sent.droppedHistory(plan.droppedHistoryTurns));
   if (plan.historyHasPageText) extra.push(T.sent.historyHasPageText);
   if (plan.removedEarlierPageText) extra.push(T.sent.removedEarlierPageText);

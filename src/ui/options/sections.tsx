@@ -209,6 +209,16 @@ export function ReplySection({ handle }: { handle: SettingsHandle }) {
           onCommit={(n) => setContext({ summaryReadRatio: n / 100 })}
         />
       </Row>
+      <Row label={S.reply.pageImages} help={S.reply.pageImagesHelp}>
+        <label class="opt-check">
+          <input
+            type="checkbox"
+            aria-label={S.reply.pageImagesLabel}
+            checked={settings.context.includePageImages}
+            onChange={(e) => setContext({ includePageImages: (e.target as HTMLInputElement).checked })}
+          />
+        </label>
+      </Row>
     </>
   );
 }

@@ -30,6 +30,11 @@ export interface CaptureImages {
   process(shot: string, rect: CssRect, viewport: Size): Promise<ProcessedCapture | 'mismatch'>;
   /** 库里的图 → 缩略图（历史回看） */
   thumbnail(image: Blob): Promise<string>;
+  /**
+   * 页面图片（E2，contract-v1.5 增量）：任意来源的图片字节（background/page-images.ts 从页面所在主机取到的）
+   * 按截图同样的上限缩放编码（最长边 MAX_IMAGE_SIDE、PNG 超 PNG_MAX_BYTES 转 JPEG）。格式不支持或已损坏时抛错
+   */
+  encodeImage(image: Blob): Promise<{ dataUrl: string; mime: string; width: number; height: number }>;
 }
 
 /** PNG 超过这么大就改用 JPEG：文字截图 PNG 更清楚，但大图会让请求体过大（中转站常见 10–20 MB 上限） */
@@ -97,6 +102,19 @@ export const offscreenCaptureImages: CaptureImages = {
     const bitmap = await createImageBitmap(image);
     try {
       return await thumbOf(bitmap, { sx: 0, sy: 0, sw: bitmap.width, sh: bitmap.height });
+    } finally {
+      bitmap.close();
+    }
+  },
+
+  async encodeImage(image) {
+    const bitmap = await createImageBitmap(image);
+    try {
+      const size = fitWithin({ w: bitmap.width, h: bitmap.height }, MAX_IMAGE_SIDE);
+      const canvas = draw(bitmap, { sx: 0, sy: 0, sw: bitmap.width, sh: bitmap.height }, size);
+      let blob = await canvas.convertToBlob({ type: 'image/png' });
+      if (blob.size > PNG_MAX_BYTES) blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.9 });
+      return { dataUrl: await dataUrlOf(blob), mime: blob.type, width: size.w, height: size.h };
     } finally {
       bitmap.close();
     }

@@ -140,7 +140,12 @@ test('不同速度软预算：全文放不下时以选区为中心连续截取�
   for (const ratio of [0.1, 0.5, 1]) {
     await writeSettings(serviceWorker, {
       ...settingsWith(r),
-      context: { speedSoftBudgetRatio: ratio, summaryReadRatio: 0.3, defaultTier: 'nearby' },
+      context: {
+        speedSoftBudgetRatio: ratio,
+        summaryReadRatio: 0.3,
+        defaultTier: 'nearby',
+        includePageImages: false,
+      },
     });
     if (first) await open(page, serviceWorker, LONG);
     first = false;
@@ -350,7 +355,12 @@ test('界面设置与请求一致：小窗按设置的长度档、回答语言�
     // （厂商映射的单测在 core/llm/thinking.test.ts）
     connections: [{ ...conn, preset: 'openai' }],
     reply: { lengthTier: 'brief', language: 'en', thinking: 'high' },
-    context: { speedSoftBudgetRatio: 0.5, summaryReadRatio: 0.3, defaultTier: 'nearby' },
+    context: {
+      speedSoftBudgetRatio: 0.5,
+      summaryReadRatio: 0.3,
+      defaultTier: 'nearby',
+      includePageImages: false,
+    },
   });
   await open(page, serviceWorker, RICH);
   const frame = await selectAndOpen(page, '#en');
