@@ -362,6 +362,14 @@ export function createPages(deps: BackgroundDeps) {
       for (const p of [...reads.values()]) if (p.tabId === tabId) p.finish({ ok: false, error: 'tabClosed' });
     },
 
+    /**
+     * 选区的锚点（selection/anchored 存下的那份），只在修订号对得上时给；用户消息落库时记进 selection.anchor（5.7）
+     */
+    anchorFor(tabId: number, selectionRevision: number): Anchor | undefined {
+      const a = anchors.get(tabId);
+      return a && a.revision === selectionRevision ? a.anchor : undefined;
+    },
+
     /** 单测与诊断：某标签页缓存的版本 */
     cachedVersion: (tabId: number): string | undefined => cache.get(tabId)?.doc.contentVersion,
   };

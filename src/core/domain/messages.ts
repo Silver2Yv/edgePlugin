@@ -201,7 +201,11 @@ const thinking = oneOf(['off', 'low', 'medium', 'high']);
 
 const askBody = {
   clientRequestId: id,
-  /** 不填表示新对话 */
+  /**
+   * 指定续接的对话（用户明确选的，直接续接）。不填按续接规则（D13，见 fresh）找该页近期的对话或新建。
+   * 授权（contract-v1.4）：对话属于页面（pageKey）。小窗只能续接所在标签页当前页面的对话（或本进程里在这个标签页上
+   * 进行过的），对不上时按不填处理；侧边栏对不上时拒绝（notOwner）
+   */
   conversationId: opt(id),
   actionId,
   /** 用户输入的问题；直接发送的动作为空串 */
@@ -215,6 +219,11 @@ const askBody = {
   lengthTier,
   thinking,
   model: modelRef,
+  /**
+   * contract-v1.4 增量：显式「新建对话」。为真时不续接该页近期的对话（D13），不能同时带 conversationId。
+   * 不带 conversationId、也不带 fresh 时按续接规则：该页最近的对话距上次提问不超过 30 分钟、且轮数少于 20 才续接
+   */
+  fresh: opt(bool),
 } as const;
 
 export const clientToBackground = tagged({
@@ -284,6 +293,11 @@ export const clientToBackground = tagged({
     messageId: id,
     segmentIndex: int({ min: 0, max: 10_000 }),
   }),
+  /**
+   * contract-v1.4 增量，仅侧边栏：删除一个对话，连同它的消息与无人引用的快照（5.11 级联）。
+   * 成功回 history/deleted；对话正有回答在生成时拒绝（busy），写库失败拒绝（storageFailed）
+   */
+  'history/delete': obj({ type: lit('history/delete'), requestId: id, conversationId: id }),
 });
 export type ClientToBackground = Infer<typeof clientToBackground>;
 
@@ -318,9 +332,15 @@ export type BackgroundToClient =
     }
   | {
       type: 'conv/snapshot';
-      /** 新对话时为空 */
+      /** 新对话时为空；分批时只在第一批 */
       conversation?: ConversationRecord;
-      /** 按 ordinal 升序分批发送，每批不超过 64 KB；done 为真是最后一批 */
+      /**
+       * 按 ordinal 升序分批发送，每批不超过 64 KB；done 为真是最后一批。
+       * contract-v1.4 增量：消息从数据库来（后台重启后也在）。一条消息自己就超过上限时切成几片，
+       * 同一 id 连续出现，后面的续片只有 segments / reasoning 有意义，按顺序拼到前一片后面；
+       * 选中文字连同其他字段仍放不下时 selection.text 只给前 2000 字（truncated 为真）。
+       * 进行中任务的助手消息（status 为 accepted / streaming）正文可能落后：同一任务以 conv/delta、conv/jobState 为准
+       */
       messages: readonly MessageRecord[];
       done: boolean;
       conversationRevision: number;
@@ -340,6 +360,11 @@ export type BackgroundToClient =
       jobId: string;
       messageId: string;
       conversationId: string;
+      /**
+       * contract-v1.4 增量：没指定对话、该页有近期对话但不合续接规则（D13）而新建了对话时带上原因，
+       * 界面提示「已开启新对话，旧的仍可在历史里找回」。idle：距上次提问超过 30 分钟；turnLimit：已满 20 轮
+       */
+      newConversation?: 'idle' | 'turnLimit';
     }
   | {
       type: 'conv/delta';
@@ -372,7 +397,24 @@ export type BackgroundToClient =
       tabId: number;
       conversationId?: string;
     }
-  | { type: 'history/page'; queryId: string; items: readonly ConversationRecord[]; done: boolean }
+  | {
+      /**
+       * 历史查询的结果，按 updatedAt 降序；一次查询可能分几条（每条不超过 64 KB），done 为真是最后一条。
+       * contract-v1.4 增量 nextBefore：还有更早的，下一页把它作为 history/query 的 before；没有就是到底了
+       */
+      type: 'history/page';
+      queryId: string;
+      items: readonly ConversationRecord[];
+      done: boolean;
+      nextBefore?: number;
+    }
+  /** contract-v1.4 增量：history/delete 成功（事务已提交） */
+  | { type: 'history/deleted'; requestId: string; conversationId: string }
+  /**
+   * contract-v1.4 增量：任务的终态没能写进数据库（重试一次仍失败）。回答照常显示，但不在历史里、
+   * 后台重启后接着问不会带上这一轮；界面据此提示，不把「写入失败」当成「已存」（5.11 写入确认）
+   */
+  | { type: 'conv/saveFailed'; jobId: string; messageId: string }
   | { type: 'favorite/saved'; favoriteId: string }
   | { type: 'citation/located'; requestId: string; level: 'exact' | 'fuzzy' | 'scroll' | 'none' }
   | {
@@ -507,6 +549,7 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
     'history/query',
     'favorite/add',
     'citation/locate',
+    'history/delete',
   ]),
   options: new Set(Object.keys(optionsToBackground.variants)),
   unknown: new Set(),
@@ -515,7 +558,9 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
 /**
  * busy（contract-v1.3 增量）：同一对话正有回答在生成（决策 062）。两个界面几乎同时向同一对话发问时，
  * 后到的那一条收到它（V-03），界面据此提示「回答进行中」，而不是笼统的「消息格式不对」。
- * gone（contract-v1.3 增量）：要转到侧边栏的对话后台已经没有了（后台被回收重启过，本版本对话只在内存）
+ * gone（contract-v1.3 增量）：要转到侧边栏的对话后台已经没有了。contract-v1.4 起对话在数据库里，
+ *   后台重启不再丢对话；只有对话已被删除（库里没有）时才回它。
+ * storageFailed（contract-v1.4 增量）：数据库写入或读取失败（接单要先落库，落不了就不发请求）
  */
 export type RejectReason =
   | 'tooLarge'
@@ -525,7 +570,8 @@ export type RejectReason =
   | 'badToken'
   | 'notOwner'
   | 'busy'
-  | 'gone';
+  | 'gone'
+  | 'storageFailed';
 
 /** JSON 序列化后的 UTF-8 字节数；序列化失败（循环引用、BigInt）返回 Infinity */
 export function messageBytes(msg: unknown): number {

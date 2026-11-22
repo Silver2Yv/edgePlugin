@@ -4,6 +4,7 @@
 import type { BackgroundToContent, BackgroundToPages } from '@/core/domain/messages';
 import type { MigrateResult } from '@/core/domain/settings';
 import type { InterfaceType, ModelAdapter } from '@/core/llm/adapter';
+import type { ConvDb } from '@/platform/conv-db';
 
 /** 只用到的 sender 字段；与 runtime.MessageSender 兼容 */
 export interface SenderLike {
@@ -91,4 +92,6 @@ export interface BackgroundDeps {
   listModelsTimeoutMs?: number;
   /** 发问等待响应头的超时（毫秒），默认见 JOB_LIMITS.connectTimeoutMs；单测用它调小（V-01） */
   askConnectTimeoutMs?: number;
+  /** 对话数据库（5.11）：后台是唯一写入者。真实实现是 IndexedDB（platform/conv-db.ts），单测换成内存实现 */
+  db: ConvDb;
 }

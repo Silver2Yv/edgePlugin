@@ -221,7 +221,7 @@ describe('conv/ask', () => {
     expect(h.fetches).toHaveLength(0);
   });
 
-  it('后台重启后接着问：选区从 storage.session 取，对话编号按新对话接手', async () => {
+  it('后台重启后接着问：选区从 storage.session 取，对话从库里重建，请求带上上一轮', async () => {
     const session = fakeSession();
     const h1 = makeHarness({ session });
     const { c, call } = await asked(h1);
@@ -230,13 +230,17 @@ describe('conv/ask', () => {
     await until(() => states(c).includes('completed'));
     const conversationId = c.ofType('conv/accepted')[0]?.conversationId;
 
-    const h2 = makeHarness({ session });
+    const h2 = makeHarness({ session, db: h1.db });
     const again = h2.connect();
     again.send({ type: 'conv/resumeFloat' });
     again.send(askMsg({ clientRequestId: 'req-00000002', conversationId }));
     await until(() => h2.fetches.length === 1, '第二次请求');
     expect(again.ofType('conv/accepted')[0]).toMatchObject({ conversationId });
-    expect(JSON.stringify(JSON.parse(String(h2.fetches[0]?.init.body)).messages)).toContain(SELECTED);
+    const messages = JSON.parse(String(h2.fetches[0]?.init.body)).messages as { role: string }[];
+    // 系统、上一轮（问、答）、本轮
+    expect(messages.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'user']);
+    expect(JSON.stringify(messages[2])).toContain('答');
+    expect(JSON.stringify(messages[1])).toContain(SELECTED);
   });
 
   it('等响应头超时（V-01）：failed(timeout)，没有收到任何内容', async () => {
