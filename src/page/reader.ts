@@ -1,10 +1,11 @@
 // 阅读器（ARCHITECTURE 4.3 规则 1-5、5.3）：只在顶层框架，由后台注入。
-// 接小窗相关指令、网页提示（page/notice）与页面读取（page/read）；定位高亮、截图框选（4.2）这轮不做。
+// 接小窗相关指令、网页提示（page/notice）、页面读取（page/read）、引用定位与高亮（page/locate、page/back，5.7）；截图框选（4.2）这轮不做。
 // 不发网络请求，不持有对话内容。
 import { browser } from 'wxt/browser';
-import { backgroundToContent } from '@/core/domain/messages';
+import { backgroundToContent, type ContentToBackground } from '@/core/domain/messages';
 import { createFloatHost } from './float-host';
 import { attachFloatPort } from './float-port';
+import { createLocator } from './locate';
 import { createPageNotice } from './notice';
 import { createPageReader } from './page-read';
 
@@ -45,6 +46,11 @@ export function startReader(): void {
   });
 
   const pageReader = createPageReader((msg) => browser.runtime.sendMessage(msg));
+  // 引用跳回（5.7）与回到刚才的位置（F4）：滚过去时让开显示着的小窗（小窗不挪，原文挪到它旁边）
+  const locator = createLocator(document, () => {
+    const shown = document.querySelector('[data-ra-float-host="true"]')?.matches(':popover-open');
+    return shown ? floatHost.getRect() : null;
+  });
 
   browser.runtime.onMessage.addListener((raw, sender) => {
     // 只认来自后台的指令：sender.id 是本扩展，且没有 sender.tab（内容脚本发的消息都带 tab）
@@ -70,8 +76,26 @@ export function startReader(): void {
         // 页面读取（5.6）：抽取在时间片里做，结果经 page/docPart / page/docUnchanged 回传
         void pageReader.read(r.value.readId, r.value.knownContentVersion).catch(() => undefined);
         break;
+      case 'page/locate': {
+        // 定位与高亮（5.7）：结果经 page/locateResult 回传；出错按找不到
+        const { requestId, type: _type, ...req } = r.value;
+        void locator
+          .locate(req)
+          .catch(() => ({ level: 'none' as const, back: false }))
+          .then((res) =>
+            browser.runtime.sendMessage({ type: 'page/locateResult', requestId, ...res } satisfies Extract<
+              ContentToBackground,
+              { type: 'page/locateResult' }
+            >),
+          )
+          .catch(() => undefined);
+        break;
+      }
+      case 'page/back':
+        locator.back();
+        break;
       default:
-        // page/locate、capture/* 这轮不实现
+        // capture/* 这轮不实现
         break;
     }
   });

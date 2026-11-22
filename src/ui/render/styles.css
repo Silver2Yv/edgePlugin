@@ -193,16 +193,25 @@
   word-break: break-all;
 }
 
-/* 引用编号：点击跳回原文（F1）还没接上，先不做成可点的样子；接上后改回 cursor: pointer */
+/* 引用编号与逐字引用：点击跳回原文（F1） */
 .ra-citation {
-  cursor: default;
+  cursor: pointer;
   color: var(--ra-accent, #06c);
   margin: 0 1px;
 }
+.ra-citation:hover {
+  text-decoration: underline;
+}
 .ra-citation-quote {
+  cursor: pointer;
   color: inherit;
   background: var(--ra-mark, #fff3b0);
   border-radius: 2px;
+}
+.ra-citation:focus-visible,
+.ra-citation-quote:focus-visible {
+  outline: 2px solid var(--ra-accent, #06c);
+  outline-offset: 1px;
 }
 
 .ra-image-link,

@@ -374,8 +374,16 @@ const sentChars = (blocks: readonly Block[]) => blocks.reduce((n, b) => n + code
 /** 页面级动作的读取覆盖说明（D9、AR-21）：同时给比例与字数，不单说百分比 */
 function readCoverageNote(sent: number, extractableChars: number): string {
   const percent = extractableChars > 0 ? Math.round((sent / extractableChars) * 100) : 100;
-  return `本次读取全文的 ${percent}%，${charCountLabel(sent)}`;
+  return `${READ_COVERAGE_LEAD}${percent}%，${charCountLabel(sent)}`;
 }
+
+const READ_COVERAGE_LEAD = '本次读取全文的 ';
+
+/**
+ * 计划 notes 里的读取覆盖说明（cite 块，5.9「在结果标题处写明覆盖范围」）：只有页面级动作（总结等）的计划里有，
+ * 界面把它挪到回答的标题行
+ */
+export const isReadCoverageNote = (note: string): boolean => note.startsWith(READ_COVERAGE_LEAD);
 
 export function assembleAsk(input: AskInput): AskAssembly {
   const { selection, budget, page } = input;

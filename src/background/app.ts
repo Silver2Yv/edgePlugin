@@ -1,4 +1,6 @@
 // 后台装配：各模块共用一份运行时状态。监听器的注册在 main.ts（顶层同步）。
+
+import { createCitations } from './citations';
 import { type CommandTab, createCommands, type MenuInfo } from './commands';
 import { createConv } from './conv';
 import type { BackgroundDeps, SenderLike } from './deps';
@@ -12,6 +14,7 @@ import { createPages } from './pages';
 import { senderRole } from './roles';
 import { createRoute } from './route';
 import { createStore } from './store';
+import { createSummary } from './summary';
 
 export type Background = ReturnType<typeof createBackground>;
 
@@ -23,11 +26,14 @@ export function createBackground(deps: BackgroundDeps) {
   const host = createFloatHost(deps, store);
   const pages = createPages(deps);
   const jobs = createJobs(deps, store, hub, pages);
-  const route = createRoute(deps, store, hub, host);
-  const intents = createIntents(deps, store, hub, host, pages, route, jobs);
-  const commands = createCommands(deps, store, hub, host, jobs, route);
-  const options = createOptions(deps);
   const history = createHistory(deps, jobs);
+  // 引用跳回与「总结本页」完整版（cite 块）
+  const citations = createCitations(deps, jobs);
+  const summary = createSummary(deps, history, pages, hub);
+  const route = createRoute(deps, store, hub, host);
+  const intents = createIntents(deps, store, hub, host, pages, route, jobs, { summary, citations });
+  const commands = createCommands(deps, store, hub, host, jobs, route, { summary });
+  const options = createOptions(deps);
   // 每次启动都收紧一次（5.11）：顶层同步路径里发起，不 await，不阻塞监听器注册；
   // 失败不当作安全保证，设置页写 Key 前会再调一次 settings/ensureLocked 确认
   void deps.lockStorage().catch((e: unknown) => deps.log('storage/lockFailed', { error: errName(e) }));
@@ -40,7 +46,7 @@ export function createBackground(deps: BackgroundDeps) {
     onMessage(raw: unknown, sender: SenderLike) {
       return senderRole(sender, deps.self) === 'options' ? options(raw, sender) : intents(raw, sender);
     },
-    onConnect: createConv(deps, store, hub, host, jobs, history),
+    onConnect: createConv(deps, store, hub, host, jobs, history, { citations, summary }),
     /** 快捷键（commands.onCommand）：在监听器的同步段里调用，要开侧边栏的当场 open（规则 10） */
     onCommand: (command: string, tab: CommandTab | undefined) => commands.onCommand(command, tab),
     /** 右键菜单（contextMenus.onClicked）：同上 */
@@ -73,6 +79,8 @@ export function createBackground(deps: BackgroundDeps) {
       host.forget(tabId);
       hub.forgetTab(tabId);
       jobs.forgetTab(tabId);
+      citations.forgetTab(tabId);
+      summary.forgetTab(tabId);
       await store.forgetTab(tabId);
     },
   };

@@ -20,56 +20,10 @@
  * 移植自 prototypes/v10-render/src/render/citation.ts（V-10 原型已验证）。
  */
 
-// 与 prototypes/v09-citation/RESULT.md “推荐解析正则” 一致
-const QUOTE_RE = /【([0-9]+)】([\s\S]*?)【\/\1】/g;
-const NUMBER_RE = /【([0-9]+(?:\s*[,，、]\s*[0-9]+)*)】/g;
+// 解析在 core（后台跳回原文时按同一套写法核对引用，5.7），这里只做 DOM 挂载
+import { type CitationMatch, findCitationMatches } from '@/core/anchor/citations';
 
-export interface CitationMatch {
-  start: number;
-  end: number;
-  kind: 'quote' | 'number';
-  ids: string[];
-  quotedText?: string;
-  raw: string;
-}
-
-function splitIds(idsRaw: string): string[] {
-  return idsRaw
-    .split(/[,，、]/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-}
-
-/** 在一段纯文本里找出所有引用标记区间（已按 V-09 顺序去重叠）。 */
-export function findCitationMatches(text: string): CitationMatch[] {
-  const quoteRanges: CitationMatch[] = [];
-  QUOTE_RE.lastIndex = 0;
-  let m: RegExpExecArray | null = QUOTE_RE.exec(text);
-  while (m !== null) {
-    quoteRanges.push({
-      start: m.index,
-      end: m.index + m[0].length,
-      kind: 'quote',
-      ids: [m[1] ?? ''],
-      quotedText: m[2] ?? '',
-      raw: m[0],
-    });
-    m = QUOTE_RE.exec(text);
-  }
-
-  const numberRanges: CitationMatch[] = [];
-  NUMBER_RE.lastIndex = 0;
-  m = NUMBER_RE.exec(text);
-  while (m !== null) {
-    const start = m.index;
-    const end = m.index + m[0].length;
-    const overlaps = quoteRanges.some((q) => start < q.end && end > q.start);
-    if (!overlaps) numberRanges.push({ start, end, kind: 'number', ids: splitIds(m[1] ?? ''), raw: m[0] });
-    m = NUMBER_RE.exec(text);
-  }
-
-  return [...quoteRanges, ...numberRanges].sort((a, b) => a.start - b.start);
-}
+export { type CitationMatch, findCitationMatches };
 
 function allIdsAllowed(ids: string[], allowedIds: ReadonlySet<string>): boolean {
   return ids.every((id) => allowedIds.has(id) || allowedIds.has(String(parseInt(id, 10))));
@@ -80,6 +34,9 @@ function buildCitationElement(doc: Document, match: CitationMatch): HTMLElement 
     const el = doc.createElement('mark');
     el.setAttribute('class', 'ra-citation-quote');
     el.setAttribute('data-id', match.ids[0] ?? '');
+    // 可点击跳回原文（F1）：与编号同样可聚焦、按 Enter / 空格触发（点击处理在 AnswerView）
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
     el.textContent = match.quotedText ?? '';
     return el;
   }

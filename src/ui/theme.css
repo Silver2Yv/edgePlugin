@@ -596,3 +596,55 @@ body {
   font-size: 11px;
   color: var(--ra-muted);
 }
+
+/* ───────────── 引用跳回与上次总结（cite 块） ───────────── */
+
+/* 页面级总结的读取覆盖范围，写在回答的标题处（5.9、AR-21） */
+.ra-answer__coverage {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ra-text-2);
+}
+
+/* 上次总结卡片：放在对话列表最上面 */
+.ra-summary-card {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: var(--ra-surface);
+  border: 1px solid var(--ra-border);
+  border-radius: var(--ra-radius);
+}
+.ra-summary-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.ra-summary-card__title {
+  font-size: 12px;
+  color: var(--ra-muted);
+}
+.ra-summary-card__redo {
+  margin-left: auto;
+}
+.ra-summary-card__stale {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--ra-text-2);
+}
+.ra-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  font-size: 11px;
+  color: var(--ra-text-2);
+  background: var(--ra-surface-2);
+  border-radius: var(--ra-radius-pill);
+}
+.ra-badge--warn {
+  color: var(--ra-danger);
+  background: var(--ra-danger-soft);
+}

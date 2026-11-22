@@ -26,12 +26,15 @@ import {
   type FloatToReader,
   type ReaderToFloat,
 } from '@/core/domain/messages';
+import { isReadCoverageNote } from '@/core/prompt/ask';
 import { loadSettings, SETTINGS_KEY } from '@/platform/settings-store';
 import { EXPAND_QUESTION, NO_CONNECTION } from './ask-defaults';
 import { type AskDeps, flushQueuedAsk, submitAsk, useComposerDefaults } from './chat/ask';
 import { Composer } from './chat/Composer';
 import { IconClose, IconPanel, IconPin, IconPlus } from './chat/Icons';
 import { MessageList } from './chat/MessageList';
+import { resummarize, SummaryCard, summaryCardVisible, useLastSummary } from './cite/SummaryCard';
+import { CiteNote, useCite } from './cite/useCite';
 import { displayItems } from './float/messages';
 import {
   type FloatRectValue,
@@ -89,7 +92,12 @@ export function FloatApp() {
   const connect = (hello: ClientToBackground) => {
     const port = browser.runtime.connect({ name: CONV_PORT });
     portRef.current = port;
-    port.onMessage.addListener((raw: BackgroundToClient) => dispatch({ kind: 'server', msg: raw }));
+    port.onMessage.addListener((raw: BackgroundToClient) => {
+      dispatch({ kind: 'server', msg: raw });
+      // cite 块：引用跳回的结果、上次总结
+      cite.onMessage(raw);
+      lastSummary.onMessage(raw);
+    });
     port.onDisconnect.addListener(() => dispatch({ kind: 'disconnected' }));
     port.postMessage(hello);
   };
@@ -104,6 +112,12 @@ export function FloatApp() {
     canSendNow: (s) => s.connPhase === 'ready',
     wake,
   };
+
+  // cite 块：引用跳回原文（F1、F4）与上次总结（6.2）
+  const canSendNow = () => stateRef.current.connPhase === 'ready';
+  const post = (msg: ClientToBackground) => portRef.current?.postMessage(msg);
+  const cite = useCite({ post, canSendNow, wake }, state.job?.jobId ?? '');
+  const lastSummary = useLastSummary({ post, canSendNow }, '', state.job?.jobId ?? null);
 
   useEffect(() => {
     if (token !== null) connect({ type: 'conv/helloFloat', token });
@@ -199,6 +213,8 @@ export function FloatApp() {
   // 这次订阅的初始推送（引用等）已收完：若有未就绪时存下的待发问，用这时最新的引用构造并发出
   useEffect(() => {
     flushQueuedAsk(state, askDeps);
+    cite.flush();
+    lastSummary.request();
   }, [state.snapshotSeq]);
 
   // 转接：连接就绪才发 handoff/start（点击时后台可能被回收了，先唤醒重连）
@@ -244,6 +260,13 @@ export function FloatApp() {
   }, []);
 
   const generating = isGenerating(state.job);
+  // 看着答完一次页面级总结：上次总结换成了这一次，重新取（之后点「新对话」时卡片显示的是最新的）
+  const pageSummaryDone =
+    state.job?.state === 'completed' && state.job.plan?.notes.some(isReadCoverageNote) === true;
+  useEffect(() => {
+    if (pageSummaryDone) lastSummary.request();
+  }, [pageSummaryDone, state.job?.jobId]);
+  const summaryVisible = summaryCardVisible(lastSummary.shown, lastSummary.forced, state);
 
   const handleSend = async () => {
     if (await submitAsk(askDeps, question)) setQuestion('');
@@ -335,6 +358,7 @@ export function FloatApp() {
         </button>
       </header>
       <div className="ra-notes">
+        <CiteNote cite={cite.cite} onBack={cite.back} />
         {connMessage && <p className="ra-note">{connMessage}</p>}
         {state.handoff?.slow && (
           <p data-testid="handoff-hint" className="ra-note">
@@ -353,6 +377,17 @@ export function FloatApp() {
         generating={generating}
         onRetry={handleRetry}
         onExpand={handleExpand}
+        onCitation={cite.locate}
+        header={
+          summaryVisible && lastSummary.shown ? (
+            <SummaryCard
+              summary={lastSummary.shown.summary}
+              forced={lastSummary.forced}
+              onCitation={cite.locate}
+              onResummarize={() => void resummarize(askDeps)}
+            />
+          ) : null
+        }
       />
       {state.actionError && (
         <p data-testid="action-error" className="ra-note ra-note--error">

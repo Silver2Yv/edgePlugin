@@ -154,6 +154,35 @@ const zh = {
     complete: '全文完整发送',
     lastSummary: (time: string) => `上次总结 ${time}`,
   },
+
+  /** 引用跳回原文（F1、F2）与回到刚才的位置（F4），cite 块 */
+  cite: {
+    locating: '正在定位原文…',
+    exact: '已跳到原文，网页上高亮的就是这段',
+    approx: '原文可能已变化，这是最接近的位置',
+    back: '回到刚才阅读的位置',
+    fail: {
+      notCited: '这个编号不在这次发送的内容里，无法定位',
+      otherPage: '这条回答引用的是另一个页面，打开那个页面后再点',
+      expired: '原文快照已过期（超过 7 天），这个编号无法再定位',
+      notFound: '没能在网页里找到这段原文，页面可能已经大改',
+      siteBlocked: '这个网站设为不读取页面内容，无法定位',
+      unavailable: '这个页面无法定位（浏览器内部页面，或页面没有响应）',
+    },
+  },
+
+  /** 「总结本页」完整版：上次总结卡片（6.2、I6），cite 块 */
+  summary: {
+    stale: '基于旧版本',
+    staleTitle: '页面内容在这次总结之后变过，下面的内容可能与当前页面不一致',
+    staleNote: '页面内容在这次总结之后有变化，这份总结不代表当前全文；要新的请点「重新总结」',
+    unknown: '未核对版本',
+    unknownTitle: '没能读取当前页面，无法确认这份总结是否基于当前内容',
+    resummarize: '重新总结',
+    resummarizeTitle: '按当前页面重新总结一次（会发出新的请求）',
+    today: (hm: string) => `今天 ${hm}`,
+    date: (month: number, day: number, hm: string) => `${month}月${day}日 ${hm}`,
+  },
 };
 
 export type Strings = typeof zh;

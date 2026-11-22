@@ -97,4 +97,9 @@ export interface BackgroundDeps {
   db: ConvDb;
   /** 只读网络诊断（H9）：webRequest 能力不可用（如单测）时不提供，调用方按 undefined 处理 */
   netDiagnostics?: NetDiagnostics;
+  /**
+   * 往指定标签页顶层框架的指定文档注入样式（scripting.insertCSS，cite 块）：引用高亮的 ::highlight 样式（5.7）。
+   * 可选只是为了不打扰只测别的模块的单测，真实实现一定提供
+   */
+  insertCss?(tabId: number, documentId: string, css: string): Promise<void>;
 }

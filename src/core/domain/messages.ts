@@ -123,11 +123,15 @@ export const contentToBackground = tagged({
     readId: id,
     contentVersion: str({ max: 128 }),
   }),
-  /** 定位与高亮结果（应答 page/locate） */
+  /**
+   * 定位与高亮结果（应答 page/locate）。
+   * back（contract-v1.5 增量）：阅读器已记下跳转前的阅读位置，可以「回到刚才阅读的位置」（F4）
+   */
   'page/locateResult': obj({
     type: lit('page/locateResult'),
     requestId: id,
     level: oneOf(['exact', 'fuzzy', 'scroll', 'none']),
+    back: opt(bool),
   }),
   /** 框选完成：视口坐标（CSS 像素）与视口修订号 */
   'capture/rect': obj({
@@ -173,7 +177,21 @@ export const pageDocSchema = obj({
 
 export const backgroundToContent = tagged({
   'page/read': obj({ type: lit('page/read'), readId: id, knownContentVersion: opt(str({ max: 128 })) }),
-  'page/locate': obj({ type: lit('page/locate'), requestId: id, anchor: anchorSchema, highlight: bool }),
+  /**
+   * 定位并高亮引用的原文（5.7）。锚点由后台按消息里的引用与快照算出，阅读器不接受别处来的锚点。
+   * contract-v1.5 增量 blockId / contentVersion：引用的块与它所属的内容版本。阅读器重新抽取后版本相同才直接用块号，
+   * 不同就按锚点三级降级重新定位，不把旧块号套到新内容上（V-06）
+   */
+  'page/locate': obj({
+    type: lit('page/locate'),
+    requestId: id,
+    anchor: anchorSchema,
+    highlight: bool,
+    blockId: opt(blockId),
+    contentVersion: opt(str({ max: 128 })),
+  }),
+  /** contract-v1.5 增量：回到上次跳转前的阅读位置（F4，只能用一次）；清掉引用高亮 */
+  'page/back': obj({ type: lit('page/back') }),
   /**
    * 预热小窗：建隐藏 iframe，token 放进地址片段（#t=），小窗读取后立即用 replaceState 清掉，
    * 连接时出示（片段是否会出现在 performance 资源条目里待 V-05 实测）
@@ -287,18 +305,33 @@ export const clientToBackground = tagged({
     limit: int({ min: 1, max: 100 }),
   }),
   'favorite/add': obj({ type: lit('favorite/add'), conversationId: id, messageId: id }),
-  /** 仅侧边栏：点引用跳回原文。后台按消息里的引用与快照算锚点，再发 page/locate（规则 9） */
+  /**
+   * 点引用跳回原文（5.7、F1）。后台按消息的发送计划核对编号（规则 9）、按快照算锚点，再发 page/locate 给所订阅标签页的顶层阅读器。
+   * contract-v1.5：小窗也可以发（锚点要用后台库里的快照，小窗不经私有端口自己算）；字段改为 citation（回答里的编号，
+   * 【12】的 12）与 quote（逐字引用【12】原文【/12】里的原文）。原文只在快照里的块内找，快照过期时须在回答原文里核对过才用。
+   * 结果回 citation/located
+   */
   'citation/locate': obj({
     type: lit('citation/locate'),
     requestId: id,
     messageId: id,
-    segmentIndex: int({ min: 0, max: 10_000 }),
+    citation: str({ min: 1, max: 9, pattern: /^\d+$/ }),
+    quote: opt(str({ maxBytes: 12 * KB })),
   }),
   /**
    * contract-v1.4 增量，仅侧边栏：删除一个对话，连同它的消息与无人引用的快照（5.11 级联）。
    * 成功回 history/deleted；对话正有回答在生成时拒绝（busy），写库失败拒绝（storageFailed）
    */
   'history/delete': obj({ type: lit('history/delete'), requestId: id, conversationId: id }),
+  /**
+   * contract-v1.5 增量：回到上次点引用之前的阅读位置（F4，一次性）。只对所订阅标签页里本扩展上次定位过的文档生效；没有就拒绝（notAllowed）
+   */
+  'citation/back': obj({ type: lit('citation/back'), requestId: id }),
+  /**
+   * contract-v1.5 增量：所订阅标签页当前页面（pageKey）上次的总结（6.2、验收第 8 条）。后台让阅读器重新算一次内容指纹
+   * （不发正文给模型）与总结所基于的版本比较。回 summary/last
+   */
+  'summary/get': obj({ type: lit('summary/get'), requestId: id }),
 });
 export type ClientToBackground = Infer<typeof clientToBackground>;
 
@@ -421,7 +454,30 @@ export type BackgroundToClient =
    */
   | { type: 'conv/saveFailed'; jobId: string; messageId: string }
   | { type: 'favorite/saved'; favoriteId: string }
-  | { type: 'citation/located'; requestId: string; level: 'exact' | 'fuzzy' | 'scroll' | 'none' }
+  | {
+      /**
+       * 跳回原文的结果。fuzzy / scroll 是降级（原文可能已变化，这是最接近的位置）；none 时 reason 说明原因。
+       * contract-v1.5 增量 reason、back（阅读器记下了跳转前的位置，可以回去）
+       */
+      type: 'citation/located';
+      requestId: string;
+      level: 'exact' | 'fuzzy' | 'scroll' | 'none';
+      reason?: CitationFailReason;
+      back?: boolean;
+    }
+  | {
+      /**
+       * contract-v1.5 增量：一页的上次总结（应答 summary/get 时带 requestId；后台复用上次总结、不重新请求时主动推给该标签页，
+       * 不带 requestId、show 为真）。summary 不在表示这一页没有可用的上次总结。
+       * current：总结所基于的内容版本与页面现在的比较——same 一致；changed 不一致（界面标「基于旧版本」）；unknown 没能核对
+       * （读不了页面、站点设为不读取）。show：用户刚点了「总结本页」而后台直接复用了它，界面要把它摆到眼前
+       */
+      type: 'summary/last';
+      requestId?: string;
+      tabId: number;
+      summary?: LastSummary;
+      show?: boolean;
+    }
   | {
       type: 'conv/rejected';
       reason: RejectReason;
@@ -438,6 +494,31 @@ export type BackgroundToClient =
  * | requestRefused | 后台替侧边栏发起的请求被拒（其余原因） |
  */
 export type PanelNoticeKind = 'floatTransient' | 'floatUnsupported' | 'noConnection' | 'requestRefused';
+
+/**
+ * 跳回原文失败的原因（contract-v1.5 增量）
+ * | notCited | 这条消息没有这个编号的引用，或编号不在那次请求发送的块里（规则 9） |
+ * | otherPage | 这条回答引用的是别的页面，所订阅标签页现在不是那一页 |
+ * | expired | 快照已过期（7 天）且没有逐字原文可找 |
+ * | notFound | 页面里找不到这段原文（页面已大改） |
+ * | siteBlocked | 站点设为「不读取页面内容」 |
+ * | unavailable | 页面不允许注入（浏览器内部页面等）或阅读器没有应答 |
+ */
+export type CitationFailReason =
+  | 'notCited'
+  | 'otherPage'
+  | 'expired'
+  | 'notFound'
+  | 'siteBlocked'
+  | 'unavailable';
+
+/** 上次总结（summary/last）：消息记录里去掉了思考过程，正文过长时截断 */
+export interface LastSummary {
+  message: MessageRecord;
+  /** 总结所基于的内容版本 */
+  contentVersion: string;
+  current: 'same' | 'changed' | 'unknown';
+}
 
 /**
  * 后台 → 扩展页面的广播（runtime.sendMessage，contract-v1.3 增量）。后台自己产出，只用类型约束；
@@ -552,7 +633,16 @@ const CONV_COMMON: readonly ClientType[] = [
 
 const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
   content: new Set(Object.keys(contentToBackground.variants)),
-  float: new Set<ClientType>([...CONV_COMMON, 'conv/helloFloat', 'conv/resumeFloat', 'handoff/start']),
+  float: new Set<ClientType>([
+    ...CONV_COMMON,
+    'conv/helloFloat',
+    'conv/resumeFloat',
+    'handoff/start',
+    // contract-v1.5 增量
+    'citation/locate',
+    'citation/back',
+    'summary/get',
+  ]),
   sidepanel: new Set<ClientType>([
     ...CONV_COMMON,
     'conv/helloSidepanel',
@@ -560,6 +650,9 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
     'favorite/add',
     'citation/locate',
     'history/delete',
+    // contract-v1.5 增量
+    'citation/back',
+    'summary/get',
   ]),
   options: new Set(Object.keys(optionsToBackground.variants)),
   unknown: new Set(),

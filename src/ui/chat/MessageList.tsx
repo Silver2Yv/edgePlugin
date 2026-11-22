@@ -1,8 +1,10 @@
 // 对话列表（C1），小窗与侧边栏共用：当前对话的全部消息（用户提问 + 助手回答）加上正在生成的任务。
 // 滚动（5.10）：流式增量到达时不跟着滚、不抢焦点；只在出现新一轮问答时把这一轮顶到列表上沿
 // （最后一轮至少占满列表高度，见 theme.css 的 .ra-turn--last），回答从上往下长，读的人自己往下看。
+import type { ComponentChildren } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import { AnswerView } from '../AnswerView';
+import type { CitationClick } from '../cite/useCite';
 import { type DisplayItem, groupTurns, type UserMessageView } from '../float/messages';
 import { T } from '../strings';
 
@@ -34,9 +36,21 @@ export interface MessageListProps {
   onRetry: () => void;
   /** 点「展开讲讲」（I3） */
   onExpand: () => void;
+  /** cite 块：点了某条回答里的引用（跳回原文） */
+  onCitation?: (messageId: string, c: CitationClick) => void;
+  /** cite 块：列表最上面的内容（上次总结卡片）；有它时不显示空列表说明 */
+  header?: ComponentChildren;
 }
 
-export function MessageList({ items, emptyText, generating, onRetry, onExpand }: MessageListProps) {
+export function MessageList({
+  items,
+  emptyText,
+  generating,
+  onRetry,
+  onExpand,
+  onCitation,
+  header,
+}: MessageListProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const lastTurnRef = useRef<HTMLDivElement | null>(null);
   const turns = groupTurns(items);
@@ -54,7 +68,8 @@ export function MessageList({ items, emptyText, generating, onRetry, onExpand }:
 
   return (
     <div className="ra-list" ref={listRef} data-testid="message-list">
-      {items.length === 0 && <p className="ra-empty">{emptyText}</p>}
+      {header}
+      {items.length === 0 && !header && <p className="ra-empty">{emptyText}</p>}
       {turns.map((turn, ti) => {
         const last = ti === turns.length - 1;
         const first = turn[0] as DisplayItem;
@@ -81,6 +96,7 @@ export function MessageList({ items, emptyText, generating, onRetry, onExpand }:
                   }
                   onRetry={onRetry}
                   onExpand={onExpand}
+                  {...(onCitation ? { onCitation: (c: CitationClick) => onCitation(item.id, c) } : {})}
                 />
               ),
             )}

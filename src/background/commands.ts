@@ -19,6 +19,7 @@ import type { Jobs } from './jobs';
 import { quoteOf } from './quote';
 import type { Route } from './route';
 import type { Store, StoredSelection } from './store';
+import type { Summary } from './summary';
 
 /** commands.onCommand / contextMenus.onClicked 给的标签页里用到的部分 */
 export interface CommandTab {
@@ -60,6 +61,8 @@ export function createCommands(
   host: FloatHost,
   jobs: Jobs,
   route: Route,
+  /** cite 块：页面没变时复用上次总结（可选只是为了不打扰只测别的模块的单测） */
+  extra: { summary?: Summary } = {},
 ) {
   const notice = (tabId: number, kind: PanelNoticeKind) => {
     store.putNotice(tabId, kind);
@@ -82,6 +85,8 @@ export function createCommands(
     const loaded = await deps.loadSettings();
     const s = loaded.ok ? loaded.settings : undefined;
     if (!s?.defaultModel) return notice(tabId, 'noConnection');
+    // 页面没变就直接显示上次的总结，不重新请求（6.2、第 3 节）
+    if (await extra.summary?.tryReuse(tabId)) return;
     await jobs.ask(
       tabId,
       {

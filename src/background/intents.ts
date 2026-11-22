@@ -13,6 +13,7 @@ import {
 import { DEFAULT_SETTINGS } from '@/core/domain/settings';
 import { frameSiteLevel } from '@/core/domain/site-policy';
 import { SUMMARIZE_PAGE_QUESTION } from '@/core/prompt/ask';
+import type { Citations } from './citations';
 import type { BackgroundDeps, SenderLike } from './deps';
 import type { FloatHost } from './float-host';
 import type { Hub } from './hub';
@@ -22,6 +23,7 @@ import { quoteOf } from './quote';
 import { senderRole } from './roles';
 import type { Route } from './route';
 import type { Store, StoredSelection } from './store';
+import type { Summary } from './summary';
 
 /** 意图的应答。config/get 直接回 PageConfig */
 export type IntentResponse = { ok: true } | { ok: false; reason: RejectReason } | PageConfig;
@@ -45,6 +47,8 @@ export function createIntents(
   pages: Pages,
   route: Route,
   jobs: Jobs,
+  /** cite 块：再点「总结本页」时复用上次总结、定位结果（可选只是为了不打扰只测别的模块的单测） */
+  extra: { summary?: Summary; citations?: Citations } = {},
 ) {
   const refuse = (reason: RejectReason, detail?: Record<string, unknown>): IntentResponse => {
     deps.log('intent/rejected', { reason, ...detail });
@@ -81,6 +85,8 @@ export function createIntents(
       return;
     }
     if (!settings?.defaultModel) return notice(tabId, 'noConnection');
+    // 「总结本页」：页面没变就直接显示上次的，不重新花钱（6.2、第 3 节）
+    if (def.id === 'summarizePage' && (await extra.summary?.tryReuse(tabId))) return;
     const isPage = def.scope === 'page';
     await jobs.ask(
       tabId,
@@ -204,8 +210,13 @@ export function createIntents(
       }
       case 'selection/anchored':
         return pages.onAnchored(msg, s) ? { ok: true } : refuse('notOwner', { type: msg.type });
+      // 定位结果（5.7）：只认这次定位的标签页、顶层框架、同一文档（规则 7）
+      case 'page/locateResult':
+        return extra.citations?.onLocateResult(msg, s)
+          ? { ok: true }
+          : refuse('notOwner', { type: msg.type });
       default:
-        // 定位、截图本版本不做
+        // 截图本版本不做
         return refuse('notAllowed', { type: msg.type });
     }
   }
