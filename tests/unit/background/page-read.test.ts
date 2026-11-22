@@ -118,7 +118,7 @@ describe('页面读取 → nearby 装配', () => {
       contentVersion: doc.contentVersion,
     });
     const sent = userTexts(h, 0);
-    for (const id of plan.sentBlockIds as string[]) expect(sent).toContain(`[${id}]`);
+    for (const id of plan.sentBlockIds as string[]) expect(sent).toContain(`[${id.slice(1)}]`);
     expect(sent).toContain('段落内容编号13');
     expect(sent).not.toContain('段落内容编号14');
     expect(sent).not.toContain('段落内容编号6');

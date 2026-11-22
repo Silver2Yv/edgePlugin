@@ -3,6 +3,7 @@
 // 本版本不接 IndexedDB：对话历史只在内存，任务热副本只在 storage.session。
 import { toPageKey } from '@/core/context/page-key';
 import { defaultBudget } from '@/core/context/plan';
+import type { ActionId } from '@/core/domain/actions';
 import { splitByJsonBytes } from '@/core/domain/bytes';
 import {
   canRetry,
@@ -529,6 +530,9 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         siteNoRead: ctx.siteNoRead,
         previousFullPage: conv.lastFullPage,
         extraNotes: ctx.notes,
+        actionId: msg.actionId as ActionId,
+        promptOverrides: settings.promptOverrides,
+        customActions: settings.customActions,
       });
       conv.lastFullPage = assembly.sentFullPage;
       job.userText = assembly.userText;

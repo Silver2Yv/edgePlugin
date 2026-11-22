@@ -436,7 +436,7 @@ describe('设置迁移', () => {
     const r = migrateSettings({ version: 1, reply: { lengthTier: 'brief' }, connections: [conn] });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.settings.reply).toEqual({ lengthTier: 'brief', language: 'auto', thinking: 'off' });
+    expect(r.settings.reply).toEqual({ lengthTier: 'brief', language: 'zh', thinking: 'off' });
     expect(r.settings.connections[0]?.apiKey).toBe('sk-secret');
     expect(r.settings.toolbarActions).toEqual(['ask', 'explain', 'save']);
   });
