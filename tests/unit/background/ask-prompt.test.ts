@@ -128,6 +128,17 @@ describe('动作提示词（I1、A3、I6、A6）', () => {
     expect(restored.userText.endsWith('请解释上面选中的文字。')).toBe(true);
   });
 
+  it('提示词覆盖（I1）：基础规则与长度档同样按覆盖替换', () => {
+    const a = assembleAsk({
+      ...base,
+      lengthTier: 'brief',
+      promptOverrides: { base: '自定义基础规则', 'length.brief': '自定义简短档' },
+    });
+    const system = textOf(a.messages[0] as (typeof a.messages)[number]);
+    expect(system.startsWith('自定义基础规则\n自定义简短档\n')).toBe(true);
+    expect(system).not.toContain('你是网页阅读助手');
+  });
+
   it('summarizePage/keyPoints/pageAbout：不带选区，系统提示追加各自的输出格式要求，问题用动作名字', () => {
     const page = makePage();
     const run = (actionId: 'summarizePage' | 'keyPoints' | 'pageAbout') =>

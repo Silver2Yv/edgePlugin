@@ -5,7 +5,7 @@
 // 消息顺序（5.9）：系统 → 页面全文（fullPage 时作为固定首条消息）→ 历史 → 本轮（nearby 的前后段落 + 选区 + 问题）。
 // 预算（5.9）：可用量 = 硬上限 − 输出预留；页面内容另受速度软预算约束（页面级动作改用总结读取预算，D9）；
 // 历史按预算从最早处丢弃。
-
+import { findEntityBackReferences } from '../context/entities';
 import type { Block, PageNote, PageNoteKind } from '../context/page-doc';
 import {
   type Budget,
@@ -281,6 +281,8 @@ export interface SystemPromptInput {
   actionPrompt?: string;
   /** 这是「展开讲讲」追问 */
   expand?: boolean;
+  /** 提示词覆盖（I1）：基础规则（base）与长度档（length.*）同样可改 */
+  overrides?: Readonly<Record<string, string>>;
 }
 
 function resolveLanguageInstruction(language: string, pageLang?: string): string {
@@ -292,8 +294,8 @@ function resolveLanguageInstruction(language: string, pageLang?: string): string
 /** 系统提示词：基础规则 + 长度档 + 语言（I5）+ 动作专属要求（A3、I6）+ 展开讲讲（I3） */
 export function askSystemPrompt(input: SystemPromptInput): string {
   const parts = [
-    ...BASE_RULES,
-    LENGTH_RULE[input.lengthTier],
+    overrideOr(input.overrides, 'base', BASE_RULES.join('\n')),
+    overrideOr(input.overrides, `length.${input.lengthTier}`, LENGTH_RULE[input.lengthTier]),
     resolveLanguageInstruction(input.language, input.pageLang),
   ];
   if (input.actionPrompt) parts.push(input.actionPrompt);
@@ -342,16 +344,37 @@ const sectionHeader = (page: AskPage, blocks: readonly Block[], full: boolean) =
 
 const FULL_PAGE_LEAD = '这是我正在阅读的网页正文，供后面的问题参考。';
 
-/** 已读字数换成中文习惯的「约 X 字 / X 万字」（D9 示例口径：约 1.2 万字） */
-function formatCharsCN(n: number): string {
-  if (n >= 10_000) return `${Math.round((n / 10_000) * 10) / 10} 万字`;
-  return `${n} 字`;
+/** 字数口径的说法（D4）：万字以上用「约 X 万字」，否则直接报字数 */
+function charCountLabel(n: number): string {
+  if (n >= 10_000) {
+    const wan = (n / 10_000).toFixed(1).replace(/\.0$/, '');
+    return `约 ${wan} 万字`;
+  }
+  return `约 ${n} 字`;
 }
 
+/** 发送块覆盖的章节范围：取第一块与最后一块的顶级标题链，相同只报一个，没有标题链则不报 */
+function sentRangeLabel(sent: readonly Block[]): string | undefined {
+  const first = sent.find((b) => b.kind !== 'heading')?.headingPath[0];
+  const last = [...sent].reverse().find((b) => b.kind !== 'heading')?.headingPath[0];
+  if (!first) return undefined;
+  if (!last || first === last) return `「${first}」`;
+  return `「${first}」到「${last}」`;
+}
+
+/** 截断说明（D4）：说清截掉了哪部分，而不是「发了 x/y 块」这种数不出含义的说法 */
+function truncationNote(prefix: string, sent: readonly Block[], chars: number): string {
+  const range = sentRangeLabel(sent);
+  const size = charCountLabel(chars);
+  return range ? `${prefix}只发送了${range}，${size}` : `${prefix}只发送了开头部分，${size}`;
+}
+
+const sentChars = (blocks: readonly Block[]) => blocks.reduce((n, b) => n + codePoints(b.text), 0);
+
 /** 页面级动作的读取覆盖说明（D9、AR-21）：同时给比例与字数，不单说百分比 */
-function readCoverageNote(sentChars: number, extractableChars: number): string {
-  const percent = extractableChars > 0 ? Math.round((sentChars / extractableChars) * 100) : 100;
-  return `本次读取全文的 ${percent}%，约 ${formatCharsCN(sentChars)}`;
+function readCoverageNote(sent: number, extractableChars: number): string {
+  const percent = extractableChars > 0 ? Math.round((sent / extractableChars) * 100) : 100;
+  return `本次读取全文的 ${percent}%，${charCountLabel(sent)}`;
 }
 
 export function assembleAsk(input: AskInput): AskAssembly {
@@ -384,6 +407,7 @@ export function assembleAsk(input: AskInput): AskAssembly {
     ...(page?.lang === undefined ? {} : { pageLang: page.lang }),
     ...(actionPrompt === undefined ? {} : { actionPrompt }),
     expand: isExpand,
+    ...(input.promptOverrides === undefined ? {} : { overrides: input.promptOverrides }),
   });
   const available = budget.hardLimit - budget.outputReserve;
 
@@ -394,6 +418,8 @@ export function assembleAsk(input: AskInput): AskAssembly {
   let sent: Block[] = [];
   let pageText = '';
   let fullPageMsg: string | undefined;
+  let entityBlockIds: BlockId[] = [];
+  let entitySingleMentions: readonly string[] = [];
   if (usePage) {
     const full = tier === 'fullPage';
     const wrapper = estimateTokens(pageSection(sectionHeader(page, page.blocks.slice(0, 1), full), [])) + 30;
@@ -415,20 +441,48 @@ export function assembleAsk(input: AskInput): AskAssembly {
           cost: (b) => estimateTokens(formatBlock(b)) + 1,
         });
     sent = picked.blocks;
-    const total = page.blocks.length;
-    if (picked.mode === 'centered') notes.push(`全文超出预算，以选区为中心发送了 ${sent.length}/${total} 块`);
-    if (picked.mode === 'head' && full) notes.push(`全文超出预算，从开头发送了 ${sent.length}/${total} 块`);
+    if (picked.mode === 'centered')
+      notes.push(truncationNote('全文超出预算，以选区为中心，', sent, sentChars(sent)));
+    // 页面级动作的覆盖范围由下面的读取说明给出，不再重复一条截断说明
+    if (picked.mode === 'head' && full && scope !== 'page')
+      notes.push(truncationNote('全文超出预算，', sent, sentChars(sent)));
     if (picked.mode === 'head' && !full) notes.push('没有选区，附带了页面开头的几段');
-    if (picked.mode === 'nearby' && picked.truncated) notes.push('选区前后的段落超出预算，已裁减');
+    if (picked.mode === 'nearby' && picked.truncated)
+      notes.push(`选区前后的段落超出预算，只保留了附近${charCountLabel(sentChars(sent)).replace('约 ', '')}`);
     if (picked.mode === 'none' && !(centerless && input.extraNotes?.length))
       notes.push(
         centerless ? '没有找到选区所在段落，只发送了选中文字' : '页面内容超出预算，只发送了选中文字',
       );
-    for (const n of page.notes) notes.push(PAGE_NOTE_TEXT[n.kind] + (n.detail ? `（${n.detail}）` : ''));
-    if (scope === 'page' && sent.length > 0) {
-      const sentChars = sent.reduce((n, b) => n + codePoints(b.text), 0);
-      notes.push(readCoverageNote(sentChars, page.textLength));
+    // 实体回指（D5、5.6）：nearby 档且找到了中心时，把选中文字里的候选实体在全页里的其他出现位置并入发送内容，
+    // 预算不够就少并入几处；只报「实际并入了什么」，不报「本来想并入但没放进去」的（规则 8）
+    if (!full && !centerless && selection && sent.length > 0) {
+      const sentIds = new Set(sent.map((b) => b.id));
+      const costOf = (b: Block) => estimateTokens(formatBlock(b)) + 1;
+      let remaining = maxTokens - sent.reduce((n, b) => n + costOf(b), 0);
+      const report = findEntityBackReferences(selection.text, page.blocks, sentIds);
+      const extra: Block[] = [];
+      for (const id of report.extraBlockIds) {
+        const b = page.blocks.find((x) => x.id === id);
+        if (!b) continue;
+        const c = costOf(b);
+        if (c > remaining) continue;
+        extra.push(b);
+        remaining -= c;
+      }
+      if (extra.length > 0) {
+        const order = new Map(page.blocks.map((b, i) => [b.id, i]));
+        sent = [...sent, ...extra].sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+        entityBlockIds = extra.map((b) => b.id);
+        notes.push(`命中 ${extra.length} 处提及`);
+      }
+      if (report.singleMention.length > 0) {
+        entitySingleMentions = report.singleMention;
+        for (const term of report.singleMention)
+          notes.push(`『${term}』在页面中只出现一次，答案可能在别处；可切换全文`);
+      }
     }
+    for (const n of page.notes) notes.push(PAGE_NOTE_TEXT[n.kind] + (n.detail ? `（${n.detail}）` : ''));
+    if (scope === 'page' && sent.length > 0) notes.push(readCoverageNote(sentChars(sent), page.textLength));
     if (sent.length > 0) {
       const section = pageSection(sectionHeader(page, sent, full), sent);
       if (full) fullPageMsg = `${FULL_PAGE_LEAD}\n${section}`;
@@ -494,6 +548,8 @@ export function assembleAsk(input: AskInput): AskAssembly {
     budget,
     estimatedInputTokens: total,
     notes,
+    ...(entityBlockIds.length > 0 ? { entityBlockIds } : {}),
+    ...(entitySingleMentions.length > 0 ? { entitySingleMentions } : {}),
   };
   return { messages, userText, plan, sentFullPage: fullPageMsg !== undefined };
 }

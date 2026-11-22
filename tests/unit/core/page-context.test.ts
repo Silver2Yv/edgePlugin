@@ -145,6 +145,34 @@ describe('块选择', () => {
     const r = pickPageBlocks({ blocks: page.blocks, tier: 'nearby', centerIds: ['b10'], maxTokens: 3, cost });
     expect(r).toMatchObject({ blocks: [], truncated: true, mode: 'none' });
   });
+
+  it('列表拆成多个 listItem 块后，连续一组仍只算一个上下文单元（修复 3，5.6「列表项归入所属列表」）', () => {
+    // b1 标题；b2..b6 段落（第2..6段）；b7..b11 同一个列表拆出的 5 个 listItem；b12 段落；选区在列表第 1 项（b7）
+    const listPage: Block[] = [
+      block(1, '第一章', 'heading', []),
+      block(2, '第2段。内容'),
+      block(3, '第3段。内容'),
+      block(4, '第4段。内容'),
+      block(5, '第5段。内容'),
+      block(6, '第6段。内容'),
+      block(7, '- 项一', 'listItem'),
+      block(8, '- 项二', 'listItem'),
+      block(9, '- 项三', 'listItem'),
+      block(10, '- 项四', 'listItem'),
+      block(11, '- 项五', 'listItem'),
+      block(12, '第12段。内容'),
+    ];
+    const r = pickPageBlocks({
+      blocks: listPage,
+      tier: 'nearby',
+      centerIds: ['b7'],
+      maxTokens: 1e6,
+      cost: (b) => estimateTokens(b.text),
+    });
+    // 中心是列表第 1 项：往前数 3 个单元是 b4/b5/b6（段落，各自一个单元）；
+    // 往后数 3 个单元：整个列表（b7..b11）算第 1 个单元，b12 是第 2 个单元——列表没有被从中间切开
+    expect(r.blocks.map((b) => b.id)).toEqual(['b4', 'b5', 'b6', 'b7', 'b8', 'b9', 'b10', 'b11', 'b12']);
+  });
 });
 
 describe('带页面的请求装配（V-07）', () => {
@@ -190,6 +218,70 @@ describe('带页面的请求装配（V-07）', () => {
     expect(a.plan).toMatchObject({ contextTier: 'fullPage', pageRead: true });
     expect(a.plan.coverage.sentChars).toBe(page.textLength);
     expect(a.sentFullPage).toBe(true);
+  });
+
+  it('实体回指（D5）：nearby 档把选中文字里的年份在全页里的其他出现位置并入发送内容', () => {
+    const blocks: Block[] = [
+      block(1, '第一章', 'heading', []),
+      block(2, '选区所在段：1927 年发生的事，往下翻。'),
+      ...Array.from({ length: 10 }, (_, i) => block(i + 3, `占位第${i}段。${'占位内容'.repeat(30)}`)),
+      block(13, '远处的段落提到 1927 年的后续发展。'),
+    ];
+    const page: AskPage = {
+      pageKey: 'https://example.test/entity',
+      documentId: 'doc-entity',
+      contentVersion: contentVersionOf('实体页', blocks),
+      title: '实体页',
+      blocks,
+      textLength: blocks.reduce((n, b) => n + [...b.text].length, 0),
+      notes: [],
+    };
+    const a = assembleAsk(
+      base(page, {
+        selection: { text: '1927 年发生的事', truncated: false, originalLength: 8 },
+        selectionBlockIds: ['b2'],
+      }),
+    );
+    // 远处的 b13 没有落在「前后 3 段」范围内，是靠实体回指并入的
+    expect(a.plan.entityBlockIds).toEqual(['b13']);
+    expect(a.plan.sentBlockIds).toContain('b13');
+    expect(a.plan.notes.some((n) => n.includes('命中 1 处提及'))).toBe(true);
+    const user = textOf(a.messages.at(-1) as (typeof a.messages)[number]);
+    expect(idsIn(user)).toEqual(a.plan.sentBlockIds);
+  });
+
+  it('截断说明（D4）：说清截掉了哪部分（按标题链与字数），不是「发了 x/y 块」这种数不出含义的说法', () => {
+    const blocks: Block[] = [
+      block(1, '第一章', 'heading', []),
+      ...Array.from({ length: 5 }, (_, i) =>
+        block(i + 2, `第一章第${i}段。${'字'.repeat(200)}`, 'paragraph', ['第一章']),
+      ),
+      block(7, '第二章', 'heading', []),
+      ...Array.from({ length: 5 }, (_, i) =>
+        block(i + 8, `第二章第${i}段。${'字'.repeat(200)}`, 'paragraph', ['第二章']),
+      ),
+    ];
+    const page: AskPage = {
+      pageKey: 'https://example.test/chapters',
+      documentId: 'doc-chapters',
+      contentVersion: contentVersionOf('分章页', blocks),
+      title: '分章页',
+      blocks,
+      textLength: blocks.reduce((n, b) => n + [...b.text].length, 0),
+      notes: [],
+    };
+    const a = assembleAsk(
+      base(page, {
+        requestedContextTier: 'fullPage',
+        selectionBlockIds: ['b9'],
+        budget: defaultBudget(2_000),
+      }),
+    );
+    const note = a.plan.notes.find((n) => n.includes('只发送了'));
+    expect(note).toBeDefined();
+    expect(note).toMatch(/「第[一二]章」/);
+    expect(note).toMatch(/约 ?\d+(\.\d+)? ?(万)?字/);
+    expect(note).not.toMatch(/\d+\/\d+ 块/);
   });
 
   it('不同上下文窗口：全文超出速度软预算时以选区为中心截取，输入不超过 硬上限 − 输出预留', () => {

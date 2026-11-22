@@ -441,6 +441,17 @@ describe('设置迁移', () => {
     expect(r.settings.toolbarActions).toEqual(['ask', 'explain', 'save']);
   });
 
+  it('版本 1 → 2：旧出厂的回答长度与语言跟着新出厂值走，用户改过的不动', () => {
+    const r = migrateSettings({
+      version: 1,
+      reply: { lengthTier: 'normal', language: 'auto', thinking: 'low' },
+    });
+    expect(r).toMatchObject({ ok: true, migratedFrom: 1 });
+    if (r.ok) expect(r.settings.reply).toEqual({ lengthTier: 'brief', language: 'zh', thinking: 'low' });
+    const kept = migrateSettings({ version: 1, reply: { lengthTier: 'detailed', language: 'en' } });
+    if (kept.ok) expect(kept.settings.reply).toMatchObject({ lengthTier: 'detailed', language: 'en' });
+  });
+
   it('非法值判为损坏，不静默接受', () => {
     for (const bad of [
       { version: 1, reply: { lengthTier: 'huge' } },

@@ -70,6 +70,13 @@ export interface RequestContextPlan {
   estimatedInputTokens: number;
   /** 抽取的不确定项，原样展示 */
   notes: readonly string[];
+  /**
+   * 实体回指（D5、contract-v1.4 增量）：因回指并入 nearby 发送内容的块号，是 sentBlockIds 的子集；
+   * 只在 nearby 档且命中时才有
+   */
+  entityBlockIds?: readonly BlockId[];
+  /** 识别出但全页只在选区处出现过一次的实体原文；界面据此提示「答案可能在别处，可切换全文」 */
+  entitySingleMentions?: readonly string[];
 }
 
 /**

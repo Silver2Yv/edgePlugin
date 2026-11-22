@@ -9,7 +9,7 @@ import { ID_PATTERN } from './ids';
 import { arr, bool, int, jsonValue, lit, num, obj, oneOf, opt, rec, type Schema, str } from './schema';
 import type { SiteRule } from './site-policy';
 
-export const SETTINGS_VERSION = 1;
+export const SETTINGS_VERSION = 2;
 
 export interface Settings {
   version: typeof SETTINGS_VERSION;
@@ -143,6 +143,14 @@ type Migration = (old: Record<string, unknown>) => Record<string, unknown>;
 const MIGRATIONS: readonly Migration[] = [
   // 0 → 1：首个版本
   (old) => ({ ...old, version: 1 }),
+  // 1 → 2：回答默认值改为「简短」「中文」（I2、I5）。版本 1 的设置页不能改这两项，存下的 normal / auto
+  // 只可能是旧出厂值，跟着新出厂值走；'auto' 从此表示「跟随网页语言」
+  (old) => {
+    const reply = isPlainObject(old.reply) ? { ...old.reply } : undefined;
+    if (reply?.lengthTier === 'normal') reply.lengthTier = 'brief';
+    if (reply?.language === 'auto') reply.language = 'zh';
+    return { ...old, ...(reply ? { reply } : {}), version: 2 };
+  },
 ];
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> =>
