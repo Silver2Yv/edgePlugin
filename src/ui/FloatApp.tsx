@@ -41,6 +41,7 @@ import { displayItems, questionForJob } from './float/messages';
 import {
   type FloatRectValue,
   type FloatState,
+  favoriteAddMessage,
   floatReducer,
   HANDOFF_SLOW_MS,
   initialFloatState,
@@ -325,6 +326,11 @@ export function FloatApp() {
     portRef.current?.postMessage({ type: 'conv/retry', jobId: state.job.jobId } satisfies ClientToBackground);
   };
 
+  /** 回答上的「存」（G3）：小窗也能发（contract-v1.5），后台落库后回 favorite/saved 把按钮改「已存」 */
+  const handleSave = (conversationId: string, messageId: string) => {
+    portRef.current?.postMessage(favoriteAddMessage(conversationId, messageId));
+  };
+
   /**
    * 转到侧边栏。open 必须在这次点击的同步路径上发出（规则 10），所以窗口事先取好、这里不 await。
    * 没握手（令牌无效等）也能打开侧边栏：侧边栏跟着本标签页走，选区引用照样带过去，只是没有转接可确认
@@ -435,6 +441,9 @@ export function FloatApp() {
         }
         connections={defaults.connections}
         onSwitchModel={handleSwitchModel}
+        conversationId={state.conversationId}
+        favorited={state.savedMessageIds}
+        onSave={handleSave}
       />
       {state.actionError && (
         <p data-testid="action-error" className="ra-note ra-note--error">

@@ -58,9 +58,9 @@ export function startSentinel(): void {
   function getToolbar(): ToolbarHost {
     if (toolbar === undefined) {
       toolbar = createToolbar((action) => {
-        // 「存」本版本不接：提示一句，不发请求、不清掉工具栏（点别处、Esc 等仍会收起）
+        // 「存」落库后才提示「已存」（AR-17）；不等期间保留按钮与选区，点别处仍会照常收起
         if (action.kind === 'save') {
-          toolbar?.tip('收藏功能即将上线');
+          sendSave(action.id);
           return;
         }
         // 长选区先确认一次（A7）；「问」也算（长选区会作为引用发出去）
@@ -111,6 +111,30 @@ export function startSentinel(): void {
       inCode: pendingInCode,
     };
     void browser.runtime.sendMessage(msg);
+  }
+
+  /**
+   * 「存」（G1、G3）：事务提交后才显示「已存」（AR-17），失败给非模态提示；两者都复用工具栏的
+   * `tip`（一句话，几秒后自动恢复成按钮）。工具栏在这期间可能已经被别的操作收起，`tip` 自己会判断。
+   */
+  function sendSave(actionId: ActionSummary['id']): void {
+    const { text, truncated } = truncateByJsonBytes(pendingText, JOB_LIMITS.maxFieldBytes);
+    const msg: ContentToBackground = {
+      type: 'action/click',
+      actionId,
+      selectionRevision,
+      text,
+      truncated,
+      originalLength: pendingOriginalLength,
+      inCode: pendingInCode,
+    };
+    browser.runtime.sendMessage(msg).then(
+      (res: unknown) => {
+        const ok = typeof res === 'object' && res !== null && (res as { ok?: boolean }).ok === true;
+        toolbar?.tip(ok ? '已存' : '收藏失败，请再试一次');
+      },
+      () => toolbar?.tip('收藏失败，请再试一次'),
+    );
   }
 
   /** live（contract-v1.5）：选区稳定（mouseup/keyup）时，有界面在看着就把这次选中的文字也报一份，换引用条 */

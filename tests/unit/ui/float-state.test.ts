@@ -528,10 +528,10 @@ describe('buildAskMessage', () => {
     expect(m).toMatchObject({ selectionRevision: 3, actionId: 'ask', contextTier: 'selection' });
   });
 
-  it('换个模型重问一个直接发送的动作：带上动作，问题文字留空（默认问法由装配补，H12）', () => {
+  it('带上指定的动作（整页快捷动作 C4、换个模型重问 H12）；问题文字原样', () => {
     const m = buildAskMessage({
       clientRequestId: 'req-1',
-      text: '总结本页',
+      text: '',
       quote: null,
       lengthTier: 'brief',
       thinking: 'off',
@@ -540,6 +540,16 @@ describe('buildAskMessage', () => {
       actionId: 'summarizePage',
     });
     expect(m).toMatchObject({ actionId: 'summarizePage', text: '', contextTier: 'fullPage' });
+    expect(
+      buildAskMessage({
+        clientRequestId: 'req-2',
+        text: '问',
+        quote: null,
+        lengthTier: 'brief',
+        thinking: 'off',
+        model: { connectionId: 'conn-1', model: 'deepseek-flash' },
+      }),
+    ).toMatchObject({ actionId: 'ask', text: '问' });
   });
 });
 

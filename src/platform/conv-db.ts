@@ -16,6 +16,14 @@ import {
   type StoreName,
 } from '@/core/domain/records';
 
+export interface ListFavoritesQuery {
+  /** 只看这个页面的（G2 按页面导出） */
+  pageKey?: string;
+  /** 只看 createdAt 小于它的（分页游标，不含） */
+  before?: number;
+  limit: number;
+}
+
 type Db = IDBPDatabase<unknown>;
 type UpgradeTx = IDBPTransaction<unknown, ArrayLike<string>, 'versionchange'>;
 export type Migration = (db: Db, tx: UpgradeTx) => void;
@@ -49,6 +57,14 @@ export interface ConvDb {
   getSnapshot(id: string): Promise<DbRecords['snapshots'] | undefined>;
   /** 图片（截图，5.13）；没有返回 undefined */
   getBlob(id: string): Promise<DbRecords['blobs'] | undefined>;
+  getFavorite(id: string): Promise<DbRecords['favorites'] | undefined>;
+  /**
+   * 收藏列表，按 createdAt 降序（5.4，侧边栏直接只读查询）；pageKey 给定时按 byPage 索引取，
+   * 再在内存里排序取前 limit 条——单个页面的收藏数通常很少，不值得为此加复合索引
+   */
+  listFavorites(q: ListFavoritesQuery): Promise<DbRecords['favorites'][]>;
+  /** 收藏总数（G3 侧边栏收藏计数）；不给 pageKey 时是全部 */
+  countFavorites(pageKey?: string): Promise<number>;
   /** 一个事务写入；事务提交后才 resolve（5.11 写入确认） */
   write(w: DbWrites): Promise<void>;
   /** 一个事务删除 */
@@ -208,6 +224,32 @@ export function createIdbConvDb(opts: IdbConvDbOptions = {}): ConvDb {
 
     async getBlob(id) {
       return (await (await db()).get('blobs', id)) as DbRecords['blobs'] | undefined;
+    },
+
+    async getFavorite(id) {
+      return (await (await db()).get('favorites', id)) as DbRecords['favorites'] | undefined;
+    },
+
+    async listFavorites(q) {
+      const d = await db();
+      if (q.pageKey !== undefined) {
+        const all = (await d.getAllFromIndex('favorites', 'byPage', q.pageKey)) as DbRecords['favorites'][];
+        return all
+          .filter((f) => q.before === undefined || f.createdAt < q.before)
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, q.limit);
+      }
+      const range = q.before === undefined ? null : IDBKeyRange.upperBound(q.before, true);
+      return collect(
+        d.transaction('favorites').store.index('byCreatedAt').openCursor(range, 'prev'),
+        q.limit,
+      );
+    },
+
+    async countFavorites(pageKey) {
+      const d = await db();
+      const store = d.transaction('favorites').store;
+      return pageKey === undefined ? store.count() : store.index('byPage').count(pageKey);
     },
 
     async write(w) {

@@ -64,7 +64,8 @@ export async function submitAsk(
     deps.post(
       buildAskMessage({
         clientRequestId,
-        text,
+        // 换个模型重问直接发送的动作：问题文字留空，默认问法由后台装配按动作补（同工具栏直接发送）；本地显示仍用动作名
+        text: action ? '' : text,
         quote: s.quote,
         conversationId: s.conversationId,
         fresh: s.freshConversation,
@@ -99,7 +100,7 @@ export function flushQueuedAsk(state: FloatState, deps: Pick<AskDeps, 'post' | '
   deps.post(
     buildAskMessage({
       clientRequestId: ask.clientRequestId,
-      text: ask.text,
+      text: ask.request ? '' : ask.text,
       quote: state.quote,
       conversationId: state.conversationId,
       fresh: state.freshConversation,

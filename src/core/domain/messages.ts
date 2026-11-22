@@ -361,6 +361,19 @@ export const clientToBackground = tagged({
   }),
   'favorite/add': obj({ type: lit('favorite/add'), conversationId: id, messageId: id }),
   /**
+   * contract-v1.5 增量：收藏管理（G2）的编辑与删除。仅侧边栏与小窗（见 ROLE_ALLOWED 的 CONV_COMMON）。
+   * 列表与搜索由界面直接只读查询 IndexedDB（5.4）；写入经后台，成功回 favorite/updated / favorite/removed，
+   * 失败回 conv/rejected（refId 为 requestId）
+   */
+  'favorite/update': obj({
+    type: lit('favorite/update'),
+    requestId: id,
+    favoriteId: id,
+    title: opt(str({ max: 200 })),
+    note: opt(str({ max: 4_000 })),
+  }),
+  'favorite/remove': obj({ type: lit('favorite/remove'), requestId: id, favoriteId: id }),
+  /**
    * 点引用跳回原文（5.7、F1）。后台按消息的发送计划核对编号（规则 9）、按快照算锚点，再发 page/locate 给所订阅标签页的顶层阅读器。
    * contract-v1.5：小窗也可以发（锚点要用后台库里的快照，小窗不经私有端口自己算）；字段改为 citation（回答里的编号，
    * 【12】的 12）与 quote（逐字引用【12】原文【/12】里的原文）。原文只在快照里的块内找，快照过期时须在回答原文里核对过才用。
@@ -542,7 +555,10 @@ export type BackgroundToClient =
    * 后台重启后接着问不会带上这一轮；界面据此提示，不把「写入失败」当成「已存」（5.11 写入确认）
    */
   | { type: 'conv/saveFailed'; jobId: string; messageId: string }
-  | { type: 'favorite/saved'; favoriteId: string }
+  | { type: 'favorite/saved'; favoriteId: string; messageId: string }
+  /** contract-v1.5 增量：favorite/update / favorite/remove 成功（事务已提交） */
+  | { type: 'favorite/updated'; requestId: string; favoriteId: string }
+  | { type: 'favorite/removed'; requestId: string; favoriteId: string }
   | {
       /**
        * 跳回原文的结果。fuzzy / scroll 是降级（原文可能已变化，这是最接近的位置）；none 时 reason 说明原因。
@@ -652,7 +668,9 @@ export interface LastSummary {
  */
 export type BackgroundToPages =
   | { type: 'sidepanel/toggle'; windowId: number; at: number }
-  | { type: 'sidepanel/wake'; windowId: number };
+  | { type: 'sidepanel/wake'; windowId: number }
+  /** contract-v1.5 增量：收藏新增/编辑/删除后广播给所有扩展页面，已打开的收藏视图据此重新只读查询（5.4） */
+  | { type: 'favorite/changed' };
 
 // ───────────── 设置页 / 欢迎页 → 后台（runtime.sendMessage，一问一答） ─────────────
 
@@ -744,6 +762,10 @@ export type ReaderToFloat = {
 export type SenderRole = 'content' | 'float' | 'sidepanel' | 'options' | 'unknown';
 
 type ClientType = ClientToBackground['type'];
+/**
+ * contract-v1.5 增量：favorite/add、favorite/update、favorite/remove 放进共用表——小窗和侧边栏的回答旁边
+ * 都有「存」按钮（G3），不只是侧边栏
+ */
 const CONV_COMMON: readonly ClientType[] = [
   'conv/subscribe',
   'conv/ask',
@@ -751,6 +773,9 @@ const CONV_COMMON: readonly ClientType[] = [
   'conv/retry',
   'conv/setTier',
   'conv/setModel',
+  'favorite/add',
+  'favorite/update',
+  'favorite/remove',
 ];
 
 const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
@@ -772,7 +797,6 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
     ...CONV_COMMON,
     'conv/helloSidepanel',
     'history/query',
-    'favorite/add',
     'citation/locate',
     'history/delete',
     // contract-v1.5 增量

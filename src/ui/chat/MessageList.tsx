@@ -52,6 +52,13 @@ export interface MessageListProps {
   /** 「换个模型再试」（H12）要列的连接；不传就不显示这个功能 */
   connections?: readonly Connection[];
   onSwitchModel?: (model: ModelRef) => void;
+  /**
+   * 「存」（G3，核心功能开发第二批）：当前对话编号，没有（还没落库）时不显示存按钮；favorited 是已经
+   * 收到 favorite/saved 确认的消息编号集合；onSave 由父组件发 favorite/add
+   */
+  conversationId?: string | null;
+  favorited?: ReadonlySet<string>;
+  onSave?: (conversationId: string, messageId: string) => void;
 }
 
 export function MessageList({
@@ -64,6 +71,9 @@ export function MessageList({
   header,
   connections = [],
   onSwitchModel,
+  conversationId,
+  favorited,
+  onSave,
 }: MessageListProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const lastTurnRef = useRef<HTMLDivElement | null>(null);
@@ -115,6 +125,12 @@ export function MessageList({
                   {...(onCitation ? { onCitation: (c: CitationClick) => onCitation(item.id, c) } : {})}
                   connections={connections}
                   onSwitchModel={hasImages ? undefined : onSwitchModel}
+                  {...(conversationId && onSave
+                    ? {
+                        onSave: () => onSave(conversationId, item.id),
+                        saved: favorited?.has(item.id) ?? false,
+                      }
+                    : {})}
                 />
               ),
             )}

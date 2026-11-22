@@ -339,6 +339,16 @@ export interface FloatState {
   capture: CaptureView | null;
   /** 用户点 × 去掉的那张（重连后后台补发时不再显示） */
   dismissedCaptureId: string | null;
+  /**
+   * 已经收到 favorite/saved 确认的助手消息编号（G3，回答上的「存」）：按钮据此改成「已存」。
+   * 只增不减，重开面板/小窗会丢（和工具栏「已存」一样是一次性的视觉反馈，不是收藏状态的权威来源）
+   */
+  savedMessageIds: ReadonlySet<string>;
+  /**
+   * 正在显示的对话所属的页面（仅侧边栏用：C2「这是别的页面的对话，只能查看」）。只有 conv/snapshot
+   * 带了 ConversationRecord 才知道，换了对话、还没收到快照之前是 null（这期间先不提示跨页，等快照到了再判断）
+   */
+  conversationPageKey: string | null;
 }
 
 export function initialFloatState(hasToken: boolean): FloatState {
@@ -369,6 +379,8 @@ export function initialFloatState(hasToken: boolean): FloatState {
     pageChanged: false,
     capture: null,
     dismissedCaptureId: null,
+    savedMessageIds: new Set(),
+    conversationPageKey: null,
   };
 }
 
@@ -412,7 +424,9 @@ export type FloatAction =
   /** 点「新对话」：清空显示，下一次发问开新对话（回答生成中不动） */
   | { kind: 'newConversation' }
   /** 点截图预览上的 ×：之后的发问不带这张图（capture 块） */
-  | { kind: 'dismissCapture' };
+  | { kind: 'dismissCapture' }
+  /** 本页对话列表（C2，仅侧边栏）：切换到同一页面的另一个对话 */
+  | { kind: 'switchConversation'; conversationId: string };
 
 export function floatReducer(state: FloatState, action: FloatAction): FloatState {
   switch (action.kind) {
@@ -477,6 +491,7 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
             pageChanged: false,
             capture: null,
             dismissedCaptureId: null,
+            conversationPageKey: null,
           };
     }
     case 'handoffStarted':
@@ -522,6 +537,24 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
         convHint: null,
         actionError: null,
         pageChanged: false,
+        conversationPageKey: null,
+      };
+    /** 本页对话列表（C2）：切换到同一页面的另一个对话；新内容等 conv/subscribe 的快照补上 */
+    case 'switchConversation':
+      if (isGenerating(state.job) || action.conversationId === state.conversationId) return state;
+      return {
+        ...state,
+        conversationId: action.conversationId,
+        job: null,
+        messages: [],
+        pendingAsk: null,
+        quote: null,
+        tierOverride: null,
+        thinkingOverride: null,
+        freshConversation: false,
+        convHint: null,
+        actionError: null,
+        conversationPageKey: null,
       };
     case 'server':
       return applyServerMessage(state, action.msg);
@@ -567,6 +600,7 @@ function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatSt
           messages: um ? [...archived, um] : archived,
           freshConversation: false,
           convHint: null,
+          conversationPageKey: msg.conversationId === state.conversationId ? state.conversationPageKey : null,
         };
       }
     case 'conv/notice':
@@ -627,6 +661,7 @@ function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatSt
         ...(state.pendingAsk?.capture && state.capture?.captureId === state.pendingAsk.capture.captureId
           ? { capture: null }
           : {}),
+        conversationPageKey: continuing ? state.conversationPageKey : null,
       };
     }
     case 'conv/delta':
@@ -657,7 +692,13 @@ function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatSt
       return state.capture?.captureId === msg.captureId ? { ...state, capture: null } : state;
     case 'conv/captureFailed':
       return { ...state, actionError: T.capture.failed[msg.reason] };
-    // history/* favorite/* citation/*：本版本不处理
+    case 'favorite/saved':
+      // 回答上的「存」（G3）：按钮改「已存」。只增不减，重开面板会丢（和工具栏「已存」一样是一次性反馈）
+      return state.savedMessageIds.has(msg.messageId)
+        ? state
+        : { ...state, savedMessageIds: new Set([...state.savedMessageIds, msg.messageId]) };
+    // favorite/updated、favorite/removed、history/*、citation/*：收藏管理与历史视图自行只读查询刷新，
+    // 不进这份归约状态（见 ui/panel/*）
     default:
       return state;
   }
@@ -728,7 +769,17 @@ function applySnapshotMessages(state: FloatState, msg: SnapshotMsg): FloatState 
   if (!first || state.freshConversation) return state;
   const conversationId = state.conversationId ?? msg.conversation?.id ?? first.conversationId;
   if (first.conversationId !== conversationId) return state;
-  return { ...state, conversationId, messages: mergeSnapshot(state.messages, msg.messages) };
+  // 这个对话属于哪个页面（C2，仅侧边栏用）：只有带了 ConversationRecord 的那一批才知道
+  const conversationPageKey =
+    msg.conversation && msg.conversation.id === conversationId
+      ? (msg.conversation.pageKey ?? null)
+      : state.conversationPageKey;
+  return {
+    ...state,
+    conversationId,
+    conversationPageKey,
+    messages: mergeSnapshot(state.messages, msg.messages),
+  };
 }
 
 function applyRejected(state: FloatState, msg: RejectedMsg): FloatState {
@@ -743,6 +794,15 @@ function applyRejected(state: FloatState, msg: RejectedMsg): FloatState {
       targetConfirmed: true,
       actionError: T.reject.subscribe(rejectReasonText(msg.reason)),
     };
+  if (
+    msg.refType === 'favorite/add' ||
+    msg.refType === 'favorite/update' ||
+    msg.refType === 'favorite/remove'
+  ) {
+    // 这三个都不对应某条正在显示的消息（favorite/add 没带 requestId，无法精确定位哪次点击失败）：
+    // 统一走顶部一次性提示；AnswerView/工具栏自己的按钮各自有超时兜底，不依赖这条消息复位
+    return { ...state, actionError: T.reject.action(rejectReasonText(msg.reason)) };
+  }
   if (state.job && msg.refId === state.job.jobId) {
     const actionError =
       msg.refType === 'conv/retry'
@@ -787,6 +847,21 @@ export function panelSubscribeMessage(state: FloatState): ClientToBackground | n
   };
 }
 
+/**
+ * 本页对话列表（C2，仅侧边栏）：切换到当前订阅标签页的另一个对话。target 还没确定（还没订阅过）时不发
+ */
+export function switchConversationMessage(
+  state: FloatState,
+  conversationId: string,
+): ClientToBackground | null {
+  return state.target === null ? null : { type: 'conv/subscribe', tabId: state.target, conversationId };
+}
+
+/** 回答上的「存」（G3）：收藏这条消息连同它的提问与引用 */
+export function favoriteAddMessage(conversationId: string, messageId: string): ClientToBackground {
+  return { type: 'favorite/add', conversationId, messageId };
+}
+
 export interface AskParams {
   clientRequestId: string;
   text: string;
@@ -800,7 +875,10 @@ export interface AskParams {
   model: ModelRef;
   /** 页面上下文档位：输入区临时切换的，没切换过取设置里的默认档位（settings.context.defaultTier）；不填按只发选区 */
   contextTier?: ContextTier;
-  /** 不填是「问」。直接发送的动作（换个模型重问时）不带问题文字，默认问法由后台装配补上，text 只用于本地显示 */
+  /**
+   * 默认 'ask'。整页快捷动作（C4：总结本页 / 提取要点 / 这页在讲什么 / 自定义页面动作）用各自的 actionId；
+   * 换个模型重问一个直接发送的动作（H12）时用原来的动作
+   */
   actionId?: string;
   /** 附带的待确认截图（capture 块）；发问即确认 */
   captureId?: string;
@@ -812,7 +890,7 @@ export function buildAskMessage(p: AskParams): ClientToBackground {
     clientRequestId: p.clientRequestId,
     ...(p.conversationId ? { conversationId: p.conversationId } : p.fresh ? { fresh: true } : {}),
     actionId: p.actionId ?? 'ask',
-    text: p.actionId === undefined || p.actionId === 'ask' ? p.text : '',
+    text: p.text,
     ...(p.quote ? { selectionRevision: p.quote.selectionRevision } : {}),
     contextTier: p.contextTier ?? 'selection',
     lengthTier: p.lengthTier,
