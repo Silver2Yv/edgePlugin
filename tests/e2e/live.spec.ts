@@ -93,11 +93,12 @@ test('工具栏直接发送的动作：已经开着的小窗能看到这一轮�
   await page.locator('#target').click({ clickCount: 3 });
   await clickToolbarButton(page, '解释');
   await expect(frame.getByTestId('job-state')).toHaveText('completed', { timeout: 15_000 });
-  // 新来的这一轮多了一条用户消息（引用摘要是新选中的那段；直接发送的动作没有问题文字，显示占位说明）
+  // 新来的这一轮多了一条用户消息（引用摘要是新选中的那段；直接发送的动作没有问题文字，显示动作名）
   await expect(frame.getByTestId('user-message')).toHaveCount(2);
   const latest = frame.getByTestId('user-message').last();
   await expect(latest).toContainText(PARAGRAPH.slice(0, 20));
-  await expect(latest).toContainText('没有输入问题');
+  await expect(latest).toContainText('解释');
+  await expect(latest).not.toContainText('没有输入问题');
 });
 
 test('改动页面正文后，界面出现「页面内容已变化」提示', async ({ page, serviceWorker }) => {
