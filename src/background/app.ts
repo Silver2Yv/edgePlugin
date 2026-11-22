@@ -22,7 +22,12 @@ const errName = (e: unknown) => (e instanceof Error ? e.message.slice(0, 200) : 
 
 export function createBackground(deps: BackgroundDeps) {
   const store = createStore(deps.session, deps.now, deps.newToken);
-  const hub = createHub();
+  // 订阅者数量跨越 0：广播 live/toggle，让这个标签页的哨兵开始/停止实时上报选中的文字（live，contract-v1.5）
+  const hub = createHub((tabId, enabled) => {
+    void deps
+      .broadcastToTab(tabId, { type: 'live/toggle', enabled })
+      .catch((e: unknown) => deps.log('live/toggleFailed', { error: errName(e) }));
+  });
   const host = createFloatHost(deps, store);
   const pages = createPages(deps);
   const jobs = createJobs(deps, store, hub, pages);

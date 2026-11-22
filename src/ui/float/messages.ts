@@ -211,6 +211,24 @@ export function localUserMessage(
   };
 }
 
+/**
+ * live（contract-v1.5）：别的界面（或后台替用户）在这个标签页发问时，conv/current 带来的这一轮用户消息。
+ * 用真实的消息编号与序号（不加 local: 前缀）——之后真正的快照带着同一个 id 到达会直接替换掉它（mergeSnapshot）
+ */
+export function remoteUserMessage(
+  um: { id: string; ordinal: number; text: string; quote?: QuoteSummary },
+  conversationId: string,
+): UserMessageView {
+  return {
+    id: um.id,
+    conversationId,
+    ordinal: um.ordinal,
+    role: 'user',
+    text: um.text,
+    ...(um.quote ? { quote: um.quote } : {}),
+  };
+}
+
 // ───────────── 显示列表 ─────────────
 
 export type DisplayItem =

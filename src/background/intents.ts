@@ -126,6 +126,7 @@ export function createIntents(
       siteLevel,
       toolbarActions,
       askRoute: panelOpen ? 'sidepanel' : routeOnAsk(store.readinessNow(s.tabId)),
+      liveQuote: hub.hasSubscribers(s.tabId),
     };
   }
 
@@ -187,6 +188,31 @@ export function createIntents(
       }
       case 'config/get':
         return pageConfig(s);
+      /**
+       * contract-v1.5 增量（live）：小窗/侧边栏开着时实时上报的选区（D11、B5）。只换引用条，不触发任何任务、
+       * 不发路由指令；后台没有订阅者时哨兵本不该发（已撤回 live/toggle），这里再核对一次，不信任内容脚本
+       */
+      case 'selection/live': {
+        deps.log('selection/live', { hasSubscribers: hub.hasSubscribers(s.tabId) });
+        if (!hub.hasSubscribers(s.tabId)) return { ok: true };
+        const sel = {
+          frameId: s.frameId,
+          ...(s.documentId === undefined ? {} : { documentId: s.documentId }),
+          selectionRevision: msg.selectionRevision,
+          text: msg.text,
+          truncated: msg.truncated,
+          originalLength: msg.originalLength,
+          inCode: msg.inCode,
+          at: deps.now(),
+        };
+        await store.putSelection(s.tabId, sel);
+        hub.toTab(s.tabId, quoteOf(sel));
+        return { ok: true };
+      }
+      /** contract-v1.5 增量（live）：阅读器报的「页面已变化」，转发给这个标签页的订阅者（5.1、5.6） */
+      case 'page/changed':
+        hub.toTab(s.tabId, { type: 'conv/pageChanged' });
+        return { ok: true };
       case 'float/loadResult': {
         if (msg.result === 'ready') {
           await store.setReadiness(s.tabId, 'ready');

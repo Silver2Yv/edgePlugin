@@ -14,7 +14,14 @@ import type {
 import { PROTOCOL_VERSION } from '@/core/domain/messages';
 import type { ModelErrorKind, ModelRef, Usage } from '@/core/llm/adapter';
 import { T } from '../strings';
-import { archiveJob, localUserMessage, type MessageView, mergeSnapshot, type QuoteSummary } from './messages';
+import {
+  archiveJob,
+  localUserMessage,
+  type MessageView,
+  mergeSnapshot,
+  type QuoteSummary,
+  remoteUserMessage,
+} from './messages';
 
 /** 从地址片段（如 `#t=<32 位十六进制>`）里取令牌；前缀不对或剩余部分不是合法令牌格式都返回 null */
 export function parseTokenFromHash(hash: string): string | null {
@@ -295,6 +302,12 @@ export interface FloatState {
   freshConversation: boolean;
   /** 一行提示：这次发问被后台接到了新对话（D13「已开启新对话，旧的仍可在历史里找回」） */
   convHint: 'newConversation' | null;
+  /**
+   * live（contract-v1.5）：阅读器报的「页面正文已变化」（含 SPA 换路由）。下一次发问（askSent）、
+   * 换标签页、点「新对话」都会清掉——提示的是「现在的页面内容和你上次看到的不一样了」，
+   * 既然已经重新发问或换了地方看，这句话就不再适用
+   */
+  pageChanged: boolean;
 }
 
 export function initialFloatState(hasToken: boolean): FloatState {
@@ -321,6 +334,7 @@ export function initialFloatState(hasToken: boolean): FloatState {
     thinkingOverride: null,
     freshConversation: false,
     convHint: null,
+    pageChanged: false,
   };
 }
 
@@ -370,6 +384,8 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
         queuedAsk: null,
         actionError: null,
         pendingAsk: action.text === undefined ? null : { text: action.text, quote: action.quote ?? null },
+        // live：这次发问会用当下最新的页面内容，之前「页面已变化」的提示不再适用
+        pageChanged: false,
       };
     case 'queueAsk':
       return { ...state, queuedAsk: action.ask, actionError: null };
@@ -402,6 +418,7 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
             thinkingOverride: null,
             freshConversation: false,
             convHint: null,
+            pageChanged: false,
           };
     }
     case 'handoffStarted':
@@ -443,6 +460,7 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
         freshConversation: true,
         convHint: null,
         actionError: null,
+        pageChanged: false,
       };
     case 'server':
       return applyServerMessage(state, action.msg);
@@ -471,20 +489,28 @@ function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatSt
       if (msg.jobId === state.job?.jobId) return { ...state, conversationId: msg.conversationId };
       // 自己刚发的问还没回 conv/accepted：不被别的界面发起的任务换掉
       if (state.pendingClientRequestId !== null) return state;
-      // 别的界面（或后台替用户）在这个标签页发了问：同一对话就把上一条回答留在列表里，换了对话从头显示
-      return {
-        ...state,
-        conversationId: msg.conversationId,
-        job: createJobView(msg.jobId, msg.messageId),
-        messages:
+      // 别的界面（或后台替用户）在这个标签页发了问：同一对话就把上一条回答留在列表里，换了对话从头显示；
+      // live（contract-v1.5）：带着这一轮的用户消息就接在后面，不然只看得到回答看不到问的是什么
+      {
+        const archived =
           msg.conversationId === state.conversationId
             ? archiveJob(state.messages, state.job, state.conversationId)
-            : [],
-        freshConversation: false,
-        convHint: null,
-      };
+            : [];
+        const um = msg.userMessage ? remoteUserMessage(msg.userMessage, msg.conversationId) : undefined;
+        return {
+          ...state,
+          conversationId: msg.conversationId,
+          job: createJobView(msg.jobId, msg.messageId),
+          messages: um ? [...archived, um] : archived,
+          freshConversation: false,
+          convHint: null,
+        };
+      }
     case 'conv/notice':
       return { ...state, notice: msg.kind };
+    // live（contract-v1.5）：页面正文变了（或换了路由），提示一行；下一次发问清掉（见 'askSent'）
+    case 'conv/pageChanged':
+      return { ...state, pageChanged: true };
     case 'handoff/created':
       return state.handoff ? { ...state, handoff: { ...state.handoff, handoffId: msg.handoffId } } : state;
     case 'handoff/done':

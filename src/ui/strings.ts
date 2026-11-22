@@ -45,6 +45,7 @@ const zh = {
     openSettings: '打开设置',
     handoffSlow: '侧边栏还没有接上，小窗先留着；可以稍后再点一次',
     newConversationStarted: '已开启新对话，旧的仍可在历史里找回',
+    pageChanged: '页面内容已变化，之后的提问会用新内容',
   },
 
   reject: {

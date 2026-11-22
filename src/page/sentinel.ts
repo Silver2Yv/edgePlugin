@@ -32,6 +32,10 @@ export function startSentinel(): void {
   let pendingOriginalLength = 0;
   let toolbar: ToolbarHost | undefined;
   let toolbarActions: readonly ActionSummary[] = FALLBACK_TOOLBAR;
+  /** live（contract-v1.5）：小窗/侧边栏开着并订阅了这个标签页时为真，新选中的文字才上报（D11、B5） */
+  let liveEnabled = false;
+  /** 防抖：和上一次上报的文字相同就不重发（同一段选区连续触发 mouseup/keyup 时常见） */
+  let lastLiveText: string | undefined;
   /**
    * 页面侧配置只问一次（按需，第一次有效选区时）：工具栏按钮顺序/隐藏/自定义（A3）、子框架的站点级别（4.1、AR-14）。
    * 顶层框架不等它就先用出厂默认列表弹出工具栏，配置到了就存起来，下次选中起生效（不强求这一次立刻更新，简单优先）
@@ -44,6 +48,7 @@ export function startSentinel(): void {
       .then((c: unknown) => {
         const cfg = c as PageConfig | undefined;
         if (cfg?.toolbarActions?.length) toolbarActions = cfg.toolbarActions;
+        liveEnabled = cfg?.liveQuote === true;
         return cfg;
       })
       .catch(() => undefined);
@@ -77,6 +82,7 @@ export function startSentinel(): void {
   function clearSelection(): void {
     toolbar?.hide();
     setLastSelectionRect(null);
+    lastLiveText = undefined; // 折叠不清引用条（D11），但去抖的「上一次」要清，免得之后重新选中同一段文字被当成重复
   }
 
   function sendSelectionReady(decision: SelectionDecision): void {
@@ -107,8 +113,25 @@ export function startSentinel(): void {
     void browser.runtime.sendMessage(msg);
   }
 
+  /** live（contract-v1.5）：选区稳定（mouseup/keyup）时，有界面在看着就把这次选中的文字也报一份，换引用条 */
+  function sendLiveSelection(): void {
+    if (pendingText === lastLiveText) return; // 防抖：同一段文字不重发
+    lastLiveText = pendingText;
+    const { text, truncated } = truncateByJsonBytes(pendingText, JOB_LIMITS.maxFieldBytes);
+    const msg: ContentToBackground = {
+      type: 'selection/live',
+      selectionRevision,
+      text,
+      truncated,
+      originalLength: pendingOriginalLength,
+      inCode: pendingInCode,
+    };
+    void browser.runtime.sendMessage(msg);
+  }
+
   function showFor(decision: SelectionDecision, rect: DOMRect): void {
     sendSelectionReady(decision);
+    if (liveEnabled) sendLiveSelection();
     setLastSelectionRect(rect, selectionRevision);
     getToolbar().show(rect, toolbarActions, decision.inCode);
   }
@@ -161,6 +184,18 @@ export function startSentinel(): void {
   const onCopy = (e: ClipboardEvent) => {
     if (e.isTrusted) clearSelection();
   };
+  // live（contract-v1.5）：后台广播的开关指令（没有订阅者时撤回）。不经 backgroundToContent 整张表校验
+  // （那张表体积不小，哨兵有 10 KB gzip 的硬门槛），手写最小校验；判断「来自后台」同阅读器（reader.ts）的写法
+  const onBgMessage = (raw: unknown, sender: { id?: string; tab?: unknown }) => {
+    if (sender.id !== browser.runtime.id || sender.tab !== undefined) return;
+    if (
+      typeof raw === 'object' &&
+      raw !== null &&
+      (raw as { type?: unknown }).type === 'live/toggle' &&
+      typeof (raw as { enabled?: unknown }).enabled === 'boolean'
+    )
+      liveEnabled = (raw as { enabled: boolean }).enabled;
+  };
 
   // 只挂被动监听：松开鼠标 / 键盘改变选区，Esc 隐藏，点别处隐藏，滚动 / 复制后消失（A5）。
   // 挂在 window 的捕获阶段：不少网页在冒泡阶段拦截事件（stopPropagation），挂在 document 上就收不到。
@@ -173,6 +208,7 @@ export function startSentinel(): void {
   window.addEventListener('mousedown', onMouseDown, opts);
   window.addEventListener('scroll', onScroll, passiveOpts);
   window.addEventListener('copy', onCopy, opts);
+  browser.runtime.onMessage.addListener(onBgMessage);
 
   function dispose(): void {
     window.removeEventListener('mouseup', onMouseUp, opts);
@@ -180,6 +216,7 @@ export function startSentinel(): void {
     window.removeEventListener('mousedown', onMouseDown, opts);
     window.removeEventListener('scroll', onScroll, passiveOpts);
     window.removeEventListener('copy', onCopy, opts);
+    browser.runtime.onMessage.removeListener(onBgMessage);
     toolbar?.el.remove();
     toolbar = undefined;
     setLastSelectionRect(null);

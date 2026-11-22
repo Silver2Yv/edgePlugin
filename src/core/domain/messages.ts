@@ -144,6 +144,24 @@ export const contentToBackground = tagged({
     type: lit('float/loadResult'),
     result: oneOf(['ready', 'failedUnsupported', 'failedTransient']),
   }),
+  /**
+   * contract-v1.5 增量（live）：小窗或侧边栏开着、且订阅了这个标签页时，哨兵据后台下发的 live/toggle
+   * 在选区稳定后上报这一次选中的文字，换引用条实时更新（D11、B5）。形状与 action/click 一致，但不触发任何任务、
+   * 不经过路由；没有订阅者时后台会撤回 live/toggle，哨兵就不再发这个消息（隐私：没人看着就不把文字交出去）
+   */
+  'selection/live': obj({
+    type: lit('selection/live'),
+    selectionRevision: int({ min: 0 }),
+    text: selectionText,
+    truncated: bool,
+    originalLength: int({ min: 0 }),
+    inCode: bool,
+  }),
+  /**
+   * contract-v1.5 增量（live）：阅读器在小窗或侧边栏开着期间检测到页面正文有实质变化（或 SPA 换了路由）。
+   * 不带正文，只是一个信号；后台转发给该标签页的订阅者（conv/pageChanged），提示「之后的提问会用新内容」
+   */
+  'page/changed': obj({ type: lit('page/changed') }),
 });
 export type ContentToBackground = Infer<typeof contentToBackground>;
 
@@ -154,6 +172,8 @@ export interface PageConfig {
   toolbarActions: readonly ActionSummary[];
   /** 这次提问去小窗还是侧边栏（B7） */
   askRoute: AskRoute;
+  /** contract-v1.5 增量（live）：这个标签页现在有没有小窗/侧边栏订阅者；哨兵据此决定要不要实时上报选中文字 */
+  liveQuote: boolean;
 }
 
 /** 拼好的页面模型（page/docPart 合并后）的校验。身份字段不在这里（规则 7），见 PageDocReport */
@@ -211,6 +231,12 @@ export const backgroundToContent = tagged({
   'page/notice': obj({ type: lit('page/notice'), kind: oneOf(['floatFailed', 'floatUnsupported']) }),
   'capture/start': obj({ type: lit('capture/start'), captureId: id }),
   'capture/hideOverlay': obj({ type: lit('capture/hideOverlay'), captureId: id }),
+  /**
+   * contract-v1.5 增量（live）：告诉这个标签页的哨兵（所有框架）开始/停止实时上报新选中的文字。
+   * 后台在这个标签页的订阅者数量由 0 变正时发 enabled:true，变回 0 时发 enabled:false（撤回）。
+   * 走广播（不指定 frameId/documentId），每个框架的哨兵各自收到、各自按站点级别决定要不要上报
+   */
+  'live/toggle': obj({ type: lit('live/toggle'), enabled: bool }),
 });
 export type BackgroundToContent = Infer<typeof backgroundToContent>;
 
@@ -358,6 +384,18 @@ export type BackgroundToClient =
       conversationId: string;
       jobId: string;
       messageId: string;
+      /**
+       * contract-v1.5 增量（live）：这一轮的用户消息（问题/动作与引用摘要），供发问端口之外的其他订阅者
+       * （另一个小窗、侧边栏）显示这一轮提问的是什么，而不只看到回答。发问的端口自己已经本地显示过，
+       * 收到这条时 conversationId 已等于自己的 job，不会重复显示（见归约器）
+       */
+      userMessage?: {
+        id: string;
+        ordinal: number;
+        /** 直接发送的动作可能是空串；界面按动作名兜底显示 */
+        text: string;
+        quote?: { text: string; truncated: boolean; originalLength: number };
+      };
     }
   | {
       /** contract-v1.3 增量：侧边栏顶部的一行说明（5.4 降级提示），只带原因 */
@@ -478,6 +516,11 @@ export type BackgroundToClient =
       summary?: LastSummary;
       show?: boolean;
     }
+  /**
+   * contract-v1.5 增量（live）：这个标签页的正文在小窗/侧边栏开着期间发生了实质变化（或 SPA 换了路由），
+   * 转发自阅读器的 page/changed（5.1、5.6）。只是一个提示信号，不带内容；界面显示一行，之后再问会用新内容
+   */
+  | { type: 'conv/pageChanged' }
   | {
       type: 'conv/rejected';
       reason: RejectReason;

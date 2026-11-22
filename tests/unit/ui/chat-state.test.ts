@@ -436,3 +436,74 @@ describe('发送计划与用量', () => {
     expect(withUsage.usage).toEqual({ inputTokens: 120, outputTokens: 45 });
   });
 });
+
+// live（contract-v1.5，D11/B5）：别的界面发问时补上这一轮的提问；页面变化提示
+describe('live：conv/current 带来的用户消息', () => {
+  it('别的界面（或后台替用户）发问：这一轮的用户消息接在后面，不只看到回答', () => {
+    let s = askAndAnswer(ready(), 1, '第一问', '回答一');
+    s = run(
+      s,
+      server({
+        type: 'conv/current',
+        conversationId: 'conv-0001',
+        jobId: 'job-9',
+        messageId: 'msg-9',
+        userMessage: { id: 'msg-u9', ordinal: 5, text: '解释' },
+      }),
+    );
+    expect(outline(s)).toEqual(['u:第一问', 'a:回答一', 'u:解释', 'a*:']);
+  });
+
+  it('带引用摘要的用户消息也一并显示', () => {
+    const s = run(
+      ready(),
+      server({
+        type: 'conv/current',
+        conversationId: 'conv-0002',
+        jobId: 'job-1',
+        messageId: 'msg-1',
+        userMessage: {
+          id: 'msg-u1',
+          ordinal: 0,
+          text: '',
+          quote: { text: '选中的原文', truncated: false, originalLength: 5 },
+        },
+      }),
+    );
+    const items = displayItems(s.messages, s.job);
+    const user = items.find((i) => i.kind === 'user');
+    expect(user?.kind === 'user' && user.message.quote?.text).toBe('选中的原文');
+  });
+
+  it('是自己刚发的那个任务（jobId 对上）：只换对话编号，不重复加一条用户消息', () => {
+    let s = run(ready(), { kind: 'askSent', clientRequestId: 'req-1', text: '问', quote: null });
+    s = run(s, server(accepted(1, 'conv-0001')));
+    const before = s.messages.length;
+    s = run(
+      s,
+      server({
+        type: 'conv/current',
+        conversationId: 'conv-0001',
+        jobId: 'job-1',
+        messageId: 'msg-1',
+        userMessage: { id: 'msg-u1', ordinal: 0, text: '问' },
+      }),
+    );
+    expect(s.messages.length).toBe(before);
+  });
+});
+
+describe('live：页面内容已变化（5.1、5.6）', () => {
+  it('conv/pageChanged：标一下；下一次发问（askSent）清掉', () => {
+    let s = run(ready(), server({ type: 'conv/pageChanged' }));
+    expect(s.pageChanged).toBe(true);
+    s = run(s, { kind: 'askSent', clientRequestId: 'req-1', text: '问' });
+    expect(s.pageChanged).toBe(false);
+  });
+
+  it('点「新对话」也清掉', () => {
+    let s = run(ready(), server({ type: 'conv/pageChanged' }));
+    s = run(s, { kind: 'newConversation' });
+    expect(s.pageChanged).toBe(false);
+  });
+});

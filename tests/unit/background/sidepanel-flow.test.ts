@@ -148,6 +148,8 @@ describe('两个界面显示同一个任务', () => {
       conversationId: acc?.conversationId,
       jobId: acc?.jobId,
       messageId: acc?.messageId,
+      // live（contract-v1.5）：带上这一轮的提问，供发问端口之外的订阅者显示
+      userMessage: { id: expect.any(String), ordinal: expect.any(Number), text: '这句话什么意思？' },
     });
     h.fetches[0]?.res.push('T:一\nT:二\nF\n');
     h.fetches[0]?.res.close();

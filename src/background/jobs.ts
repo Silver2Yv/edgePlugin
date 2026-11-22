@@ -19,6 +19,7 @@ import {
   continuation,
   conversationTitle,
   type NewConversationReason,
+  segmentsText,
   snapshotBatches,
   turnsFromMessages,
 } from '@/core/domain/conversation';
@@ -58,6 +59,7 @@ import type { BackgroundDeps } from './deps';
 import type { Hub } from './hub';
 import type { PageContext, Pages } from './pages';
 import { loadQuirks, recordQuirk } from './quirk-store';
+import { quotePreviewOf } from './quote';
 import type { Store, StoredSelection } from './store';
 
 type AskMsg = Extract<ClientToBackground, { type: 'conv/ask' }>;
@@ -699,9 +701,11 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
     const loaded = await deps.loadSettings();
     if (!loaded.ok) return { reason: 'invalid' };
     // 没有选区也没有问题文字：只有不需要输入的动作（解释、总结本页等，问题由装配补默认值）才能这样发
-    const needsInput =
-      resolveActionDef(msg.actionId as ActionId, loaded.settings.customActions)?.needsInput ?? true;
+    const actionDef = resolveActionDef(msg.actionId as ActionId, loaded.settings.customActions);
+    const needsInput = actionDef?.needsInput ?? true;
     if (!selection && msg.text.trim() === '' && needsInput) return { reason: 'invalid' };
+    // 对话里显示的这一轮提问：不需要输入的动作（解释、总结本页……）没有问题文字，显示动作名
+    const shownText = msg.text.trim() === '' && !needsInput && actionDef ? actionDef.label : msg.text;
     const tabUrl = await deps.getTabUrl?.(tabId).catch(() => undefined);
     const pageKey = tabUrl === undefined ? undefined : toPageKey(tabUrl);
     const settings = loaded.settings;
@@ -761,7 +765,7 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       : {
           id: conversationId,
           ...(pageKey !== undefined ? { pageKey } : {}),
-          title: conversationTitle(msg.text, selection?.text),
+          title: conversationTitle(shownText, selection?.text),
           model: target.model,
           turns: 1,
           revision: 1,
@@ -775,7 +779,7 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       conversationId,
       ordinal,
       role: 'user',
-      segments: [{ kind: 'text', text: msg.text }],
+      segments: [{ kind: 'text', text: shownText }],
       status: 'completed',
       request: {
         // 协议已按内置动作与 custom: 格式校验过
@@ -1033,11 +1037,19 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         ...(a.newConversation ? { newConversation: a.newConversation } : {}),
       });
       // 同一标签页的其他界面（小窗、侧边栏）随之显示这个任务；这是在任何增量之前发出的
+      const quotePreview = quotePreviewOf(selection);
       hub.toTab(tabId, {
         type: 'conv/current',
         conversationId: conv.record.id,
         jobId,
         messageId: record.messageId,
+        // live（contract-v1.5）：带上这一轮的问题与引用摘要，发问端口之外的订阅者据此显示这一轮的提问
+        userMessage: {
+          id: job.userMessage.id,
+          ordinal: job.userMessage.ordinal,
+          text: segmentsText(job.userMessage.segments),
+          ...(quotePreview ? { quote: quotePreview } : {}),
+        },
       });
 
       // 页面上下文（5.6、5.9）：接单之后、发请求之前读取。读取期间站点策略变了（设置页改了黑名单），
