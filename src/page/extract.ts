@@ -76,7 +76,7 @@ const TOO_LITTLE_TEXT = 200;
 /** 正文几乎为零（D15 失败兜底）：已经退到 body 兜底仍几乎读不到字，给出下一步建议而不是静默返回空结果 */
 const NEARLY_EMPTY_TEXT = 40;
 const NEARLY_EMPTY_HINT =
-  '可能是画布 / 图片类页面，正文几乎无法读取；可以框选需要的内容截图提问（截图功能尚未上线）';
+  '可能是画布 / 图片类页面，正文几乎无法读取；可以点输入区的「截图」框选需要的内容提问';
 const HEADING_PATH_CHARS = 200;
 
 export interface ExtractResult {

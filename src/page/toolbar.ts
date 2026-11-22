@@ -112,6 +112,7 @@ export function createToolbar(onAction: (action: ActionSummary) => void): Toolba
       border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); color: #fff; font-size: 12px;
       white-space: nowrap; }
     .msg button { color: #7dd3fc; padding: 4px 8px; }
+    [hidden] { display: none !important; }
   `;
   const bar = document.createElement('div');
   bar.className = 'bar';
