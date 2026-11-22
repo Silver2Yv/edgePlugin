@@ -1,224 +1,310 @@
 # HANDOFF.md — 核心功能开发阶段交接
 
-> 写于 2026-11-21，对应 `main` 上原型验证阶段收尾后的代码。**开发中随时更新**：做完一项就改第 2 节对应行。
+> 写于 2026-11-22，对应本地分支 `integrate/wave2`（两轮并行开发全部合并后）的代码。**开发中随时更新**：做完一项就改第 2 节对应行。
 > 只写「代码现在长什么样」，不重复背景：命令、架构规则、目录依赖方向见根目录 `CLAUDE.md`；分期范围见
-> `docs/架构设计/ARCHITECTURE.md` 第 10 节；原型验证接受的降级与带进本阶段的事项见 `docs/原型验证/PROTOTYPE_REPORT.md` 第 3、4 节。
+> `docs/架构设计/ARCHITECTURE.md` 第 10 节；原型验证接受的降级见 `docs/原型验证/PROTOTYPE_REPORT.md` 第 3、4 节；
+> 本轮各开发块的决策见 `docs/需求分析梳理/DECISIONS.md` 决策 082–094。
 
 ## 1. 一页结论
 
-端到端能用的主路径：**在正常站点上划词 → 工具栏点「问」→ 小窗打开 → 后台装配上下文，经 Chat Completions
-接口发给模型 → 流式回答渲染回小窗**。在这条路径上已有：断线重连、重试、转到侧边栏、侧边栏最小版、开关快捷键、
-右键「问」与「总结本页」（最小版）、最小设置页。
+端到端主路径全部打通：**划词 → 工具栏点「问」/「解释」/「解释代码」/自定义动作 → 小窗或侧边栏 → 后台装配上下文
+（含实体回指、页面级预算）→ 经模型网关发请求（怪癖学习、参数自动重试、按模型识别厂商发思考参数）→ 流式回答 →
+引用可点击跳回原文并高亮 → 可「存」成收藏 → 对话落库，后台重启后历史可续接。**
 
-还没有接入真实逻辑的：工具栏另外两个默认按钮「解释」「存」（点了被后台拒绝）、设置向导、欢迎页、实体回指、
-webRequest 诊断。历史、收藏、多模型下拉、截图属于再下一阶段（首期完整产品）。
+新增的整条能力线：收藏与历史（侧边栏完整版）、框选截图提问（不含页面图片）、多连接模型下拉与「换个模型再试」、
+设置向导与欢迎页、实时引用与页面变化提示、提示词登记表与各动作系统提示。
+
+还没做的（详见第 2 节「没有」行）：页面图片开关（E2）、悬停图片引用、联网搜索、分块总结、网页高亮标注（持久
+批注，非跳转时的临时高亮）、命令面板、按功能配模型、设置导入导出与完整备份、隐藏小窗定时销毁、跨后台重启的
+任务恢复（只能标记中断、不能续播同一条流）、Responses/Anthropic/Gemini 适配器、Edge 上本轮未复测。
 
 ## 2. 能力现状
 
-对照 `ARCHITECTURE.md` 第 10 节「核心试用版」逐项拆开：
+对照 `ARCHITECTURE.md` 第 10 节三档逐项拆开。
+
+### 核心试用版
 
 | 项目 | 状态 | 代码位置 | 说明 |
 | --- | --- | --- | --- |
-| 哨兵与工具栏 | 部分 | `src/page/sentinel.ts`、`src/page/toolbar.ts`、`src/background/scripts.ts` | 哨兵常驻、工具栏弹出/收起完整；但工具栏默认三个按钮（问/解释/存）里**只有「问」被后台接受**，点「解释」「存」会被拒绝（`src/background/intents.ts` 的 `action/click`：「本版本只接『问』；其他动作回拒绝」） |
-| 阅读器：抽取 | 已有（接受降级） | `src/page/extract.ts` | V-08 方案 A 移植；已知缺陷：GitHub 代码页、个别公式页、列表页（见 PROTOTYPE_REPORT 第 3 节） |
-| 阅读器：三档 | 已有 | `src/core/context/select.ts`、`plan.ts` | selection / nearby / fullPage，预算与截断口径见 `plan.ts` |
-| 阅读器：回指（D5） | 没有 | — | ARCHITECTURE 5.6 的实体回指（识别年份、数字、书名号术语、专名，`Intl.Segmenter` 切分）没有实现；目前远处内容只能靠 fullPage / nearby 装配与块的标题链（`src/core/prompt/ask.ts`）带上。V-08 的「远距离指代召回 84.2%」是抽取保留率，不是这项功能 |
-| 阅读器：换页 | 部分 | `src/background/pages.ts` | 每次发问前重新核对 `contentVersion` 才用缓存；ARCHITECTURE 5.6 设想的「小窗/侧边栏开着时挂观察器主动提示页面已变化」未实现 |
-| 阅读器：子框架 | 部分 | `src/page/sentinel.ts`、`src/core/domain/site-policy.ts`（`stricter`）、`src/background/pages.ts` | 哨兵在所有框架运行，子框架里能弹工具栏、选中文字能问，站点级别取顶层与框架更严的一级；页面读取只读顶层文档（阅读器只注入 frameId 0），子框架正文不进上下文 |
-| 小窗 | 已有（接受降级） | `src/page/float-host.ts`、`float-port.ts`、`src/ui/FloatApp.tsx`、`src/background/float-host.ts` | 拖动/缩放、断线重连、转接都实现；Edge 冷态快点偶尔拿不到输入框焦点（V-02 记录第 7 节）；隐藏小窗不按 `FLOAT_LIMITS.idleDestroyMs` 定时销毁（常量已定义但未接定时器，决策 078 推迟，`src/core/domain/float.ts`） |
-| 最小侧边栏 | 已有（最小版） | `src/ui/SidePanelApp.tsx`、`src/background/conv.ts` | 跟随标签页、开关快捷键、转接、两界面同时发问互斥（`busy`）都实现；无历史/收藏/完整样式（按分期本就不在这版） |
-| 后台任务与流式 | 部分 | `src/background/jobs.ts`、`src/core/domain/job.ts` | 流式增量、检查点保活、重试（新 `attemptId`）已有；跨后台重启不能恢复或重试，只提示重新提问（决策 070，对话只在内存不进库） |
-| 模型网关 | 部分 | `src/core/llm/chat-completions.ts`、`adapter.ts`、`src/background/options.ts` | 只有 `chatCompletions` 一种接口实现；`InterfaceType` 已占位 responses / anthropic / gemini 但没有适配器（首期次要及以后）；测试连接、列出模型已有。只读诊断（`webRequest` 权限已在清单里申请）没有接；连接怪癖学习（`quirks` 字段已定义）没有实现（V-07 未执行项） |
-| 提示词 | 部分 | `src/core/prompt/ask.ts` | 只有「问」这一份装配逻辑；`explain`/`explainCode`/`keyPoints`/`pageAbout`/`translate` 等内置动作定义在 `src/core/domain/actions.ts`，但没有各自的提示词或装配路径——点了会被拒绝（同第一行）；只有「总结本页」走右键/快捷键时用固定问题文案（`SUMMARIZE_PAGE_QUESTION = '总结本页'`，`src/background/commands.ts`） |
-| 渲染管线 | 已有（验证范围缩小） | `src/ui/render/*` | V-10 原型移植：Markdown/KaTeX/代码高亮/引用/流式分块/选区保护；真机验证在简化复现页上做的，接入真实界面后完整渲染管线待补测 |
-| 设置向导 | 没有 | `src/ui/OptionsApp.tsx` | 只是平铺设置页（连接管理、测试连接、站点规则），没有首次使用的分步引导；没有连接时小窗/侧边栏提示「请先在设置里添加连接」+ 一个跳转按钮（`src/ui/ask-defaults.ts` 的 `NO_CONNECTION`），仅此而已 |
-| 欢迎页 | 没有 | `src/ui/WelcomeApp.tsx` | 只有一行占位文字「欢迎页（骨架）」；安装时也不会自动打开（`src/background/main.ts` 的 `onInstalled` 只建右键菜单和注册哨兵） |
-| 站点权限层 | 已有（已知限制） | `src/core/domain/site-policy.ts`、`src/background/scripts.ts` | 三级矩阵、归一化、动态排除都实现；IPv6 字面量地址写不进排除名单的匹配模式（`site-policy.ts`），这类站点哨兵仍会常驻，但读取/发送照常被拦截 |
-| 页面身份 | 已有 | `src/core/context/page-key.ts`、`content-version.ts` | pageKey/documentId/contentVersion 都由后台按 `sender` 盖章，不信页面自报 |
-| 块锚点 | 已有 | `src/core/anchor/anchor.ts` | 精确 → 块内近似（有界编辑距离）→ 滚动比例三级降级；引用编号渲染见 `src/ui/render/citation.ts` |
-| 任务恢复 | 部分 | `src/background/jobs.ts`、`store.ts` | 同进程内恢复（小窗断线重连 `conv/resumeFloat`、检查点续播）已有；跨后台重启的任务只会被标 `interrupted`，不能跨进程续传（决策 070） |
+| 哨兵与工具栏 | 已有 | `src/page/sentinel.ts`、`toolbar.ts`；`src/background/intents.ts` | 工具栏默认三键「问/解释/存」与「解释代码」「长选区确认」「更多」展开面板都已实现；`action/click` 按 `kind/needsInput/scope` 分流：直接发送动作由后台自起任务，页面级动作强制不带选区（决策 083） |
+| 阅读器：抽取 | 已有（接受降级） | `src/page/extract.ts` | V-08 列表页粒度塌陷已修（列表项拆独立块）；GitHub 代码页、公式页此前已修复、本轮核实未回归；已知残留：`iframe-cross-origin` 证据召回 2/3、`formula-en` 远距离指代未命中（非本轮引入） |
+| 阅读器：三档 | 已有 | `src/core/context/select.ts`、`plan.ts` | selection / nearby / fullPage 不变 |
+| 阅读器：回指（D5） | 已有 | `src/core/context/entities.ts` | 年份、带单位数字、书名号/引号术语、英文专名、代码标识符；中文用 `Intl.Segmenter` 按页内低频筛候选，命中并入 nearby（决策 085，阈值为初值） |
+| 阅读器：换页 | 已有 | `src/background/pages.ts`、`src/page/reader.ts`（页面变化观察器） | 发问前核对 `contentVersion`；新增：小窗/侧边栏开着时阅读器主动比较正文字数（≥40 字且 1.5 秒内不变）或 SPA 路由变化，提示「页面内容已变化」（决策 090） |
+| 阅读器：子框架 | 部分 | 同原状态 | 页面读取仍只读顶层文档，子框架正文不进上下文；未变 |
+| 小窗 | 已有（接受降级） | `src/page/float-host.ts`、`src/ui/FloatApp.tsx` | 重做视觉（`theme.css`）、图钉（`float/pin`）、引用条常驻、模型下拉、截图按钮、「存」、档位与思考强度临时切换；隐藏小窗仍不按 `idleDestroyMs` 定时销毁（常量在 `src/core/domain/float.ts`，未接计时器，决策 078 推迟，本轮未变） |
+| 最小侧边栏 → 完整侧边栏 | 已有 | `src/ui/SidePanelApp.tsx`、`src/ui/panel/*` | 已升级为「首期完整产品」档的完整侧边栏，见下表「完整侧边栏与历史」 |
+| 后台任务与流式 | 已有 | `src/background/jobs.ts` | 增加 `usage`、`droppedParam` 终态字段；跨后台重启不能续播同一条流，但对话已落库，重启后可续接追问（见「任务恢复」行） |
+| 模型网关 | 已有（次要适配器除外） | `src/core/llm/{capabilities,thinking,param-retry,quirks,presets,diagnostics}.ts`、`src/background/net-diagnostics.ts` | 能力表、按模型标识优先识别厂商发思考参数、参数被拒自动重试一次、怪癖学习（按连接+接口+模型+配置版本）、`webRequest` 网络诊断已接入（≤300ms 轮询取浏览器错误码）、服务商预设；只有 `chatCompletions` 一种接口实现，Responses/Anthropic/Gemini 仍无适配器（首期次要） |
+| 提示词 | 已有 | `src/core/prompt/ask.ts` | `PROMPT_REGISTRY` 登记各动作默认文案与覆盖；explain/explainCode/translate/summarizePage/keyPoints/pageAbout/自定义动作均有装配路径；页面级动作强制不带选区（决策 083）；设置页 `PromptsSection.tsx` 可编辑恢复默认 |
+| 渲染管线 | 已有 | `src/ui/render/*` | 未结构性改动；补了代码高亮配色变量 |
+| 设置向导 | 已有 | `src/ui/options/Wizard.tsx` | 选服务商→填地址/Key→测试连接（含「缺 /v1 一键修正」）→拉模型列表选默认模型→发一条最小真实对话确认；没有连接时打开设置页自动出现（决策 094） |
+| 欢迎页 | 已有 | `src/ui/WelcomeApp.tsx`、`src/ui/welcome/{QuickStart,demo}.ts`、`src/background/welcome-demo.ts` | 首次安装自动打开（更新不打开）；三步图示 + 可亲手试一遍的示例文章（`demo/ask`，仅限欢迎页顶层框架、只走选区+解释） |
+| 站点权限层 | 已有（已知限制） | `src/core/domain/site-policy.ts` | 未变；IPv6 字面量地址仍写不进排除名单 |
+| 页面身份 | 已有 | `src/core/context/page-key.ts`、`content-version.ts` | 未变 |
+| 块锚点 | 已有（完整引用跳回） | `src/core/anchor/{anchor,citations}.ts` | 见下表「完整引用跳回」 |
+| 任务恢复 | 部分（较大改进） | `src/background/jobs.ts`、`src/platform/conv-db.ts` | 跨后台重启：对话从库重建、启动扫描把在途助手消息标 `interrupted`（`workerRestarted`/`unknownOnStartup`），保留已生成部分，可在同对话继续追问；仍不能续播同一条网络流、不能自动重试（决策 070 维持） |
+
+### 首期完整产品
+
+| 项目 | 状态 | 代码位置 | 说明 |
+| --- | --- | --- | --- |
+| 完整侧边栏与历史 | 已有 | `src/ui/SidePanelApp.tsx`、`src/ui/panel/{Nav,ConversationSwitcher,HistoryView,FavoritesView,PageActions,conv-ops,history-group}.ts(x)`、`src/background/history.ts` | 顶部分段切换对话/历史/收藏（决策 093）；本页对话列表下拉；历史按页面/网站分组、搜索、分页、就地删除（级联）；整页快捷动作（总结/提取要点/这页在讲什么+自定义 page 动作） |
+| 自定义动作与黑名单 UI | 已有 | `src/ui/options/ActionsSection.tsx`（自定义动作增删改、工具栏顺序/隐藏）、`sections.tsx`（网站黑名单两级规则） | — |
+| 完整引用跳回 | 已有 | `src/background/citations.ts`、`src/core/anchor/citations.ts`、`src/page/locate.ts`、`src/ui/cite/useCite.tsx` | 回答里【N】与【N】原文【/N】均可点；页面变了按锚点三级降级并提示「原文可能已变化」；`CSS.highlights` 高亮，点网页/回原位/跳下一处清掉；「回到刚才阅读的位置」（F4）；上次总结卡片与版本标注（`SummaryCard.tsx`、`src/background/summary.ts`） |
+| 收藏与导出 | 已有 | `src/background/favorites.ts`、`src/core/domain/favorite-export.ts`、`src/ui/panel/{FavoritesView,favorites-db,favorites-search,export}.ts` | 工具栏「存」（锚点前后约 32 字快照）与回答上的「存」（快照 refCount+1）；编辑标题/笔记、删除（解引用）、导出结构化 Markdown（单条/全部/按页面）；列表与搜索由侧边栏直接只读查询 IndexedDB（决策 093） |
+| 多连接与模型下拉 | 已有 | `src/ui/chat/ModelPicker.tsx`、`src/ui/model/options.ts`、`src/background/jobs.ts`（`resolveModel`） | 按连接分组列常用模型、可搜索；思考控件随模型能力变（开关类/`none`/`effort`）；连接被删时拒绝 `modelGone`（不再静默换默认模型，决策 091）；失败时「换个模型再试」（用原动作/档位重问） |
+| 框选截图 | 部分 | `src/background/{capture,capture-image}.ts`、`src/core/capture/{geometry,data-url}.ts`、`src/page/capture.ts`、`src/ui/chat/{CaptureParts,image-thumbs}.ts` | E1/E3/E4 完成（身份与视口核对、裁剪、预览确认、看不了图拒绝 `noVision`、图表解析提示）；**E2 页面图片开关、悬停图片引用未实现**；追问不重发图片；详见 V-15 记录 |
+| 设置分层 | 已有 | `src/ui/options/sections.tsx`、`parts.tsx` | 常用项露出（默认模型/上下文档位/回答长度/思考/网站黑名单），其余收进默认折叠的「高级选项」（决策 094） |
+
+### 首期次要及以后（未进入本轮）
+
+| 项目 | 状态 |
+| --- | --- |
+| Responses / Anthropic / Gemini 适配器 | 没有，仍只有 Chat Completions |
+| 联网搜索 | 没有（`adapter.ts` 里 `web_search` 只是接口类型占位字符串，未接任何逻辑） |
+| 分块总结 | 没有 |
+| 网页高亮（持久批注） | 没有——引用跳回时的 `CSS.highlights` 是一次性定位高亮，不是可保留的批注功能 |
+| 命令面板 | 没有 |
+
+### 其他未做事项（不在原三档表格内，但本轮素材要求写明）
+
+| 项目 | 状态 | 说明 |
+| --- | --- | --- |
+| 按功能配模型 | 没有 | 模型按连接/对话临时切换，没有「总结用模型 A、翻译用模型 B」这类按动作绑定模型的设置 |
+| 设置导入导出 | 没有 | 没有 JSON 导出/导入入口；`settings-store.ts` 只有存储层的脱敏导出函数，未接 UI |
+| 完整数据备份/恢复 | 没有 | 见 V-14 记录 |
+| Edge 复测 | 本轮未做 | cite、ui、capture、model、history 等块报告均注明「Edge 未测」；全部基于 CfT 无界面验证 |
 
 ## 3. 模块地图
 
-entrypoints 下每个入口只做渲染装配，同目录的 `index.html` 是对应模板，未在表中单列。
+entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列。
 
 | 目录 | 文件 | 职责 |
 | --- | --- | --- |
-| entrypoints | `background.ts` | 后台 Service Worker 入口，调用 `background/main.ts` |
-| entrypoints | `sentinel.content.ts` | 哨兵内容脚本入口（运行时动态注册，不进清单） |
-| entrypoints | `reader.content.ts` | 阅读器内容脚本入口（运行时由后台注入） |
-| entrypoints | `float/main.tsx` | 小窗页面（渲染 `ui/FloatApp`） |
-| entrypoints | `sidepanel/main.tsx` | 侧边栏页面（渲染 `ui/SidePanelApp`） |
-| entrypoints | `options/main.tsx` | 设置页（渲染 `ui/OptionsApp`） |
-| entrypoints | `welcome/main.tsx` | 欢迎页（渲染 `ui/WelcomeApp`，骨架） |
-| core/domain | `actions.ts` | 内置动作定义（问/解释/存/总结等）与默认工具栏顺序 |
-| core/domain | `bytes.ts` | JSON 字节口径计算与按字节切片 |
-| core/domain | `float.ts` | 小窗就绪状态机、握手令牌、断线绑定、转接（Handoff）类型 |
-| core/domain | `ids.ts` | 各类编号的类型别名（PageKey、JobId 等）与编号格式 |
-| core/domain | `job.ts` | 任务状态机、终态判断、可重试判断、`JobRecord` 结构 |
-| core/domain | `messages.ts` | 消息协议：所有跨上下文消息的标签联合与运行时校验入口 |
-| core/domain | `records.ts` | IndexedDB 表结构（PageRecord/ConversationRecord/MessageRecord 等） |
-| core/domain | `schema.ts` | 自带的极简运行时校验器（str/int/arr/obj/oneOf/tagged 等） |
-| core/domain | `session-keys.ts` | `storage.session` 键名拼接函数登记表 |
-| core/domain | `settings.ts` | 设置结构、默认值、版本迁移与导出脱敏 |
-| core/domain | `site-policy.ts` | 站点三级权限矩阵、站点规则归一化、哨兵排除规则生成 |
-| core/context | `content-version.ts` | 内容指纹算法（cyrb53 哈希）与块摘要 |
-| core/context | `page-doc.ts` | 页面模型类型：块、块类型、PageNote |
-| core/context | `page-key.ts` | pageKey 归一化（去跟踪参数、保留路由锚点） |
-| core/context | `plan.ts` | 请求装配计划类型、预算计算（硬上限/软预算/总结读取占比） |
-| core/context | `select.ts` | 按三档从块列表里选块（nearby/fullPage 的截断与居中逻辑） |
-| core/llm | `adapter.ts` | 模型网关契约：Connection、能力表、受保护参数、适配器接口 |
-| core/llm | `chat-completions.ts` | OpenAI 兼容 Chat Completions 适配器（唯一已实现的接口） |
-| core/llm | `sse.ts` | SSE 行解析（容忍换行风格混用、跨块事件、多事件合并） |
-| core/prompt | `ask.ts` | 划词提问的请求装配（系统/全文/历史/本轮消息顺序与预算分配） |
-| core/anchor | `anchor.ts` | 引用锚点生成与三级降级匹配 |
-| background | `app.ts` | 装配各后台子模块，暴露 `onMessage`/`onConnect` |
-| background | `browser-deps.ts` | `BackgroundDeps` 的真实实现（扩展 API、网络、注入阅读器） |
-| background | `commands.ts` | 快捷键与右键菜单处理（开关侧边栏、打开小窗、总结本页、右键问） |
-| background | `conv.ts` | 对话流端口（CONV_PORT）握手、订阅、授权、转接处理 |
-| background | `deps.ts` | 后台各模块依赖的接口定义（单测用假实现替换） |
-| background | `float-host.ts` | 小窗宿主调度：确保阅读器已注入、按需发预热/显示指令 |
-| background | `hub.ts` | 对话端口按标签页分组登记、侧边栏按窗口登记、推送 |
-| background | `intents.ts` | 意图通道（`runtime.onMessage`）处理：划词、点击、配置读取 |
-| background | `jobs.ts` | 任务执行：接单、发请求、增量合并推送、检查点、重试 |
-| background | `main.ts` | 后台启动入口：挂监听器、建菜单、哨兵对账、启动扫描 |
-| background | `options.ts` | 设置页通道：`settings/ensureLocked`、测试连接、列出模型 |
-| background | `pages.ts` | 页面读取与缓存：按站点策略决定读不读，核对内容指纹 |
-| background | `quote.ts` | 引用条预览（选中文字截前 2000 字） |
-| background | `roles.ts` | 从 `sender` 推角色（content/float/sidepanel/options） |
-| background | `route.ts` | 小窗/侧边栏去向决策（本窗口侧边栏开着与否、同步 `open`） |
-| background | `scripts.ts` | 哨兵动态注册对账（按黑名单生成 excludeMatches，排队执行） |
-| background | `store.ts` | 后台运行时状态的内存缓存（真相在 `storage.session`） |
-| page | `extract.ts` | 正文抽取（V-08 方案 A 移植，分时间片执行） |
-| page | `float-host.ts` | 小窗宿主 iframe；拖动/缩放不可见把手在宿主侧捕获 |
-| page | `float-port.ts` | 小窗私有端口（`tabs.connect`），只认本扩展 float.html 来源 |
-| page | `notice.ts` | 网页上的一行提示（小窗用不了时引导去侧边栏） |
-| page | `page-read.ts` | 响应后台 `page/read`：抽取、算指纹、回传、选区锚点 |
-| page | `reader.ts` | 阅读器总入口：挂载小窗宿主、私有端口、网页提示、页面读取 |
-| page | `selection-bus.ts` | 哨兵与阅读器之间共享选区矩形/修订号的小总线（全局符号） |
-| page | `selection-policy.ts` | 选区判断：是否弹工具栏、是否代码、表单输入例外规则 |
-| page | `sentinel.ts` | 哨兵：监听选区、驱动工具栏、子框架问级别 |
-| page | `toolbar.ts` | 工具栏 UI（封闭 Shadow DOM + popover）与定位算法 |
-| ui | `AnswerView.tsx` | 回答区组件（小窗与侧边栏共用）：状态、思考、重试、等待提示 |
-| ui | `FloatApp.tsx` | 小窗整体组件：握手、订阅、发问、断线重连、转接 |
-| ui | `OptionsApp.tsx` | 设置页组件：连接管理、测试连接、站点规则 |
-| ui | `SidePanelApp.tsx` | 侧边栏整体组件：跟随标签页、开关快捷键、授权 |
-| ui | `WelcomeApp.tsx` | 欢迎页组件（骨架，一行占位文字） |
-| ui | `ask-defaults.ts` | 发问默认参数（模型/长度档/思考强度/上下文档位）读取 |
-| ui | `error-labels.ts` | 模型错误分类对应的界面文案 |
-| ui | `float/state.ts` | 小窗/侧边栏共用的纯归约逻辑（增量合并、状态机、消息构造） |
-| ui/render | `block-splitter.ts` | 把解析后的 token 流切成顶层块分组，块起始偏移做稳定 key |
-| ui/render | `citation.ts` | 引用标记（全角【N】）解析与安全挂载 |
-| ui/render | `code-copy.ts` | 代码块复制按钮（Clipboard API，失败退回 execCommand） |
-| ui/render | `highlight.ts` | 代码高亮（highlight.js 子集语言，超长跳过，异常兜底纯文本） |
-| ui/render | `index.ts` | 渲染模块对外唯一入口，外部代码不直接碰内部文件 |
-| ui/render | `katex-render.ts` | KaTeX 安全封装（trust:false、maxSize/maxExpand、宏不跨消息） |
-| ui/render | `markdown-it-setup.ts` | markdown-it 实例配置：html:false、链接/图片协议白名单 |
-| ui/render | `math-plugin.ts` | 极简公式语法插件（`$$...$$` 块级、`$...$` 行内） |
-| ui/render | `mount.ts` | 把渲染结果按稳定 key 增量挂载进真实 DOM，接选区保护与节流 |
-| ui/render | `protocol.ts` | 链接协议白名单判定（http/https/mailto，防编码绕过） |
-| ui/render | `scheduler.ts` | 流式更新节流（同帧合并、长文本限最小间隔） |
-| ui/render | `selection-guard.ts` | 用户选区保护：延后替换正在被选中的块 |
-| ui/render | `streaming-renderer.ts` | 按块增量渲染：未完成块每次重渲，已完成块缓存复用 |
-| platform | `settings-store.ts` | 设置读取（`storage.local`），统一走迁移与校验 |
+| entrypoints | `background.ts` | 后台 Service Worker 入口 |
+| entrypoints | `sentinel.content.ts` | 哨兵内容脚本入口 |
+| entrypoints | `reader.content.ts` | 阅读器内容脚本入口 |
+| entrypoints | `float/main.tsx` | 小窗页面 |
+| entrypoints | `sidepanel/main.tsx` | 侧边栏页面 |
+| entrypoints | `options/main.tsx` | 设置页 |
+| entrypoints | `welcome/main.tsx`、`welcome/demo.ts` | 欢迎页；示例文章与页面侧模块的接口装配 |
+| core/domain | `actions.ts` | 内置+自定义动作定义、工具栏默认顺序、`ActionSummary` |
+| core/domain | `bytes.ts` | JSON 字节口径计算 |
+| core/domain | `conversation.ts` | 续接规则常量（30 分钟、20 轮，D12/D13） |
+| core/domain | `favorite-export.ts` | 收藏导出格式化（纯函数） |
+| core/domain | `float.ts` | 小窗状态机、握手令牌、`FLOAT_LIMITS`（含未接入的 `idleDestroyMs`） |
+| core/domain | `ids.ts` | 各类编号类型别名 |
+| core/domain | `job.ts` | 任务状态机、`JobRecord` |
+| core/domain | `messages.ts` | 消息协议定义与运行时校验入口（contract-v1.4 已打 tag，v1.5 增量见第 4 节） |
+| core/domain | `records.ts` | IndexedDB 表结构，新增 `FavoriteRecord` 扩展字段、`sentText`、`lastAskedAt` 等 |
+| core/domain | `schema.ts` | 运行时校验器 |
+| core/domain | `session-keys.ts` | `storage.session` 键名登记 |
+| core/domain | `settings.ts` | 设置结构、默认值（版本升到 2：`reply` 默认 `brief`/`zh`、`float.closeMode`、连接 `capabilityOverrides`/`models`）与迁移 |
+| core/domain | `site-policy.ts` | 站点三级权限矩阵 |
+| core/context | `content-version.ts` | 内容指纹算法 |
+| core/context | `entities.ts` | 实体回指候选识别（D5） |
+| core/context | `page-doc.ts` | 页面模型类型 |
+| core/context | `page-key.ts` | pageKey 归一化 |
+| core/context | `plan.ts` | 请求装配计划类型与预算；新增 `entityBlockIds`、`entitySingleMentions`、页面级预算口径 |
+| core/context | `select.ts` | 三档选块、列表项分组逻辑 |
+| core/llm | `adapter.ts` | 网关契约：`Connection`（含 `capabilityOverrides`、`models`）、能力表接口、受保护/语义参数、适配器接口 |
+| core/llm | `capabilities.ts` | 内置模型能力表与 `vendorOfModel` |
+| core/llm | `chat-completions.ts` | Chat Completions 适配器（唯一已实现） |
+| core/llm | `diagnostics.ts` | 诊断文本生成（脱敏），供设置页「一键复制」 |
+| core/llm | `param-retry.ts` | 参数被拒自动重试判断 |
+| core/llm | `presets.ts` | 服务商预设数据表 |
+| core/llm | `quirks.ts` | 怪癖学习纯逻辑（增删查） |
+| core/llm | `sse.ts` | SSE 行解析 |
+| core/llm | `thinking.ts` | 思考字段按厂商映射（模型标识优先于连接预设） |
+| core/prompt | `ask.ts` | 划词/动作提问装配：`PROMPT_REGISTRY`、长度档、语言、引用编号对齐、页面级预算 |
+| core/anchor | `anchor.ts` | 锚点生成与三级降级匹配 |
+| core/anchor | `citations.ts` | 引用标记解析与「引用→锚点」（纯逻辑，界面与后台共用） |
+| core/capture | `data-url.ts` | data: URL ↔ 字节转换 |
+| core/capture | `geometry.ts` | 框选截图坐标换算（按实际图片尺寸÷视口现算） |
+| background | `app.ts` | 装配所有后台子模块 |
+| background | `browser-deps.ts` | `BackgroundDeps` 真实实现 |
+| background | `capture.ts` | 框选截图后台流程：身份核对、待确认截图保管 |
+| background | `capture-image.ts` | 截图像素处理（裁剪/缩放/编码，OffscreenCanvas） |
+| background | `citations.ts` | 引用跳回：核对、算锚点、驱动阅读器定位 |
+| background | `commands.ts` | 快捷键与右键菜单 |
+| background | `conv.ts` | 对话流端口：握手、订阅、授权、转接、收藏/截图/模型相关消息路由 |
+| background | `deps.ts` | 依赖接口定义（单测可替换），新增 `db`、`insertCss`、`netDiagnostics`、`captureImages` 等 |
+| background | `favorites.ts` | 收藏写入、编辑、删除（refCount 维护） |
+| background | `float-host.ts` | 小窗宿主调度 |
+| background | `history.ts` | 历史查询/删除、上次总结读取、站点改「不读取」后清旧正文 |
+| background | `hub.ts` | 对话端口分组登记与推送 |
+| background | `intents.ts` | 意图通道：划词、点击（按 `kind/needsInput/scope` 分流）、配置读取 |
+| background | `jobs.ts` | 任务执行：接单落库、发请求、增量合并、检查点、重试、`usage`/`droppedParam` |
+| background | `main.ts` | 启动入口：监听器、菜单、哨兵对账、启动扫描 |
+| background | `net-diagnostics.ts` | `webRequest.onErrorOccurred` 归因，接入网络失败路径 |
+| background | `options.ts` | 设置页通道：测试连接、列模型 |
+| background | `pages.ts` | 页面读取与缓存、`currentVersion` |
+| background | `quirk-store.ts` | 怪癖学习的 `storage.local` 读写 |
+| background | `quote.ts` | 引用条预览 |
+| background | `roles.ts` | 角色推断 |
+| background | `route.ts` | 小窗/侧边栏去向决策 |
+| background | `scripts.ts` | 哨兵动态注册对账 |
+| background | `store.ts` | 运行时内存缓存 |
+| background | `summary.ts` | 「总结本页」上次总结查询、版本比较、复用判断 |
+| background | `welcome-demo.ts` | 欢迎页示例提问（`demo/ask`） |
+| page | `capture.ts` | 框选截图遮罩（顶层框架） |
+| page | `extract.ts` | 正文抽取 |
+| page | `float-host.ts` | 小窗宿主 iframe |
+| page | `float-port.ts` | 小窗私有端口 |
+| page | `locate.ts` | 引用跳回定位与高亮、回到刚才位置 |
+| page | `notice.ts` | 网页一行提示 |
+| page | `page-read.ts` | 响应 `page/read` |
+| page | `reader.ts` | 阅读器总入口：新增页面变化观察器 |
+| page | `selection-bus.ts` | 选区矩形/修订号小总线 |
+| page | `selection-policy.ts` | 选区判断规则 |
+| page | `sentinel.ts` | 哨兵：新增实时选区上报（`selection/live`，受 `live/toggle` 控制） |
+| page | `toolbar.ts` | 工具栏 UI：新增「更多」展开面板、长选区确认 |
+| platform | `conv-db.ts` | IndexedDB 建表/索引/迁移（`ConvDb` 接口、`createIdbConvDb`），图片级联、收藏读写接口 |
+| platform | `settings-store.ts` | 设置读取与迁移 |
+| ui | `AnswerView.tsx` | 回答区：思考折叠、用量展示、「换个模型再试」、实际模型、「存」按钮、图表解析提示 |
+| ui | `FloatApp.tsx` | 小窗整体：图钉、模型下拉接入、截图接入 |
+| ui | `OptionsApp.tsx` | 设置页壳：分层（常用/高级）、向导入口 |
+| ui | `SidePanelApp.tsx` | 侧边栏整体：三视图、本页对话列表、整页动作 |
+| ui | `WelcomeApp.tsx` | 欢迎页：三步图示 + 示例文章 |
+| ui | `ask-defaults.ts` | 发问默认参数读取，新增连接/模型相关默认值 |
+| ui | `error-labels.ts` | 错误分类对应文案 |
+| ui/chat | `ModelPicker.tsx` | 模型下拉面板（窗内，不出 iframe） |
+| ui/chat | `Composer.tsx` | 输入区：模型/档位/思考切换、截图按钮、引用条 |
+| ui/chat | `MessageList.tsx` | 消息列表：历史回答渲染、引用、「存」 |
+| ui/chat | `CaptureParts.tsx` | 截图预览、消息里的截图、提示 |
+| ui/chat | `image-thumbs.ts` | 缩略图按需拉取与页面内缓存 |
+| ui/chat | `Icons.tsx` | 内联 SVG 图标 |
+| ui/chat | `ask.ts` | 发问动作（副作用层，配合 `float/state.ts`） |
+| ui/cite | `useCite.tsx` | 引用跳回/回到刚才位置的界面逻辑 |
+| ui/cite | `SummaryCard.tsx` | 上次总结卡片 |
+| ui/panel | `Nav.tsx` | 侧边栏三视图切换 |
+| ui/panel | `ConversationSwitcher.tsx` | 本页对话列表下拉 |
+| ui/panel | `HistoryView.tsx` | 历史列表、搜索、分页、删除 |
+| ui/panel | `FavoritesView.tsx` | 收藏列表、搜索、编辑、删除、导出 |
+| ui/panel | `PageActions.tsx` | 整页快捷动作入口 |
+| ui/panel | `conv-ops.ts` | 侧边栏对话端口请求/应答辅助 |
+| ui/panel | `export.ts` | 收藏导出下载 |
+| ui/panel | `favorites-db.ts` | 收藏/历史只读查询（侧边栏直连 IndexedDB） |
+| ui/panel | `favorites-search.ts` | 收藏搜索匹配规则 |
+| ui/panel | `history-group.ts` | 历史分组纯逻辑 |
+| ui/model | `options.ts` | 模型下拉/思考控件/换模型再试纯逻辑 |
+| ui/options | `Wizard.tsx` | 配置向导 |
+| ui/options | `ConnectionsSection.tsx` | 连接管理：预设、Key、测试连接、常用模型勾选 |
+| ui/options | `ActionsSection.tsx` | 工具栏顺序与自定义动作增删改 |
+| ui/options | `PromptsSection.tsx` | 提示词编辑/恢复默认 |
+| ui/options | `ModelList.tsx` | 可搜索模型列表（多选/单选复用） |
+| ui/options | `Shortcuts.tsx` | 快捷键现状展示与修改入口 |
+| ui/options | `TestResultView.tsx` | 测试连接结果展示 |
+| ui/options | `api.ts` | 设置页与后台/存储交互的唯一入口 |
+| ui/options | `diagnose.ts` | 测试连接失败「可能的原因」 |
+| ui/options | `model.ts` | 设置表单纯逻辑 |
+| ui/options | `parts.tsx` | 设置行/折叠小节/表单字段共用组件 |
+| ui/options | `sections.tsx` | 常用项、网站黑名单、高级小节 |
+| ui/options | `useSettings.ts` | 设置读取/订阅/写入 |
+| ui/welcome | `QuickStart.tsx` | 三步图示 + 示例文章 |
+| ui/welcome | `demo.ts` | 示例文章与 page 模块的接口（ui 不可直接依赖 page） |
+| ui/float | `state.ts` | 小窗/侧边栏共用归约器：新增 `modelOverride`、`savedMessageIds`、`conversationPageKey`、`pageChanged` 等 |
+| ui/float | `messages.ts` | 快照消息合并 |
+| ui/float | `send-summary.ts` | 发送说明、侧边栏当前页信息 |
+| ui/render/* | 同前，未结构性改动 | — |
 
 ## 4. 消息协议与契约
 
-协议定义在 `src/core/domain/messages.ts`，配合 `bytes.ts`（字节口径）、`schema.ts`（运行时校验）、
-`job.ts`/`float.ts`（状态机与限额）。改协议的流程以 `CLAUDE.md` 为准：只在这个文件定义，后台入口做运行时
-校验，未知类型与超限消息一律拒绝且无副作用。
-
-契约标签（`git tag -n3`）：
+协议定义在 `src/core/domain/messages.ts`；改协议的流程见根目录 `CLAUDE.md`。
 
 | tag | 日期 | 内容 |
 | --- | --- | --- |
 | `contract-v1` | 2026-11-14 | 冻结：领域类型、消息协议、页面模型、数据库表结构、设置与迁移、模型适配器接口 |
-| `contract-v1.1` | 2026-11-18 | 小窗断线重连：新增 `conv/resumeFloat`、`FloatBinding`、`bindingMatches` |
-| `contract-v1.2` | 2026-11-19 | 测试连接带上所选模型；补设置页三类应答的类型 |
-| `contract-v1.3` | 2026-11-21 补打，指向 `51a77a8` | 原型验证期间的增量：页面缓存未变应答 `page/docUnchanged`；小窗拖动缩放改宿主侧（去掉 `float/move`，加 `float/reposition`、`float/rect`）；侧边栏订阅与转接（`conv/subscribed`、`conv/current`、`conv/notice`、`handoff/pending`、`sidepanel/toggle`、`sidepanel/wake`）；网页提示 `page/notice`；拒绝原因 `busy`（决策 067、069、072–076） |
+| `contract-v1.1` | 2026-11-18 | 小窗断线重连 |
+| `contract-v1.2` | 2026-11-19 | 测试连接带模型；设置页应答类型 |
+| `contract-v1.3` | 2026-11-21 补打 | 页面缓存未变应答、小窗拖动缩放改宿主侧、侧边栏订阅与转接、网页提示、拒绝原因 `busy` |
+| `contract-v1.4` | 2026-11-22（核心功能第一批），已打 tag | `conv/ask.fresh`、`conv/accepted.newConversation`、`history/delete`/`history/deleted`、`history/page.nextBefore`、`conv/saveFailed`、拒绝原因 `storageFailed`、`conv/jobState.usage`/`droppedParam`、`float/pin`、`PageConfig.toolbarActions` 扩成 `ActionSummary`；计划追加 `entityBlockIds`/`entitySingleMentions`；设置升到版本 2 |
+| `contract-v1.5` 增量（**未打 tag**，待本次合并验收后统一打） | — | 见下 |
 
-`contract-v1.3` 是 2026-11-21 收尾时补打的：v1.2 之后改过 `messages.ts` 的提交有 `6fc136f`、`21e69b6`、`24cdc19`、`dd5e661`、`51a77a8`，tag 指向其中最后一个。之后再改协议，改完打下一个 `contract-v1.x` tag。
+本次（`messages.ts` 里标「contract-v1.5 增量」的改动，按模块分组）：
+
+| 来源模块 | 增量内容 |
+| --- | --- |
+| cite | `citation/locate` 字段由 `segmentIndex` 改为 `citation`+`quote`（小窗也放行）；新增 `citation/back`、`summary/get`、`summary/last`、`page/back`；`page/locate`/`page/locateResult`/`citation/located` 加可选字段 |
+| live | `selection/live`、`live/toggle`、`page/changed`、`conv/current.userMessage`（可选）、`conv/pageChanged`、`PageConfig.liveQuote` |
+| model | 拒绝原因 `modelGone`；`conv/current` 的 `userMessage` 加 `request`（换模型重问用） |
+| capture | `capture/rect` 加 `viewport`；新增 `capture/cancel`、`capture/begin`、`capture/discard`、`image/get`、`conv/capture`、`conv/captureCleared`、`conv/captureFailed`；`capture/hideOverlay`/`capture/end` 改为有应答；拒绝原因 `noVision`；提示种类 `captureChanged`/`captureFailed`/`captureUnsupported`；`conv/ask` 加 `captureId` |
+| history/favorites | 新增 `favorite/update`、`favorite/remove`、应答与广播 `favorite/changed`；`favorite/add` 放进 `CONV_COMMON`（小窗也能发）；`favorite/saved` 加 `messageId` |
+| onboard | `demo/ask`、`DemoAskResult` |
+
+**待办**：合并验收通过后，在 `messages.ts` 顶部打下一个 `contract-v1.5` tag 说明，并在 `git tag -n3` 里体现。
 
 ## 5. 测试资产
 
-**单测**（`pnpm test`，Vitest）：
+**单测**（`pnpm vitest run` 实测，2026-11-22）：**58 个测试文件，749 个用例全部通过**。
 
 | 目录 | 覆盖范围 |
 | --- | --- |
-| `tests/unit/background/` | 任务/订阅/鉴权/页面读取/设置通道逻辑；用 `harness.ts` 提供的假 `storage.session`、假端口、假适配器 |
-| `tests/unit/core/` | `contracts.test.ts` 覆盖 messages/job/float/site-policy/settings/bytes 的运行时校验与边界；另有锚点算法、chat-completions 适配器、页面指纹/pageKey |
-| `tests/unit/page/` | 抽取、选区策略、小窗私有端口、小窗与工具栏的定位算法 |
-| `tests/unit/ui/` | 小窗/面板共用归约器的状态机、界面样式单位检查（见第 6 节） |
-| `tests/unit/ui/render/` | V-10 渲染管线：安全（HTML 注入/危险协议）、流式一致性、引用、代码复制、高亮、KaTeX、选区保护；辅助文件 `chunk-utils.ts`、`dom-assert.ts`、`fixtures.ts` |
-| `tests/unit/check-deps.test.ts` | 依赖方向规则本身的单测（core 纯净、page 不引 ui、哨兵无第三方依赖） |
-| `tests/unit/mock-relay.test.ts` | 模拟中转站自身的单测 |
+| `tests/unit/background/` | 任务/订阅/鉴权/收藏/历史/截图流程/怪癖重试/实时引用/欢迎页示例等后台逻辑（`harness.ts` 假端口） |
+| `tests/unit/core/` | messages/job/float/site-policy/settings/bytes 契约；锚点、引用解析、实体回指、能力表、思考映射、参数重试、怪癖、截图几何、chat-completions |
+| `tests/unit/page/` | 抽取、选区策略、小窗私有端口定位、工具栏定位、哨兵实时选区上报 |
+| `tests/unit/platform/` | `conv-db.test.ts`：IndexedDB 与内存两种实现跑同一组契约用例，含升级失败回滚、版本回退 |
+| `tests/unit/ui/` | 归约器（小窗/面板共用状态机、收藏/历史分组、模型下拉选项、截图状态）、样式单位 |
+| `tests/unit/ui/render/` | V-10 渲染管线（安全、流式一致性、引用、代码复制、高亮、KaTeX、选区保护） |
+| `tests/unit/check-deps.test.ts`、`mock-relay.test.ts` | 同前 |
 
-**e2e**（`pnpm test:e2e`，Playwright，需先 `pnpm build`）：
+**e2e**（`pnpm test:e2e`，Playwright，需先 `pnpm build`；下表数字为每个 spec 文件里 `test(` 调用次数，统计未实跑全量）：
 
-| spec | 覆盖什么 |
-| --- | --- |
-| `smoke.spec.ts` | 扩展能加载、固定 ID、哨兵已动态注册 |
-| `toolbar.spec.ts` | 划词弹工具栏（含网页拦截冒泡、安装后已开网页补注入） |
-| `ask-flow.spec.ts` | 划词→问→小窗→模拟中转站流式回答；断线后 `conv/resumeFloat` 重连接着问 |
-| `retry.spec.ts` | 中途断线后「重试」按钮；停止之后也能重试 |
-| `routing.spec.ts` | 冷启动/休眠后点「问」、小窗加载/握手失败、快捷键无选区唤起、右键问与总结本页 |
-| `handoff.spec.ts` | 小窗转侧边栏：无缝续上、提前/转接后到、迟迟没接上不收起 |
-| `sidepanel.spec.ts` | 侧边栏最小版：跟随标签页、本窗口授权、开关快捷键（关）、两界面同时发问、开合与阅读位置 |
-| `site-policy.spec.ts` | 权限矩阵、黑名单、敏感输入隔离（表单值不读、只读代码例外） |
-| `page-identity.spec.ts` | 页面身份与缓存失效：hash 路由、查询参数、前进后退、双标签页 |
-| `request-plan.spec.ts` | 请求装配与预算：发送计划与实际请求体逐项对账 |
-| `ipc-boundary.spec.ts` | IPC 授权与 iframe 边界：封闭 shadow root、跨标签页令牌隔离、导航后令牌作废 |
-| `lifecycle.spec.ts` | 等响应头的 28 秒连接超时（真实未缩放时间，单独跑） |
-| `float-interaction.spec.ts` | 小窗交互：拖动/缩放、Tab 焦点、输入法组合、复制代码、200% 缩放、生成中继续阅读 |
-| `markdown.spec.ts` | 回答安全渲染接入小窗：标题/列表/代码/表格/公式/链接/原始 HTML；流式中途选中不被打断 |
-| `wait-hint.spec.ts` | 等待时按时间分级提示文案（7 秒/15 秒档） |
-| `options.spec.ts` | 设置页：测试连接报错改地址重测、落盘设置、Key 不出现在页面上 |
+| spec | 用例数 | 覆盖什么 |
+| --- | --- | --- |
+| `smoke.spec.ts` | 1 | 扩展加载、固定 ID、哨兵注册 |
+| `toolbar.spec.ts` | 2 | 划词弹工具栏 |
+| `toolbar-actions.spec.ts` | 6 | A2/A3/A6/A7：解释、解释代码、自定义动作直接发送、长选区确认、「更多」 |
+| `ask-flow.spec.ts` | 2 | 划词→问→流式回答、断线重连 |
+| `retry.spec.ts` | 3 | 中途断线重试 |
+| `routing.spec.ts` | 7 | 冷启动/休眠路由、快捷键、右键问与总结本页 |
+| `handoff.spec.ts` | 5 | 小窗转侧边栏 |
+| `sidepanel.spec.ts` | 7 | 侧边栏基础行为 |
+| `site-policy.spec.ts` | 4 | 权限矩阵、黑名单、敏感输入 |
+| `page-identity.spec.ts` | 4 | 页面身份与缓存失效 |
+| `request-plan.spec.ts` | 6 | 请求装配与预算、实体回指 nearby 验证 |
+| `ipc-boundary.spec.ts` | 10 | IPC 授权与 iframe 边界 |
+| `lifecycle.spec.ts` | 1 | 28 秒连接超时 |
+| `float-interaction.spec.ts` | 13 | 小窗交互：拖动/缩放/IME/复制/缩放/继续阅读 |
+| `markdown.spec.ts` | 2 | 回答安全渲染接入小窗 |
+| `wait-hint.spec.ts` | 1 | 等待提示分级文案 |
+| `options.spec.ts` | 2 | 设置页测试连接、落盘、Key 不出现在页面 |
+| `options-advanced.spec.ts` | 9 | 设置分层、黑名单 UI、自定义动作、快捷键展示等 |
+| `onboarding.spec.ts` | 9 | 欢迎页、向导、设置分层相关 K/L 验收 |
+| `cite.spec.ts` | 4 | 引用跳回、降级提示、上次总结卡片、侧边栏引用 |
+| `live.spec.ts` | 4 | 实时引用更新、页面变化提示、图钉用例改写 |
+| `model.spec.ts` | 3 | 模型下拉切换、换模型再试、侧边栏截图 |
+| `capture.spec.ts` | 8 | 框选截图全流程（含 125% 缩放、拖动中变化丢弃） |
+| `history-favorites.spec.ts` | 4 | 工具栏「存」、回答「存」、历史搜索删除、本页对话列表 |
+| `persist.spec.ts` | 2 | 后台重启后续接、生成中重启标中断 |
+| `chat-ui.spec.ts` | 7 | 小窗/侧边栏视觉重做、深色、思考/用量展示 |
 
-共用 helper：
+**本次复跑结果**：`pnpm vitest run` 749/749 全过；`persist.spec.ts`+`history-favorites.spec.ts` 单独跑 6 个用例，`工具栏「存」…` 首次超时失败、单独重跑一次即过（见第 6 节），其余 5 个一次通过。未复跑剩余 spec 的全量（见第 7 节待办）。
 
-- `tests/e2e/page-helpers.ts` — 约 20 个导出：起模拟中转站（`startRelay`）、造 `Connection`/`Settings`、读写设置、点「问」、取小窗 frame、断言无工具栏、直接发 `conv/ask`、解析请求体、取 `selectionRevision` 等
-- `tests/e2e/sidepanel-helpers.ts` — 侧边栏页面 Playwright 拿不到（不是标签页，见第 6 节），改用浏览器级 CDP（`Target.attachToTarget`）附加；提供 `attachPanel`、`openPanelByTrustedClick`、`askInPanel` 等
-- `tests/e2e/fixtures.ts` — 扩展 Playwright 的 `test`：加载解压缩扩展的持久化上下文，等哨兵注册完成才把 `serviceWorker` 交给用例
-
-**模拟中转站**（`tests/mock-relay/server.ts`，`pnpm mock-relay`）：OpenAI 兼容的 `/v1/chat/completions`、
-`/v1/models`；模式放在路径里（`ok`/头部延迟/中途静默/长任务/非流式/换行风格变体/心跳/各类拆包/多种错误码/
-`failOnce` 等 20 种，见文件头表格）；`MOCK_RELAY_SCALE` 可压缩等待时间；`GET /__log` 读取收到的请求（不记录
-Key，只记是否带鉴权）。
-
-**scripts/**：
-
-| 文件 | 作用 |
-| --- | --- |
-| `check-deps.ts` | 依赖方向检查（core 纯净 / page 不引 ui / 哨兵无第三方依赖） |
-| `check-manifest.ts` | 产物清单权限与 `manifest-baseline.json` 的差异检查 |
-| `check-size.ts` | 产物体积：哨兵 gzip ≤10KB 硬门槛，阅读器 50KB 为提示性初值 |
-| `v08-port-eval.ts` | 在 V-08 原型的 28 个样本上比较原型方案 A 与 `src/page/extract.ts` 移植版，需要外部样本目录 |
-| `manifest-baseline.json` | 权限基线数据（不是脚本），改权限要同步它并在 PR 里标出 |
-
-**package.json scripts**：`dev`/`build`/`verify`/`test`/`test:e2e`/`mock-relay` 已在 `CLAUDE.md` 列出，其余：
-`typecheck`（独立 `tsc --noEmit`）、`lint`/`format`（biome check）、`zip`（`wxt zip` 打包发布产物）、
-`postinstall`（`wxt prepare`，安装依赖后自动跑）、`check:deps`/`check:size`/`check:manifest`（对应上面三个脚本）。
-`verify` 串联：lint → typecheck → check:deps → test → build → check:size → check:manifest。
+**模拟中转站、scripts/**：同前（`tests/mock-relay/server.ts`，`check-deps.ts`/`check-size.ts`/`check-manifest.ts`/`v08-port-eval.ts`），未结构性变化。
 
 ## 6. 已知坑
 
+延续原有坑（侧边栏非标签页、后台空闲回收模拟、Preact 数字样式单位、IPv6 排除名单、`store.ts` 内存真相、哨兵注册排队、侧边栏 `open` 同步段、Edge 冷态焦点）不再重复，见历史版本或代码文件头注释。本轮新增/确认：
+
 | 坑 | 出处 |
 | --- | --- |
-| 侧边栏页面不是标签页，Playwright 的 `context.pages()` 拿不到，要用浏览器级调试协议 `Target.attachToTarget` 附加 | `tests/e2e/sidepanel-helpers.ts` 文件头 |
-| Playwright / 调试协议连着时后台不会因空闲被回收；测回收要用 `ServiceWorker.stopAllWorkers` 主动模拟，真实回收用分离进程测 | `docs/原型验证/记录/V-01.md`；`prototypes/v01-lifecycle/probe.mjs` |
-| Preact 11 不再给数字样式值自动补 `px`（只有 preact/compat 补），`style={{ marginLeft: 8 }}` 会被浏览器忽略；长度类样式必须写带单位的字符串 | `tests/unit/ui/style-units.test.ts` 文件头 |
-| 本版本后台只接受动作 `ask`，工具栏「解释」「存」等其余内置动作点击会被拒绝（`notAllowed`） | `src/background/intents.ts` 的 `action/click` |
-| IPv6 字面量地址不是合法的扩展匹配模式主机，写不进哨兵排除名单；这类站点「不弹工具栏」不生效，但读取/发送仍按策略拦截 | `src/core/domain/site-policy.ts` |
-| 隐藏小窗不会按 `FLOAT_LIMITS.idleDestroyMs` 定时销毁，常量已定义但未接入计时器（决策 078 推迟） | `src/core/domain/float.ts` |
-| 后台约 30 秒空闲会被浏览器回收、内存清空；真相只在 `storage.session`，读取一律先看内存、没有才读 session | `src/background/store.ts` 文件头 |
-| 哨兵动态注册的对账要排队执行：安装时的对账与设置变更的对账同时到达，各自先查到「未注册」再各注册一次会撞号失败（e2e 复现过） | `src/background/scripts.ts`；`docs/原型验证/PROTOTYPE_REPORT.md` 第 5 节 |
-| 打开侧边栏的 `sidePanel.open` 必须在用户操作的同步段里第一时间调用，之前任何 `await` 都会被拒；「侧边栏开着」可以之后再判断（不用 `open`） | `src/background/route.ts` 文件头；ARCHITECTURE 5.2、5.4 |
-| Edge 有界面跑 e2e 时冷态快点「问」约三成输入框拿不到焦点（改动前同样存在），CfT 无界面没有 | `docs/原型验证/记录/V-02.md` 第 7 节 |
+| **e2e 夹具默认关掉安装时自动打开的欢迎页**：`fixtures.ts` 的 `dismissWelcome()` 在每个用例的 `context` fixture 里默认调用；需要测欢迎页本身时显式传 `{ keepWelcome: true }` | `tests/e2e/fixtures.ts` |
+| 全量 e2e 偶发超时的用例，单独重跑能过：`toolbar-actions.spec.ts` 长选区确认、`page-identity.spec.ts` 前进后退、`request-plan.spec.ts`；本次复查新发现 `history-favorites.spec.ts` 的「工具栏「存」…」用例也出现过一次同类超时（侧边栏收藏列表轮询 5 秒内未出现），重跑即过，归入同一类已知偶发 | 各块报告；本次复核 |
+| 思考字段的厂商识别**按模型标识优先**，连接预设（含 `custom`）其次；两边都认不出时什么思考参数都不发，不再默认按预设猜 | `src/core/llm/thinking.ts`；决策 084 |
+| `webRequest.onErrorOccurred` 送达和 `fetch()` reject 不保证先后顺序，取网络诊断要短暂轮询（≤300ms） | `src/background/net-diagnostics.ts` |
+| 引用跳回用的 `CSS.highlights` 是网页与扩展共用的一份，网页脚本能查到/清掉；`insertCSS` 按文档注入的样式同理可见 | `src/background/citations.ts` 相关报告 |
+| 框选截图的系统 DPI、真实切窗口、真实侧边栏开合三类，本机 CfT 无界面无法验证，详见 `docs/原型验证/记录/V-15.md` 第 3 节手动步骤 | V-15 |
+| `jobs.ts` 旧有的 `!selection && text.trim()===''` 守卫仍在（页面级动作与直接发送动作已在 `intents.ts`/`ask.ts` 处补默认问题文本绕过，未改守卫本身） | `src/background/jobs.ts` |
 
-## 7. 接手先做
+## 7. 接下来做什么
 
-| 步骤 | 做法 |
+| 事项 | 说明 |
 | --- | --- |
-| 对齐基线 | `pnpm verify`，再 `pnpm build` 后 `pnpm test:e2e`。2026-11-21 基线：单测 404 个、e2e 69 个全部通过（Chrome for Testing 159，无界面） |
-| 看缺口 | 第 2 节标「部分」「没有」的行，加上 `PROTOTYPE_REPORT.md` 第 4 节 |
-| 改了什么就记什么 | 改协议打 `contract-v1.x` tag；新决策追加 `DECISIONS.md`（编号接 081）；改架构升版本并写变更记录；复测或新验证按 `VALIDATION_MATRIX.md` 第 5 节模板记到 `docs/原型验证/记录/`；本文件第 2 节同步更新 |
+| 等用户确认的体验细节 | 决策草稿里标「待用户复核/待用户确认」的共 11 条：083（自定义动作问题用名字、两类动作可编辑内容不同）、087（总结本页接不接近期对话）、088（顶栏纯图标、图钉不记、引用常驻）、089（卡片出现时机、多编号只跳第一个、高亮消失时机）、091（候选范围、错误范围、文案）、092（遮罩文案、只发图默认问题、按钮位置）、093（三视图切换方式、下拉形式）、094（欢迎页布局、向导默认服务商、保存方式）。逐条请用户过目后在 `DECISIONS.md` 对应决策改状态 |
+| 打 `contract-v1.5` tag | 本文件第 4 节已列增量；用户确认体验细节不影响协议本身，可独立推进 |
+| Edge 上复跑 | 本轮全部块只在 CfT 无界面验证过，`cite`/`ui`/`capture`/`model`/`history` 等块报告都注明「Edge 未测」，需要按 `CLAUDE.md`「测试踩坑」用 `E2E_BROWSER=msedge` 复跑一遍，关注冷态焦点、框选 DPI、侧边栏开合重排几类已知环境阻塞项 |
+| V-14、V-16 | V-14（收藏/数据库/更新与恢复）记录已写，见 `docs/原型验证/记录/V-14.md`；V-16（本文件未涉及，若 `VALIDATION_MATRIX.md` 中存在对应启用门槛需单独确认范围后再执行）；截图相关 V-15 已有记录（E2 页面图片仍未执行） |
+| 没做的首期功能 | E2 页面图片开关与悬停图片引用、联网搜索、分块总结、网页高亮批注、命令面板、按功能配模型、设置导入导出与完整备份、隐藏小窗定时销毁（决策 078 推迟，需要确认是否本阶段接入） |
+| 全量 e2e 复跑 | 本次只复跑了 `persist.spec.ts`+`history-favorites.spec.ts`（6 例，1 次偶发超时重跑通过）；建议接手后先 `pnpm build` 一次，再 `E2E_CHROMIUM_PATH=/d/tmp/cft/chrome.exe pnpm test:e2e` 跑全量，确认各块报告里声称的用例数与状态 |
