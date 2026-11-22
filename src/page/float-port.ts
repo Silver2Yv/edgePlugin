@@ -1,6 +1,7 @@
 // 小窗私有端口（ARCHITECTURE 5.3）：小窗 ↔ 所在标签页的阅读器，用 tabs.connect 直连，不经过
-// 后台中转，不用 window.postMessage。只接恢复位置/尺寸、收起；引用跳转（anchor/*）本版本不实现
-// （待页面读取 / 定位落地），收到也不报错，按已知消息类型忽略。
+// 后台中转，不用 window.postMessage。只接恢复位置/尺寸、收起、图钉。引用跳转（anchor/*）不走这里：锚点要用后台库里的
+// 快照算（规则 9），小窗与侧边栏一样经后台 citation/locate、citation/back → page/locate、page/back（cite 块）；
+// anchor/* 收到也不报错，按已知消息类型忽略。
 // 实时拖动 / 缩放不经过这个端口——由宿主侧不可见把手直接处理（见 float-host.ts 文件头注释），
 // 这里只在手势结束时把最终 rect 回报给小窗用于落盘。
 import { browser } from 'wxt/browser';
@@ -55,7 +56,7 @@ export function handleFloatToReaderMessage(raw: unknown, host: FloatHostApi): vo
       host.setKeepOpen(r.value.pinned);
       break;
     default:
-      // anchor/jump、anchor/back：本版本不实现
+      // anchor/jump、anchor/back：引用跳转经后台（见文件头），这里不处理
       break;
   }
 }

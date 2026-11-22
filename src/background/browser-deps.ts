@@ -99,5 +99,7 @@ export function browserDeps(): BackgroundDeps {
       onError: (what, e) => console.warn(`[后台] db/${what}Failed`, e instanceof Error ? e.name : 'unknown'),
     }),
     netDiagnostics,
+    insertCss: (tabId, documentId, css) =>
+      browser.scripting.insertCSS({ target: { tabId, documentIds: [documentId] }, css }),
   };
 }

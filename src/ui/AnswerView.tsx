@@ -4,6 +4,8 @@
 // 引用编号只在这条消息自己的发送计划（plan.sentBlockIds）内有效（规则 9）。
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { canRetry, isTerminal } from '@/core/domain/job';
+import { isReadCoverageNote } from '@/core/prompt/ask';
+import type { CitationClick } from './cite/useCite';
 import { ERROR_LABEL } from './error-labels';
 import { type AnswerLike, citationIds } from './float/messages';
 import { sendSummary } from './float/send-summary';
@@ -40,9 +42,31 @@ export interface AnswerViewProps {
   canExpand: boolean;
   onRetry: () => void;
   onExpand: () => void;
+  /** 点了回答里的引用（cite 块，F1）：跳回原文。不给就只显示不响应 */
+  onCitation?: (c: CitationClick) => void;
 }
 
-export function AnswerView({ view, live, selectedChars, canExpand, onRetry, onExpand }: AnswerViewProps) {
+/** 点到的引用元素 → 编号与原文；多编号【12,5】按第一个 */
+function citationOf(target: EventTarget | null, root: HTMLElement | null): CitationClick | undefined {
+  const el = target instanceof Element ? target.closest('.ra-citation, .ra-citation-quote') : null;
+  if (!el || !root?.contains(el)) return undefined;
+  if (el.classList.contains('ra-citation-quote')) {
+    const citation = el.getAttribute('data-id') ?? '';
+    return citation ? { citation, quote: el.textContent ?? '' } : undefined;
+  }
+  const citation = (el.getAttribute('data-ids') ?? '').split(',')[0]?.trim() ?? '';
+  return citation ? { citation } : undefined;
+}
+
+export function AnswerView({
+  view,
+  live,
+  selectedChars,
+  canExpand,
+  onRetry,
+  onExpand,
+  onCitation,
+}: AnswerViewProps) {
   const answerRef = useRef<HTMLDivElement | null>(null);
   const answerRendererRef = useRef<AnswerRenderer | null>(null);
 
@@ -114,6 +138,17 @@ export function AnswerView({ view, live, selectedChars, canExpand, onRetry, onEx
   // 卸载：移除渲染器的 selectionchange 监听
   useEffect(() => () => answerRendererRef.current?.destroy(), []);
 
+  // 页面级动作（总结等）的读取覆盖范围写在回答的标题处（5.9、AR-21）
+  const coverage = view.plan?.notes.find(isReadCoverageNote);
+  const onAnswerEvent = (e: MouseEvent | KeyboardEvent) => {
+    if (!onCitation) return;
+    if (e instanceof KeyboardEvent && e.key !== 'Enter' && e.key !== ' ') return;
+    const c = citationOf(e.target, answerRef.current);
+    if (!c) return;
+    e.preventDefault();
+    onCitation(c);
+  };
+
   // 思考进行中（H6）：有思考内容、正文还没开始
   const reasoningNow = streaming && view.reasoning.length > 0 && view.text.length === 0;
   const summary = view.plan ? sendSummary(view.plan, selectedChars) : null;
@@ -143,9 +178,21 @@ export function AnswerView({ view, live, selectedChars, canExpand, onRetry, onEx
           <div className="ra-think__body">{view.reasoning}</div>
         </details>
       )}
+      {coverage && (
+        <p className="ra-answer__coverage" data-testid="coverage-title">
+          {coverage}
+        </p>
+      )}
       {/* 子节点完全由 src/ui/render（createAnswerRenderer）管理，这里不写 children，
-          Preact 不会对它做子节点 diff（见 render/mount.ts） */}
-      <div ref={answerRef} data-testid={live ? 'answer' : 'history-answer'} className="ra-answer" />
+          Preact 不会对它做子节点 diff（见 render/mount.ts）。引用元素的点击在这里委托处理 */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: 只委托处理里面引用元素（role=button、可聚焦）的点击与按键 */}
+      <div
+        ref={answerRef}
+        data-testid={live ? 'answer' : 'history-answer'}
+        className="ra-answer"
+        onClick={onAnswerEvent}
+        onKeyDown={onAnswerEvent}
+      />
       {waitHint && (
         <p data-testid="wait-hint" aria-live="polite" className="ra-status">
           {renderWaitHint(waitHint)}

@@ -6,7 +6,7 @@
 //
 // 开关快捷键（5.4）：后台在命令处理里总是同步 open，并广播带命令时间的 sidepanel/toggle、同时记进 storage.session。
 // 面板在那个时间之前就已存在，说明这次命令是「关」，自行 window.close()。先挂监听再读记录，两者之间不留空隙。
-// 历史列表、收藏、引用跳回不在这一版。
+// 历史列表、收藏不在这一版。
 import { useEffect, useReducer, useRef, useState } from 'preact/hooks';
 import type { Browser } from 'wxt/browser';
 import { browser } from 'wxt/browser';
@@ -17,11 +17,20 @@ import {
   CONV_PORT,
 } from '@/core/domain/messages';
 import { SESSION_KEYS } from '@/core/domain/session-keys';
+import { isReadCoverageNote } from '@/core/prompt/ask';
 import { EXPAND_QUESTION, NO_CONNECTION } from './ask-defaults';
 import { type AskDeps, flushQueuedAsk, submitAsk, useComposerDefaults } from './chat/ask';
 import { Composer } from './chat/Composer';
 import { IconPlus } from './chat/Icons';
 import { MessageList } from './chat/MessageList';
+import {
+  resummarize,
+  SummaryCard,
+  summaryCardVisible,
+  summaryTime,
+  useLastSummary,
+} from './cite/SummaryCard';
+import { CiteNote, useCite } from './cite/useCite';
 import { displayItems, latestPlan } from './float/messages';
 import { pageInfo } from './float/send-summary';
 import {
@@ -73,6 +82,12 @@ export function SidePanelApp() {
     wake,
   };
 
+  // cite 块：引用跳回原文（F1、F4）与上次总结（6.2）；换了标签页就清掉
+  const canSendNow = () => stateRef.current.connPhase === 'ready' && stateRef.current.targetConfirmed;
+  const post = (msg: ClientToBackground) => portRef.current?.postMessage(msg);
+  const cite = useCite({ post, canSendNow, wake }, `${state.target}:${state.job?.jobId ?? ''}`);
+  const lastSummary = useLastSummary({ post, canSendNow }, String(state.target), state.job?.jobId ?? null);
+
   useEffect(() => {
     void browser.windows.getCurrent().then((w) => {
       if (w.id !== undefined) setWindowId(w.id);
@@ -103,7 +118,12 @@ export function SidePanelApp() {
   const connect = (w: number) => {
     const port = browser.runtime.connect({ name: CONV_PORT });
     portRef.current = port;
-    port.onMessage.addListener((raw: BackgroundToClient) => dispatch({ kind: 'server', msg: raw }));
+    port.onMessage.addListener((raw: BackgroundToClient) => {
+      dispatch({ kind: 'server', msg: raw });
+      // cite 块：引用跳回的结果、上次总结
+      cite.onMessage(raw);
+      lastSummary.onMessage(raw);
+    });
     port.onDisconnect.addListener(() => dispatch({ kind: 'disconnected' }));
     port.postMessage({ type: 'conv/helloSidepanel', windowId: w } satisfies ClientToBackground);
   };
@@ -170,6 +190,8 @@ export function SidePanelApp() {
   // 重连并订阅完之后：发出未就绪时存下的待发问
   useEffect(() => {
     flushQueuedAsk(state, askDeps);
+    cite.flush();
+    lastSummary.request();
   }, [state.snapshotSeq]);
 
   useEffect(() => {
@@ -179,6 +201,13 @@ export function SidePanelApp() {
   }, []);
 
   const generating = isGenerating(state.job);
+  // 看着答完一次页面级总结：上次总结换成了这一次，重新取（之后点「新对话」时卡片显示的是最新的）
+  const pageSummaryDone =
+    state.job?.state === 'completed' && state.job.plan?.notes.some(isReadCoverageNote) === true;
+  useEffect(() => {
+    if (pageSummaryDone) lastSummary.request();
+  }, [pageSummaryDone, state.job?.jobId]);
+  const summaryVisible = summaryCardVisible(lastSummary.shown, lastSummary.forced, state);
 
   const handleSend = async () => {
     if (await submitAsk(askDeps, question)) setQuestion('');
@@ -211,6 +240,10 @@ export function SidePanelApp() {
         info.truncated === null ? null : info.truncated ? T.page.truncated : T.page.complete,
       ].filter((p): p is string => p !== null)
     : [];
+  // 「上次总结的时间」（C3，cite 块）：这一页有上次的总结就接在后面
+  const shownSummary = lastSummary.shown;
+  if (shownSummary && shownSummary.tabId === state.target)
+    pageMeta.push(T.page.lastSummary(summaryTime(shownSummary.summary.message.updatedAt)));
 
   return (
     <main className="ra-app ra-app--panel">
@@ -219,7 +252,6 @@ export function SidePanelApp() {
           <div className="ra-page__title" data-testid="page-title" title={pageTitle ?? undefined}>
             {pageTitle || T.page.untitled}
           </div>
-          {/* 「上次总结的时间」（C3）下一轮接：有了就接在这一行后面（T.page.lastSummary） */}
           {pageMeta.length > 0 && (
             <div className="ra-page__meta" data-testid="page-meta">
               {pageMeta.join(' · ')}
@@ -238,6 +270,7 @@ export function SidePanelApp() {
         </button>
       </header>
       <div className="ra-notes">
+        <CiteNote cite={cite.cite} onBack={cite.back} />
         {noticeText && (
           <p data-testid="panel-notice" className="ra-note">
             {noticeText}
@@ -265,6 +298,17 @@ export function SidePanelApp() {
         generating={generating}
         onRetry={handleRetry}
         onExpand={handleExpand}
+        onCitation={cite.locate}
+        header={
+          summaryVisible && lastSummary.shown ? (
+            <SummaryCard
+              summary={lastSummary.shown.summary}
+              forced={lastSummary.forced}
+              onCitation={cite.locate}
+              onResummarize={() => void resummarize(askDeps)}
+            />
+          ) : null
+        }
       />
       {state.actionError && (
         <p data-testid="action-error" className="ra-note ra-note--error">

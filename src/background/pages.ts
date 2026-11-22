@@ -373,5 +373,22 @@ export function createPages(deps: BackgroundDeps) {
 
     /** 单测与诊断：某标签页缓存的版本 */
     cachedVersion: (tabId: number): string | undefined => cache.get(tabId)?.doc.contentVersion,
+
+    /**
+     * 页面现在的内容版本（cite 块：上次总结是不是基于当前版本，6.2）。与发问前的读取走同一条路（注入阅读器、重新抽取、
+     * 核对地址、进缓存），不发给模型；接着发起的总结因此能直接用上缓存。站点为「不读取」时不注入、不抽取；读不到返回 undefined
+     */
+    async currentVersion(tabId: number, settings: Settings): Promise<string | undefined> {
+      const topUrl = await deps.getTabUrl?.(tabId).catch(() => undefined);
+      const level = siteLevelForUrl(topUrl, settings.sites);
+      if (level === 'noRead') return undefined;
+      const ctx: PageContext = { selectionBlockIds: [], siteNoRead: false, topUrl, level, notes: [] };
+      try {
+        await readInto(ctx, tabId, undefined);
+      } catch {
+        return undefined;
+      }
+      return ctx.page?.contentVersion;
+    },
   };
 }

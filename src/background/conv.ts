@@ -23,6 +23,7 @@ import {
   type SenderRole,
 } from '@/core/domain/messages';
 import type { ConversationRecord } from '@/core/domain/records';
+import type { Citations } from './citations';
 import type { BackgroundDeps, ConvPort } from './deps';
 import type { FloatHost } from './float-host';
 import type { History } from './history';
@@ -31,6 +32,7 @@ import type { Jobs } from './jobs';
 import { quoteOf } from './quote';
 import { senderRole, senderSummary } from './roles';
 import type { Store } from './store';
+import type { Summary } from './summary';
 
 const HELLO: ReadonlySet<string> = new Set(['conv/helloFloat', 'conv/resumeFloat', 'conv/helloSidepanel']);
 
@@ -75,6 +77,8 @@ export function createConv(
   host: FloatHost,
   jobs: Jobs,
   history: History,
+  /** cite 块：引用跳回、上次总结（可选只是为了不打扰只测别的模块的单测） */
+  extra: { citations?: Citations; summary?: Summary } = {},
 ) {
   return function onConnect(port: ConvPort): void {
     if (port.name !== CONV_PORT) return;
@@ -326,8 +330,32 @@ export function createConv(
         }
         case 'handoff/start':
           return startHandoff(tabId, msg);
+        // 引用跳回（5.7）与上次总结（6.2）：都针对这个标签页，内容由后台从库里取（规则 7、9）。
+        // 要等阅读器抽取页面（最多几秒），不占着这个端口的串行队列：期间的停止、发问照常处理
+        case 'citation/locate':
+          if (!extra.citations) return reject('notAllowed', msg);
+          void extra.citations.locate(tabId, msg, post).catch((e: unknown) => {
+            deps.log('citation/error', { error: e instanceof Error ? e.name : 'unknown' });
+            post({
+              type: 'citation/located',
+              requestId: msg.requestId,
+              level: 'none',
+              reason: 'unavailable',
+            });
+          });
+          return;
+        case 'citation/back':
+          if (!(await extra.citations?.back(tabId))) return reject('notAllowed', msg);
+          return;
+        case 'summary/get':
+          if (!extra.summary) return reject('notAllowed', msg);
+          void extra.summary.get(tabId, msg, post).catch((e: unknown) => {
+            deps.log('summary/error', { error: e instanceof Error ? e.name : 'unknown' });
+            post({ type: 'summary/last', requestId: msg.requestId, tabId });
+          });
+          return;
         default:
-          // 切换档位与模型、收藏、引用跳回本版本不做
+          // 切换档位与模型、收藏本版本不做
           return reject('notAllowed', msg);
       }
     }

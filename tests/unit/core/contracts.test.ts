@@ -160,9 +160,20 @@ describe('消息协议', () => {
     expect(parseFrom('float', clientToBackground, h).ok).toBe(true);
     expect(parseFrom('float', clientToBackground, { type: 'handoff/start' }).ok).toBe(true);
     expect(parseFrom('float', clientToBackground, { ...h, windowId: 3 }).ok).toBe(false);
-    const loc = { type: 'citation/locate', requestId: ID, messageId: ID, segmentIndex: 0 };
+    // contract-v1.5：引用跳回小窗也能发（锚点由后台按库里的快照算），编号只收纯数字
+    const loc = { type: 'citation/locate', requestId: ID, messageId: ID, citation: '12' };
     expect(parseFrom('sidepanel', clientToBackground, loc).ok).toBe(true);
-    expect(parseFrom('float', clientToBackground, loc)).toMatchObject({ ok: false, reason: 'notAllowed' });
+    expect(parseFrom('float', clientToBackground, { ...loc, quote: '原文' }).ok).toBe(true);
+    expect(parseFrom('float', clientToBackground, { ...loc, citation: '12"x' }).ok).toBe(false);
+    expect(parseFrom('float', clientToBackground, { ...loc, segmentIndex: 0 }).ok).toBe(false);
+    for (const m of [
+      { type: 'citation/back', requestId: ID },
+      { type: 'summary/get', requestId: ID },
+    ]) {
+      expect(parseFrom('float', clientToBackground, m).ok).toBe(true);
+      expect(parseFrom('sidepanel', clientToBackground, m).ok).toBe(true);
+      expect(parseFrom('content', clientToBackground, m)).toMatchObject({ ok: false, reason: 'notAllowed' });
+    }
   });
 
   it('握手按角色分开：小窗必须带令牌，侧边栏不能用小窗握手', () => {
