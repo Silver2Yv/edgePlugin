@@ -123,7 +123,12 @@ export function createCommands(
       void route.finish(tabId, d, hostable);
       return;
     }
-    void host.show(tabId).catch((e: unknown) => deps.log('float/showFailed', { error: errName(e) }));
+    void host.show(tabId).catch((e: unknown) => {
+      deps.log('float/showFailed', { error: errName(e) });
+      // 这一页注入不了阅读器（安装前就开着、补注入没成功的网页，或扩展商店这类页面，L5）：网页上没法提示，
+      // 记成这次失败——再按一次快捷键就同步改开侧边栏，并在顶部说明原因（5.2 偶发失败的口径）
+      void store.setReadiness(tabId, 'failedTransient');
+    });
   }
 
   /** 右键「问」：选中文字由浏览器给出；表单与可编辑区域里的不读（M6，与 SelectionPolicy 同口径） */

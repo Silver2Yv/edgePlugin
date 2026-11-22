@@ -3,6 +3,7 @@
 // 一次最小探测请求（规则 1：只有后台发模型请求；规则 6：目标限定在用户登记的连接地址）。
 import {
   type ConnectionTestResult,
+  type DemoAskResult,
   type EnsureLockedResult,
   type ListModelsResult,
   type OptionsToBackground,
@@ -18,7 +19,14 @@ export type OptionsResponse =
   | { ok: false; reason: RejectReason }
   | EnsureLockedResult
   | ConnectionTestResult
-  | ListModelsResult;
+  | ListModelsResult
+  | DemoAskResult;
+
+/** contract-v1.5 增量：欢迎页示例提问的处理函数（welcome-demo.ts）。它要用选区存储与任务，由 app.ts 装配后传入 */
+export type DemoAskHandler = (
+  msg: Extract<OptionsToBackground, { type: 'demo/ask' }>,
+  sender: SenderLike,
+) => Promise<DemoAskResult>;
 
 const TEST_TIMEOUT_MS = 30_000;
 const LIST_MODELS_TIMEOUT_MS = 15_000;
@@ -314,7 +322,7 @@ async function listModels(
   }
 }
 
-export function createOptions(deps: BackgroundDeps) {
+export function createOptions(deps: BackgroundDeps, demoAsk?: DemoAskHandler) {
   return async function onMessage(raw: unknown, sender: SenderLike): Promise<OptionsResponse> {
     const role = senderRole(sender, deps.self);
     if (role !== 'options') {
@@ -336,6 +344,8 @@ export function createOptions(deps: BackgroundDeps) {
         return testConnection(deps, parsed.msg);
       case 'connection/listModels':
         return listModels(deps, parsed.msg);
+      case 'demo/ask':
+        return demoAsk ? demoAsk(parsed.msg, sender) : { ok: false, reason: 'notAllowed' };
     }
   };
 }

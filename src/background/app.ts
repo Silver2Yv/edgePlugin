@@ -12,6 +12,7 @@ import { createPages } from './pages';
 import { senderRole } from './roles';
 import { createRoute } from './route';
 import { createStore } from './store';
+import { createWelcomeDemo } from './welcome-demo';
 
 export type Background = ReturnType<typeof createBackground>;
 
@@ -26,7 +27,7 @@ export function createBackground(deps: BackgroundDeps) {
   const route = createRoute(deps, store, hub, host);
   const intents = createIntents(deps, store, hub, host, pages, route, jobs);
   const commands = createCommands(deps, store, hub, host, jobs, route);
-  const options = createOptions(deps);
+  const options = createOptions(deps, createWelcomeDemo(deps, store, hub, jobs));
   const history = createHistory(deps, jobs);
   // 每次启动都收紧一次（5.11）：顶层同步路径里发起，不 await，不阻塞监听器注册；
   // 失败不当作安全保证，设置页写 Key 前会再调一次 settings/ensureLocked 确认

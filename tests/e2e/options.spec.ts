@@ -123,23 +123,30 @@ test('设置页：漏写 /v1 → 改地址重测成功 → 落盘且不泄露 Ke
 
   await page.goto(`chrome-extension://${EXTENSION_ID}/options.html`);
 
+  // 设置页分层之后（K1、K2）：连接管理收在「高级选项」里，默认折叠。没有连接时顶部另有配置向导，
+  // 这条用例走的是连接编辑器这条路（向导那条路见 onboarding.spec.ts）
+  await page.getByTestId('advanced').locator('summary').first().click();
+  await page.getByTestId('fold-connections').locator('summary').first().click();
   await page.getByRole('button', { name: '添加连接' }).click();
-  await page.getByLabel('名称').fill(CONN_NAME);
+  const editor = page.getByTestId('connection-editor');
+  await editor.getByLabel('名称').fill(CONN_NAME);
   // 故意漏写 /v1：chatCompletions 适配器会拼成 <relay>/chat/completions，
   // 模拟中转站对不是 /v1/chat/completions 的路径一律回网页（server.ts 文件头注释的 html200 场景）
-  await page.getByLabel('接口地址').fill(relay.url);
-  await page.getByLabel('Key').fill(FAKE_KEY);
-  await page.getByLabel('模型').fill(MODEL);
+  await editor.getByLabel('接口地址').fill(relay.url);
+  await editor.getByLabel('Key', { exact: true }).fill(FAKE_KEY);
+  await editor.getByLabel('测试用模型').fill(MODEL);
   await assertNoKeyLeak(page, FAKE_KEY);
 
-  await page.getByRole('button', { name: '测试连接' }).click();
+  await editor.getByRole('button', { name: '测试连接' }).click();
 
-  const retestButton = page.getByRole('button', { name: /^改成 .*\/v1 并重测$/ });
+  const retestButton = editor.getByRole('button', { name: /^改成 .*\/v1 并重测$/ });
   await expect(retestButton).toBeVisible({ timeout: 15_000 });
   await retestButton.click();
 
-  await expect(page.getByText(/连接正常/)).toBeVisible({ timeout: 15_000 });
+  await expect(editor.getByText(/连接正常/)).toBeVisible({ timeout: 15_000 });
   await assertNoKeyLeak(page, FAKE_KEY);
+  // 已存的 Key 不回显：保存之后输入框是空的
+  await expect(editor.getByLabel('Key', { exact: true })).toHaveValue('');
 
   const stored = (await page.evaluate(
     (key) => chrome.storage.local.get(key).then((r: Record<string, unknown>) => r[key]),

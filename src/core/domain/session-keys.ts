@@ -19,4 +19,12 @@ export const SESSION_KEYS = {
   sidepanelToggle: (windowId: number) => `sidepanelToggle:${windowId}`,
   /** 本次后台进程的编号；启动扫描用它判断任务是否属于已结束的进程 */
   workerEpoch: 'workerEpoch',
+  /** 安装时向已开网页补注入哨兵的结果（L5，InstallOpenTabs）：欢迎页据此提示哪些网页要刷新一次 */
+  installOpenTabs: 'installOpenTabs',
 } as const;
+
+/** 安装时已经打开的普通网页：直接生效了几个、没能注入的有几个（商店页、出错页等） */
+export interface InstallOpenTabs {
+  injected: number;
+  failed: number;
+}

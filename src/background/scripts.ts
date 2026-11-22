@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import type { InstallOpenTabs } from '@/core/domain/session-keys';
 import { DEFAULT_SETTINGS, type Settings } from '@/core/domain/settings';
 import { sentinelExcludeMatches, siteLevelForUrl } from '@/core/domain/site-policy';
 import { loadSettings } from '@/platform/settings-store';
@@ -57,18 +58,26 @@ async function reconcileOnce(settings?: Settings): Promise<void> {
  * 安装或更新时，向已经打开的普通网页注入哨兵（5.1、L5）：动态注册只对之后加载的网页生效，
  * 不注入的话用户得刷新网页才能划词。注入失败的页面（商店页、PDF 查看器等）跳过；
  * 网页里已有的旧哨兵由新哨兵替换（见 page/sentinel.ts）。顶层站点在黑名单里的标签页不注入（4.1 不常驻）；
- * 同一标签页里来源在黑名单的子框架无法单独排除，那里的哨兵会向后台问级别，不是正常级别就不弹工具栏
+ * 同一标签页里来源在黑名单的子框架无法单独排除，那里的哨兵会向后台问级别，不是正常级别就不弹工具栏。
+ * 返回直接生效与没能注入的标签页数（黑名单里的不算），欢迎页据此提示刷新（L5）
  */
-export async function injectSentinelIntoOpenTabs(): Promise<void> {
+export async function injectSentinelIntoOpenTabs(): Promise<InstallOpenTabs> {
   const { sites } = await currentSettings();
   const tabs = await browser.tabs.query({ url: ['http://*/*', 'https://*/*'] });
-  await Promise.all(
+  const results = await Promise.all(
     tabs.map((tab) =>
       tab.id === undefined || siteLevelForUrl(tab.url, sites) !== 'normal'
         ? undefined
         : browser.scripting
             .executeScript({ target: { tabId: tab.id, allFrames: true }, files: [`/${SENTINEL_FILE}`] })
-            .catch(() => undefined),
+            .then(
+              () => true,
+              () => false,
+            ),
     ),
   );
+  return {
+    injected: results.filter((r) => r === true).length,
+    failed: results.filter((r) => r === false).length,
+  };
 }
