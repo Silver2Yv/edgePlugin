@@ -29,6 +29,8 @@ AI 阅读助手浏览器扩展（Chrome / Edge，Manifest V3，最低 141）。�
 - 侧边栏页面不在 `context.pages()` 里，经 `tests/e2e/sidepanel-helpers.ts` 用调试协议附加。Playwright 按不出扩展快捷键、点不了原生右键菜单，用 `dispatchCommand` / `dispatchMenu` 在后台直接触发（没有用户手势），真实按键要用户手动确认。
 - 有界面的 Edge 上焦点、拖动类用例偶发失败（窗口被遮挡时不出新帧），以无界面 CfT 结果为准，Edge 上复跑确认。
 - Preact 的数字样式值要写成带 `px` 的字符串（`tests/unit/ui/style-units.test.ts` 守住）。
+- 首次安装会自动打开欢迎页并抢走活动标签页：e2e 夹具默认关掉它（`tests/e2e/fixtures.ts` 的 `dismissWelcome`），测欢迎页用 `keepWelcome`；自己起浏览器的用例要自己调 `dismissWelcome`。
+- 全量 e2e 里少数用例偶发超时（`toolbar-actions` 长选区确认、`page-identity` 前进后退、`request-plan`），单独重跑能过；改到相关代码时用 `--repeat-each=3` 确认稳定。
 
 ## 不可违反的架构规则（ARCHITECTURE 4.3）
 
@@ -61,7 +63,7 @@ AI 阅读助手浏览器扩展（Chrome / Edge，Manifest V3，最低 141）。�
 ## 约定
 
 - WXT 自动导入已关闭（`imports: false`）：扩展 API 从 `wxt/browser` 显式导入，`define*` 从 `wxt/utils/*` 导入。
-- 消息协议只在 `src/core/domain/messages.ts` 定义；后台入口做运行时校验，未知类型与超限消息拒绝且无副作用。改了协议就打下一个 `contract-v1.x` 注解 tag（现为 v1.3）。
+- 消息协议只在 `src/core/domain/messages.ts` 定义；后台入口做运行时校验，未知类型与超限消息拒绝且无副作用。改了协议就打下一个 `contract-v1.x` 注解 tag（现为 v1.5）。
 - 改清单权限要同步 `scripts/manifest-baseline.json`，并在 PR 描述里标出。
 - 文档用中文、表格风格。新决策追加到 `DECISIONS.md`，编号顺延。
 
