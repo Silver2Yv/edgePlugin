@@ -5,6 +5,7 @@ import type { BackgroundToContent, BackgroundToPages } from '@/core/domain/messa
 import type { MigrateResult } from '@/core/domain/settings';
 import type { InterfaceType, ModelAdapter } from '@/core/llm/adapter';
 import type { ConvDb } from '@/platform/conv-db';
+import type { NetDiagnostics } from './net-diagnostics';
 
 /** 只用到的 sender 字段；与 runtime.MessageSender 兼容 */
 export interface SenderLike {
@@ -94,4 +95,6 @@ export interface BackgroundDeps {
   askConnectTimeoutMs?: number;
   /** 对话数据库（5.11）：后台是唯一写入者。真实实现是 IndexedDB（platform/conv-db.ts），单测换成内存实现 */
   db: ConvDb;
+  /** 只读网络诊断（H9）：webRequest 能力不可用（如单测）时不提供，调用方按 undefined 处理 */
+  netDiagnostics?: NetDiagnostics;
 }

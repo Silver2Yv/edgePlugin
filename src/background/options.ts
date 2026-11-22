@@ -34,6 +34,15 @@ const errName = (e: unknown): string => (e instanceof Error ? e.name : 'Error');
 
 const trimTrailingSlash = (s: string): string => (s.endsWith('/') ? s.slice(0, -1) : s);
 
+/** 只用来给网络诊断按主机名归因（H9）；解析不了就不监听、不归因 */
+function hostnameOf(url: string): string | undefined {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
 type Read = () => Promise<string | undefined>;
 
 function bodyReader(res: Response): Read {
@@ -69,6 +78,9 @@ async function fetchWithTimeout(
   http: HttpRequest,
   controller: AbortController,
 ): Promise<{ ok: true; res: Response } | { ok: false; error: ModelError }> {
+  const host = hostnameOf(http.url);
+  if (host !== undefined) deps.netDiagnostics?.watch([host]);
+  const startedAt = deps.now();
   try {
     const res = await deps.fetch(http.url, {
       method: http.method,
@@ -80,7 +92,11 @@ async function fetchWithTimeout(
     return { ok: true, res };
   } catch (e) {
     if (controller.signal.aborted) return { ok: false, error: { kind: 'timeout' } };
-    return { ok: false, error: { kind: 'network', serverMessage: errName(e) } };
+    const netError = await deps.netDiagnostics?.netErrorFor(http.url, startedAt);
+    return {
+      ok: false,
+      error: { kind: 'network', serverMessage: errName(e), ...(netError ? { netError } : {}) },
+    };
   }
 }
 

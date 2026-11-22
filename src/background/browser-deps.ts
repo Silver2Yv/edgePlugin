@@ -4,6 +4,7 @@ import { chatCompletionsAdapter } from '@/core/llm/chat-completions';
 import { createIdbConvDb } from '@/platform/conv-db';
 import { loadSettings } from '@/platform/settings-store';
 import type { BackgroundDeps } from './deps';
+import { createNetDiagnostics } from './net-diagnostics';
 
 const READER_FILE = '/content-scripts/reader.js';
 
@@ -41,6 +42,9 @@ const hex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padSt
 
 export function browserDeps(): BackgroundDeps {
   const session = browser.storage.session;
+  // webRequest 监听必须在这里同步注册（browserDeps() 由 main.ts 在顶层同步调用一次）才能观察到
+  // Service Worker 自己发出的请求（prototypes/net-probe 实测，V-01/T6c）
+  const netDiagnostics = createNetDiagnostics(browser.webRequest);
   return {
     self: { runtimeId: browser.runtime.id, protocol: new URL(browser.runtime.getURL('/')).protocol },
     session: {
@@ -94,5 +98,6 @@ export function browserDeps(): BackgroundDeps {
     db: createIdbConvDb({
       onError: (what, e) => console.warn(`[后台] db/${what}Failed`, e instanceof Error ? e.name : 'unknown'),
     }),
+    netDiagnostics,
   };
 }

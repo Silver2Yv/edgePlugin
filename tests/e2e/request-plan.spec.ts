@@ -61,7 +61,8 @@ const LONG = `<!doctype html>
 /** 实体回指样本（D5）：第 15 段（选区）与第 5、25 段都提到同一个年份，相隔远超「前后 3 段」 */
 const ENTITY_YEAR = '1948';
 const ENTITY_PARAS = Array.from({ length: 30 }, (_, i) => {
-  if (i === 4) return `第${i + 1}段：多年以后回顾，仍会提到${ENTITY_YEAR}年发生的那次变化，细节占位占位占位。`;
+  if (i === 4)
+    return `第${i + 1}段：多年以后回顾，仍会提到${ENTITY_YEAR}年发生的那次变化，细节占位占位占位。`;
   if (i === 14) return `第${i + 1}段：这里提到了${ENTITY_YEAR}年的往事，具体经过是这样占位占位占位。`;
   if (i === 24) return `第${i + 1}段：史料显示${ENTITY_YEAR}年前后局势出现了转折，占位占位占位占位。`;
   return `第${i + 1}段：${'这是占位用的正文内容，'.repeat(6)}段末编号${i + 1}。`;
@@ -339,8 +340,15 @@ test('界面设置与请求一致：小窗按设置的长度档、回答语言�
   serviceWorker,
 }) => {
   const logs = collectLogs(page.context(), serviceWorker);
+  const settings = settingsWith(r);
+  const [conn] = settings.connections;
+  if (!conn) throw new Error('settingsWith 没有连接');
   await writeSettings(serviceWorker, {
-    ...settingsWith(r),
+    ...settings,
+    // 思考参数按厂商发（H6）：mock 模型名认不出厂商，这里显式把连接预设定成 openai，
+    // 让思考强度按 reasoning_effort 透传，断言的是「界面设置传到了请求里」，不是厂商映射本身
+    // （厂商映射的单测在 core/llm/thinking.test.ts）
+    connections: [{ ...conn, preset: 'openai' }],
     reply: { lengthTier: 'brief', language: 'en', thinking: 'high' },
     context: { speedSoftBudgetRatio: 0.5, summaryReadRatio: 0.3, defaultTier: 'nearby' },
   });

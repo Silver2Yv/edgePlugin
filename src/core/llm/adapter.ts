@@ -21,6 +21,10 @@ export interface Connection {
   extraParams: Readonly<Record<string, unknown>>;
   /** 配置版本：改动任何影响请求的字段就加一，能力学习按它失效 */
   configVersion: number;
+  /** 按模型手动覆盖能力表（H11）；键为模型标识，值只需写要覆盖的字段，没写的字段仍按内置默认显示 */
+  capabilityOverrides?: Readonly<Record<string, Partial<Omit<ModelCapabilities, 'quirks'>>>>;
+  /** 用户勾选的常用模型（H5 下拉框下一轮接） */
+  models?: readonly string[];
 }
 
 /** 界面显示的名称就是实际发送的标识（J10） */
@@ -151,7 +155,8 @@ export interface StreamParser {
 
 export interface ModelAdapter {
   readonly interfaceType: InterfaceType;
-  buildChat(conn: Connection, req: ChatRequest): HttpRequest;
+  /** excludeParams：参数被拒自动重试、怪癖学习都用它去掉指定的顶层字段（H7、AR-09） */
+  buildChat(conn: Connection, req: ChatRequest, opts?: { excludeParams?: readonly string[] }): HttpRequest;
   buildListModels(conn: Connection): HttpRequest;
   /** 先看内容类型与正文开头；200 不等于成功 */
   classifyHead(head: HttpResponseHead): ModelError | undefined;

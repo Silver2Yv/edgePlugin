@@ -51,11 +51,13 @@ import type {
   StreamEvent,
   Usage,
 } from '@/core/llm/adapter';
+import { decideParamRetry } from '@/core/llm/param-retry';
 import { type AskTurn, assembleAsk, resolveActionDef } from '@/core/prompt/ask';
 import type { DbWrites } from '@/platform/conv-db';
 import type { BackgroundDeps } from './deps';
 import type { Hub } from './hub';
 import type { PageContext, Pages } from './pages';
+import { loadQuirks, recordQuirk } from './quirk-store';
 import type { Store, StoredSelection } from './store';
 
 type AskMsg = Extract<ClientToBackground, { type: 'conv/ask' }>;
@@ -83,13 +85,15 @@ interface Job {
   userText: string;
   hasPageText: boolean;
   secrets: string[];
+  /** 用量（J9）：流里和整段响应里解析出的都在这累加；中转站没给就一直是 undefined，不编造 */
+  usage?: Usage;
+  /** 参数自动重试去掉的参数（H7）；去掉的是语义敏感参数时界面必须能看到（5.8） */
+  droppedParam?: { param: string; semantic: boolean };
   /** 重试（conv/retry）要重新发起同一份请求，这三样原样保留，不重新装配 */
   conn: Connection;
   adapter: ModelAdapter;
   /** 页面读取与装配在接单之后，装配完才有；装配前就被停掉的任务没有可重发的请求 */
   req: ChatRequest | undefined;
-  /** 用量（gateway 块从流里解析后挂上）；终态有值就写进助手消息 */
-  usage?: Usage;
   /** 结束原因（同上，有值就写进助手消息） */
   finishReason?: FinishReason;
   /** 发问的动作；summarizePage 完成时记进 PageRecord.lastSummary */
@@ -146,6 +150,15 @@ const STARTUP_DB_MS = 5000;
 /** 错误正文最多读这么多来分类 */
 const ERROR_BODY_CHARS = 16 * 1024;
 const ERROR_MESSAGE_MAX = 300;
+
+/** 只用来给网络诊断按主机名归因（H9）；解析不了就不监听、不归因 */
+function hostnameOf(url: string): string | undefined {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
+}
 
 const ERROR_TEXT: Readonly<Record<ModelErrorKind, string>> = {
   htmlInsteadOfJson: '接口返回的是网页而不是数据，地址可能缺少 /v1',
@@ -470,6 +483,8 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
     state: job.record.state,
     attemptId: job.record.attemptId,
     ...(job.error ? { error: job.error } : {}),
+    ...(job.usage ? { usage: job.usage } : {}),
+    ...(job.droppedParam ? { droppedParam: job.droppedParam } : {}),
   });
 
   function flush(job: Job): void {
@@ -532,6 +547,9 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         job.reasoning += ev.text;
         job.pendingReasoning += ev.text;
         queueFlush(job);
+      } else if (ev.kind === 'usage') {
+        // 增量合并：多数中转站只在最后一个块里给一次；个别可能分批给，字段按后到的覆盖
+        job.usage = { ...job.usage, ...ev.usage };
       } else if (ev.kind === 'error') {
         fail(job, ev.error);
         return false;
@@ -542,79 +560,114 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
 
   async function run(job: Job, conn: Connection, adapter: ModelAdapter, req: ChatRequest): Promise<void> {
     const signal = job.controller.signal;
-    const http = adapter.buildChat(conn, { ...req, signal });
+    // 怪癖学习（AR-09）：这个连接 + 模型之前学到的、该预先不发的参数，这次请求起就不带
+    let excludeParams = [...(await loadQuirks(conn, req.model))];
+    // 参数自动重试（H7）：同一次尝试只允许发生一次，不无限重试
+    let retriedParam = false;
     // 检查点：进行中每 checkpointMs 写一次热副本；扩展接口调用会重置后台的空闲计时
     const checkpoint = setInterval(() => {
       if (isTerminal(job.record.state)) return;
       job.record = { ...job.record, updatedAt: deps.now() };
       void store.putJob(job.record);
     }, JOB_LIMITS.checkpointMs);
-    // 连接超时（V-01 实测）：等响应头的阶段单独计时，拿到响应头后立即解除；首条内容之后的沉默不受此限
-    let connectTimedOut = false;
-    const connectTimer = setTimeout(() => {
-      connectTimedOut = true;
-      job.controller.abort();
-    }, deps.askConnectTimeoutMs ?? JOB_LIMITS.connectTimeoutMs);
     try {
-      // accepted → streaming：请求发出的那一刻，不等首字节
-      transition(job, 'streaming', { requestSent: true });
-      const res = await deps.fetch(http.url, {
-        method: http.method,
-        headers: { ...http.headers },
-        body: http.body ?? null,
-        redirect: http.redirect,
-        signal,
-      });
-      clearTimeout(connectTimer);
-      if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
-        return fail(job, { kind: 'redirected', status: res.status });
-      }
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      const read = async (): Promise<string | undefined> => {
-        if (!reader) return undefined;
-        const r = await reader.read();
-        return r.done ? undefined : decoder.decode(r.value, { stream: true });
-      };
-      // 先看响应头与正文开头（200 不等于成功）；错误正文通常很短，读完再分类
-      let head = (await read()) ?? '';
-      if (!res.ok) {
-        for (
-          let more = await read();
-          more !== undefined && head.length < ERROR_BODY_CHARS;
-          more = await read()
-        )
-          head += more;
-      }
-      const contentType = res.headers.get('content-type') ?? '';
-      const headError = adapter.classifyHead({ status: res.status, contentType, bodyHead: head });
-      if (headError) return fail(job, headError);
-      if (!res.ok)
-        return fail(job, { kind: res.status >= 500 ? 'server' : 'badResponse', status: res.status });
-
-      if (req.stream && !/json/i.test(contentType)) {
-        const parser = adapter.createStreamParser();
-        for (let chunk: string | undefined = head; chunk !== undefined; chunk = await read()) {
-          if (!consume(job, parser.push(chunk))) return;
+      for (;;) {
+        const http = adapter.buildChat(conn, { ...req, signal }, { excludeParams });
+        const host = hostnameOf(http.url);
+        if (host !== undefined) deps.netDiagnostics?.watch([host]);
+        const attemptStartedAt = deps.now();
+        // 连接超时（V-01 实测）：等响应头的阶段单独计时，拿到响应头后立即解除；首条内容之后的沉默不受此限
+        let connectTimedOut = false;
+        const connectTimer = setTimeout(() => {
+          connectTimedOut = true;
+          job.controller.abort();
+        }, deps.askConnectTimeoutMs ?? JOB_LIMITS.connectTimeoutMs);
+        // accepted → streaming：请求发出的那一刻，不等首字节；重试同一次尝试已在 streaming，no-op
+        transition(job, 'streaming', { requestSent: true });
+        let res: Response;
+        try {
+          res = await deps.fetch(http.url, {
+            method: http.method,
+            headers: { ...http.headers },
+            body: http.body ?? null,
+            redirect: http.redirect,
+            signal,
+          });
+        } catch {
+          clearTimeout(connectTimer);
+          if (isTerminal(job.record.state)) return;
+          if (connectTimedOut) return fail(job, { kind: 'timeout' });
+          const netError = await deps.netDiagnostics?.netErrorFor(http.url, attemptStartedAt);
+          fail(job, {
+            kind: job.answer || job.reasoning ? 'streamBroken' : 'network',
+            ...(netError ? { netError } : {}),
+          });
+          return;
         }
-        if (!consume(job, [...parser.push(decoder.decode()), ...parser.end()])) return;
-      } else {
-        // 服务端忽略流式（或连接关了逐字输出）：整段处理
-        let body = head;
-        for (let more = await read(); more !== undefined; more = await read()) body += more;
-        if (!consume(job, adapter.parseWhole(body + decoder.decode()))) return;
+        clearTimeout(connectTimer);
+        if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
+          return fail(job, { kind: 'redirected', status: res.status });
+        }
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        const read = async (): Promise<string | undefined> => {
+          if (!reader) return undefined;
+          const r = await reader.read();
+          return r.done ? undefined : decoder.decode(r.value, { stream: true });
+        };
+        // 先看响应头与正文开头（200 不等于成功）；错误正文通常很短，读完再分类
+        let head = (await read()) ?? '';
+        if (!res.ok) {
+          for (
+            let more = await read();
+            more !== undefined && head.length < ERROR_BODY_CHARS;
+            more = await read()
+          )
+            head += more;
+        }
+        const contentType = res.headers.get('content-type') ?? '';
+        const headError = adapter.classifyHead({ status: res.status, contentType, bodyHead: head });
+        if (headError) {
+          const decision = decideParamRetry(headError, {
+            hasContent: job.answer !== '' || job.reasoning !== '',
+            alreadyRetried: retriedParam,
+          });
+          if (decision) {
+            retriedParam = true;
+            excludeParams = [...excludeParams, decision.param];
+            job.droppedParam = decision;
+            continue; // 同一次尝试重新发起请求，不改变任务状态（仍是 streaming）
+          }
+          return fail(job, headError);
+        }
+        if (!res.ok)
+          return fail(job, { kind: res.status >= 500 ? 'server' : 'badResponse', status: res.status });
+        // 去掉参数后这次请求被接受：记入怪癖表，这个连接 + 模型 + 配置版本的后续请求预先不发
+        if (retriedParam && job.droppedParam) void recordQuirk(conn, req.model, job.droppedParam.param);
+
+        if (req.stream && !/json/i.test(contentType)) {
+          const parser = adapter.createStreamParser();
+          for (let chunk: string | undefined = head; chunk !== undefined; chunk = await read()) {
+            if (!consume(job, parser.push(chunk))) return;
+          }
+          if (!consume(job, [...parser.push(decoder.decode()), ...parser.end()])) return;
+        } else {
+          // 服务端忽略流式（或连接关了逐字输出）：整段处理
+          let body = head;
+          for (let more = await read(); more !== undefined; more = await read()) body += more;
+          if (!consume(job, adapter.parseWhole(body + decoder.decode()))) return;
+        }
+        if (isTerminal(job.record.state)) return;
+        if (!job.answer) return fail(job, { kind: 'noContent' });
+        transition(job, 'completed');
+        return;
       }
-      if (isTerminal(job.record.state)) return;
-      if (!job.answer) return fail(job, { kind: 'noContent' });
-      transition(job, 'completed');
     } catch {
       // 停止后中止请求会抛 AbortError：任务已是终态，忽略
       if (isTerminal(job.record.state)) return;
-      if (connectTimedOut) return fail(job, { kind: 'timeout' });
       fail(job, { kind: job.answer || job.reasoning ? 'streamBroken' : 'network' });
     } finally {
       clearInterval(checkpoint);
-      clearTimeout(connectTimer);
       // 提前结束（流中错误、分类失败）时释放连接；正常读完后中止没有效果
       job.controller.abort();
     }
@@ -1095,6 +1148,10 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       if (job.flushTimer !== undefined) clearTimeout(job.flushTimer);
       job.flushTimer = undefined;
       job.error = undefined;
+      // 用量与去掉的参数属于上一次尝试，新尝试重新计
+      delete job.usage;
+      delete job.droppedParam;
+      delete job.finishReason;
       const { stopReason: _stopReason, interruptReason: _interruptReason, ...rest } = job.record;
       job.record = {
         ...rest,

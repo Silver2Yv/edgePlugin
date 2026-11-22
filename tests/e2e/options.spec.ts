@@ -4,7 +4,7 @@
 // 再复用一遍 ask-flow.spec.ts 的划词提问流程，但设置是这里在设置页操作后落盘的那份，不是测试代码直接写的。
 import type { CDPSession, Frame, Page } from '@playwright/test';
 import type { browser } from 'wxt/browser';
-import type { Settings } from '../../src/core/domain/settings';
+import { DEFAULT_SETTINGS, type Settings } from '../../src/core/domain/settings';
 import { SETTINGS_KEY } from '../../src/platform/settings-store';
 import { type MockRelay, startMockRelay } from '../mock-relay/server';
 import { EXTENSION_ID, expect, test } from './fixtures';
@@ -163,4 +163,47 @@ test('设置页：漏写 /v1 → 改地址重测成功 → 落盘且不泄露 Ke
   await askInFloat(frame, '这段话讲了什么？');
   await expect(frame.getByTestId('answer').last()).toContainText(ANSWER, { timeout: 15_000 });
   await expect(frame.getByTestId('job-state').last()).toHaveText('completed');
+});
+
+// ───────────── 网络层诊断（H9、5.8）：webRequest 对扩展自己发出的请求是否生效 ─────────────
+
+test('连不上的地址：ModelError.netError 带着浏览器错误码（webRequest 对扩展自己的请求确实生效）', async ({
+  page,
+}) => {
+  // fetch() 本身只给 TypeError: Failed to fetch，分不清是 DNS 失败、连接被拒还是证书问题；
+  // 浏览器错误码只能从 webRequest.onErrorOccurred 拿（prototypes/net-probe T6c 已有证据）。
+  // 这里直接连一个保证连不上的本机地址（没有监听者，不依赖 DNS、不依赖外网），实测这条链路在
+  // 真实扩展里确实接通了
+  const connId = 'e2e-net-unreachable-0001';
+  const settings: Settings = {
+    ...structuredClone(DEFAULT_SETTINGS),
+    connections: [
+      {
+        id: connId,
+        name: '连不上的地址',
+        preset: 'custom',
+        baseUrl: 'http://127.0.0.1:1/v1',
+        apiKey: 'whatever',
+        headers: {},
+        interfaceType: 'chatCompletions',
+        stream: true,
+        extraParams: {},
+        configVersion: 1,
+      },
+    ],
+  };
+  await page.goto(`chrome-extension://${EXTENSION_ID}/options.html`);
+  await page.evaluate(({ key, value }) => chrome.storage.local.set({ [key]: value }), {
+    key: SETTINGS_KEY,
+    value: settings,
+  });
+  const result = await page.evaluate(
+    (connectionId) =>
+      chrome.runtime.sendMessage({ type: 'connection/test', connectionId, model: 'whatever-model' }),
+    connId,
+  );
+  expect(result).toMatchObject({ ok: false, error: { kind: 'network' } });
+  const netError = (result as { error?: { netError?: string } }).error?.netError;
+  console.log('[H9] 连不上的地址 netError', netError);
+  expect(netError).toMatch(/^net::/);
 });
