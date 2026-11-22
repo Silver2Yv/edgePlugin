@@ -12,6 +12,7 @@ import {
   settingsWith,
   startRelay,
   toolbarButtonCenter,
+  tripleClick,
   waitSentinelRegistered,
   writeSettings,
 } from './page-helpers';
@@ -147,7 +148,7 @@ test('超长选区（超过约 5000 字）：先确认一次才发送；「问�
   );
   await waitSentinelRegistered(serviceWorker);
   await page.goto(`${SITE}article`);
-  await page.locator('#long').click({ clickCount: 3 });
+  await tripleClick(page, '#long');
   await clickAsk(page);
   // 点了「问」之后不会立即打开小窗：工具栏先转成确认提示，小窗（即使已预热）不显示
   await page.waitForTimeout(500);

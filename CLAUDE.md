@@ -30,7 +30,7 @@ AI 阅读助手浏览器扩展（Chrome / Edge，Manifest V3，最低 141）。�
 - 有界面的 Edge 上焦点、拖动类用例偶发失败（窗口被遮挡时不出新帧），以无界面 CfT 结果为准，Edge 上复跑确认。
 - Preact 的数字样式值要写成带 `px` 的字符串（`tests/unit/ui/style-units.test.ts` 守住）。
 - 首次安装会自动打开欢迎页并抢走活动标签页：e2e 夹具默认关掉它（`tests/e2e/fixtures.ts` 的 `dismissWelcome`），测欢迎页用 `keepWelcome`；自己起浏览器的用例要自己调 `dismissWelcome`。
-- 全量 e2e 里少数用例偶发超时（`toolbar-actions` 长选区确认、`page-identity` 前进后退、`request-plan`），单独重跑能过；改到相关代码时用 `--repeat-each=3` 确认稳定。
+- 划词用 `page-helpers.ts` 的 `tripleClick`（先滚到位、等两帧再三击）：直接 `locator.click({ clickCount: 3 })` 自带的滚动若在 mouseup 之后才派发 scroll 事件，哨兵会把刚弹出的工具栏按「滚动后消失」收起，用例偶发等不到工具栏。`page-identity` 前进后退用例在全量跑时偶发超时，单独重跑能过。
 
 ## 不可违反的架构规则（ARCHITECTURE 4.3）
 
