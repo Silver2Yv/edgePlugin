@@ -5,10 +5,14 @@ import type { Connection, ModelCapabilities, Tri } from './adapter';
 
 type BuiltinCapability = Omit<ModelCapabilities, 'quirks'>;
 
+/** 思考映射（thinking.ts）也按同一套规则识别厂商：模型标识认出了就不看连接预设 */
+export type ModelVendor = 'deepseek' | 'qwen' | 'openai' | 'claude' | 'gemini';
+
 const UNKNOWN: BuiltinCapability = { thinking: 'unknown', vision: 'unknown' };
 
 interface Rule {
   test: RegExp;
+  vendor: ModelVendor;
   capability: BuiltinCapability;
 }
 
@@ -20,40 +24,69 @@ const RULES: readonly Rule[] = [
   // DeepSeek（api-docs.deepseek.com/zh-cn/guides/thinking_mode）
   {
     test: /deepseek.*(reasoner|r1)/i,
+    vendor: 'deepseek',
     capability: { thinking: 'effort', vision: 'no', contextWindow: 65_536 },
   },
-  { test: /deepseek.*(chat|v3)/i, capability: { thinking: 'none', vision: 'no', contextWindow: 65_536 } },
-  { test: /deepseek/i, capability: { thinking: 'effort', vision: 'unknown' } },
+  {
+    test: /deepseek.*(chat|v3)/i,
+    vendor: 'deepseek',
+    capability: { thinking: 'none', vision: 'no', contextWindow: 65_536 },
+  },
+  { test: /deepseek/i, vendor: 'deepseek', capability: { thinking: 'effort', vision: 'unknown' } },
 
   // 通义千问 / 阿里云百炼（help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions）
-  { test: /qwen.*(vl|omni)/i, capability: { thinking: 'toggle', vision: 'yes', contextWindow: 131_072 } },
-  { test: /qwen/i, capability: { thinking: 'toggle', vision: 'no', contextWindow: 131_072 } },
+  {
+    test: /qwen.*(vl|omni)/i,
+    vendor: 'qwen',
+    capability: { thinking: 'toggle', vision: 'yes', contextWindow: 131_072 },
+  },
+  { test: /qwen/i, vendor: 'qwen', capability: { thinking: 'toggle', vision: 'no', contextWindow: 131_072 } },
 
   // OpenAI（platform.openai.com/docs/guides/reasoning）
-  { test: /^o[1-9]/i, capability: { thinking: 'effort', vision: 'yes', contextWindow: 200_000 } },
-  { test: /gpt-5/i, capability: { thinking: 'effort', vision: 'yes', contextWindow: 272_000 } },
+  {
+    test: /^o[1-9]/i,
+    vendor: 'openai',
+    capability: { thinking: 'effort', vision: 'yes', contextWindow: 200_000 },
+  },
+  {
+    test: /gpt-5/i,
+    vendor: 'openai',
+    capability: { thinking: 'effort', vision: 'yes', contextWindow: 272_000 },
+  },
   {
     test: /gpt-4o|gpt-4\.1|gpt-4-/i,
+    vendor: 'openai',
     capability: { thinking: 'none', vision: 'yes', contextWindow: 128_000 },
   },
-  { test: /gpt-/i, capability: { thinking: 'unknown', vision: 'unknown' } },
+  { test: /gpt-/i, vendor: 'openai', capability: { thinking: 'unknown', vision: 'unknown' } },
 
   // Claude（docs.anthropic.com/en/api/openai-sdk，扩展思考）
   {
     test: /claude-(opus|sonnet|haiku)-[3-9]/i,
+    vendor: 'claude',
     capability: { thinking: 'effort', vision: 'yes', contextWindow: 200_000 },
   },
-  { test: /claude/i, capability: { thinking: 'unknown', vision: 'unknown' } },
+  { test: /claude/i, vendor: 'claude', capability: { thinking: 'unknown', vision: 'unknown' } },
 
   // Gemini（ai.google.dev/gemini-api/docs/openai）
-  { test: /gemini-(2\.5|3)/i, capability: { thinking: 'effort', vision: 'yes', contextWindow: 1_048_576 } },
-  { test: /gemini/i, capability: { thinking: 'unknown', vision: 'unknown' } },
+  {
+    test: /gemini-(2\.5|3)/i,
+    vendor: 'gemini',
+    capability: { thinking: 'effort', vision: 'yes', contextWindow: 1_048_576 },
+  },
+  { test: /gemini/i, vendor: 'gemini', capability: { thinking: 'unknown', vision: 'unknown' } },
 ];
 
 /** 内置默认能力；没有一条规则命中就整表未知 */
 export function builtinCapabilities(model: string): ModelCapabilities {
   for (const r of RULES) if (r.test.test(model)) return { ...r.capability, quirks: [] };
   return { ...UNKNOWN, quirks: [] };
+}
+
+/** 按模型标识识别厂商；认不出返回 undefined（调用方再看连接预设，见 thinking.ts） */
+export function vendorOfModel(model: string): ModelVendor | undefined {
+  for (const r of RULES) if (r.test.test(model)) return r.vendor;
+  return undefined;
 }
 
 const isTri = (v: unknown): v is Tri => v === 'yes' || v === 'no' || v === 'unknown';

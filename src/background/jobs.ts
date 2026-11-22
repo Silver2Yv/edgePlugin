@@ -281,7 +281,7 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
           clearTimeout(connectTimer);
           if (isTerminal(job.record.state)) return;
           if (connectTimedOut) return fail(job, { kind: 'timeout' });
-          const netError = deps.netDiagnostics?.netErrorFor(http.url, attemptStartedAt);
+          const netError = await deps.netDiagnostics?.netErrorFor(http.url, attemptStartedAt);
           fail(job, {
             kind: job.answer || job.reasoning ? 'streamBroken' : 'network',
             ...(netError ? { netError } : {}),

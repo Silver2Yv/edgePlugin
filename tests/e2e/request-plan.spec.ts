@@ -327,8 +327,15 @@ test('界面设置与请求一致：小窗按设置的长度档、回答语言�
   serviceWorker,
 }) => {
   const logs = collectLogs(page.context(), serviceWorker);
+  const settings = settingsWith(r);
+  const [conn] = settings.connections;
+  if (!conn) throw new Error('settingsWith 没有连接');
   await writeSettings(serviceWorker, {
-    ...settingsWith(r),
+    ...settings,
+    // 思考参数按厂商发（H6）：mock 模型名认不出厂商，这里显式把连接预设定成 openai，
+    // 让思考强度按 reasoning_effort 透传，断言的是「界面设置传到了请求里」，不是厂商映射本身
+    // （厂商映射的单测在 core/llm/thinking.test.ts）
+    connections: [{ ...conn, preset: 'openai' }],
     reply: { lengthTier: 'brief', language: 'en', thinking: 'high' },
     context: { speedSoftBudgetRatio: 0.5, summaryReadRatio: 0.3, defaultTier: 'nearby' },
   });

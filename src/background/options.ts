@@ -92,7 +92,7 @@ async function fetchWithTimeout(
     return { ok: true, res };
   } catch (e) {
     if (controller.signal.aborted) return { ok: false, error: { kind: 'timeout' } };
-    const netError = deps.netDiagnostics?.netErrorFor(http.url, startedAt);
+    const netError = await deps.netDiagnostics?.netErrorFor(http.url, startedAt);
     return {
       ok: false,
       error: { kind: 'network', serverMessage: errName(e), ...(netError ? { netError } : {}) },

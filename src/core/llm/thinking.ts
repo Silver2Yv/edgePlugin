@@ -1,6 +1,7 @@
 // 思考字段映射（H6、5.8）：按厂商发正确的参数名。各家字段名、取值核实自官方文档（出处见各分支注释）；
 // 思考开关属于「语义敏感」参数（adapter.ts SEMANTIC_PARAMS），不得因为参数被拒就静默去掉不发
 // （被拒重试见 param-retry.ts，重试本身会在界面上写明去掉了哪个参数）。
+import { type ModelVendor, vendorOfModel } from './capabilities';
 
 export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high';
 
@@ -14,10 +15,10 @@ export function thinkingLevelOf(
   return thinking.effort;
 }
 
-type Vendor = 'deepseek' | 'qwen' | 'openai' | 'claude' | 'gemini' | 'other';
+type Vendor = ModelVendor | 'other';
 
-/** 按连接的预设名识别厂商；自定义 / 认不出的一律按 other（5.8：其他模型默认按「关」处理） */
-function vendorOf(preset: string): Vendor {
+/** 按连接的预设名识别厂商；自定义 / 认不出的一律按 other */
+function vendorOfPreset(preset: string): Vendor {
   const p = preset.toLowerCase();
   if (p === 'deepseek') return 'deepseek';
   if (p === 'qwen' || p === 'bailian' || p === 'dashscope') return 'qwen';
@@ -25,6 +26,15 @@ function vendorOf(preset: string): Vendor {
   if (p === 'claude' || p === 'anthropic') return 'claude';
   if (p === 'gemini' || p === 'google') return 'gemini';
   return 'other';
+}
+
+/**
+ * 先按模型标识识别厂商（和 capabilities.ts 同一套正则）——公司中转站这类「自定义」预设上常常挂着
+ * 上百个不同厂商的模型，连接预设认不出具体是谁；模型标识认出了就不看连接预设，认不出再退回预设名，
+ * 两边都认不出才是 other（5.8：其他模型默认按「关」处理，不是「这个预设认不出就都按关」）。
+ */
+function resolveVendor(preset: string, model: string): Vendor {
+  return vendorOfModel(model) ?? vendorOfPreset(preset);
 }
 
 /** DeepSeek 的 reasoning_effort 只接受 low/high/max；我们没有 max 档，medium 映射到 high
@@ -43,12 +53,17 @@ const CLAUDE_BUDGET: Readonly<Record<'low' | 'medium' | 'high', number>> = {
 };
 
 /**
- * 按连接预设生成思考相关的请求字段，合并进请求体顶层（chat-completions.ts 的 buildChatBody）。
- * level 为 undefined 表示调用方没填 thinking（如辅助任务可能显式传 'off'，这里统一处理）。
+ * 按模型标识 + 连接预设生成思考相关的请求字段，合并进请求体顶层（chat-completions.ts 的
+ * buildChatBody）。level 为 undefined 表示调用方没填 thinking（如辅助任务可能显式传 'off'，这里统一
+ * 处理）。
  */
-export function buildThinkingBody(preset: string, level: ThinkingLevel | undefined): Record<string, unknown> {
+export function buildThinkingBody(
+  preset: string,
+  model: string,
+  level: ThinkingLevel | undefined,
+): Record<string, unknown> {
   if (level === undefined) return {};
-  const vendor = vendorOf(preset);
+  const vendor = resolveVendor(preset, model);
   const on = level !== 'off';
   switch (vendor) {
     case 'deepseek':

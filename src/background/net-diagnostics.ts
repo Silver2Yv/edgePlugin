@@ -9,8 +9,12 @@
 export interface NetDiagnostics {
   /** 登记要关注的主机（来自正在使用的连接地址）；未登记的主机错误不记录 */
   watch(hosts: readonly string[]): void;
-  /** 发起请求前的时间戳作为下限；取同一主机在此之后发生的最近一次浏览器错误码 */
-  netErrorFor(url: string, sinceMs: number): string | undefined;
+  /**
+   * 发起请求前的时间戳作为下限；取同一主机在此之后发生的最近一次浏览器错误码。
+   * webRequest 的事件是异步送达的，fetch() 的 reject 不保证等它先到（prototypes/net-probe
+   * T6c 实测：两者各自独立，经验上留出几百毫秒的宽限期足够），所以这里短暂轮询一下，不是立等。
+   */
+  netErrorFor(url: string, sinceMs: number): Promise<string | undefined>;
 }
 
 interface ErrorEvent {
@@ -27,6 +31,11 @@ export interface WebRequestLike {
 
 /** 超过这么久的错误不再视为「刚刚那次请求」的归因证据 */
 const RECENT_MS = 10_000;
+/** 等 webRequest 事件落进来的宽限期与轮询间隔 */
+const GRACE_MS = 300;
+const POLL_MS = 20;
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function hostnameOf(url: string): string | undefined {
   try {
@@ -47,16 +56,23 @@ export function createNetDiagnostics(webRequestApi: WebRequestLike | undefined):
     },
     { urls: ['<all_urls>'] },
   );
+  const match = (host: string, sinceMs: number): string | undefined => {
+    const hit = recent.get(host);
+    return hit && hit.at >= sinceMs && Date.now() - hit.at <= RECENT_MS ? hit.error : undefined;
+  };
   return {
     watch(hosts) {
       for (const h of hosts) watched.add(h);
     },
-    netErrorFor(url, sinceMs) {
+    async netErrorFor(url, sinceMs) {
       const host = hostnameOf(url);
       if (host === undefined) return undefined;
-      const hit = recent.get(host);
-      if (!hit || hit.at < sinceMs || Date.now() - hit.at > RECENT_MS) return undefined;
-      return hit.error;
+      const deadline = Date.now() + GRACE_MS;
+      for (;;) {
+        const hit = match(host, sinceMs);
+        if (hit !== undefined || Date.now() >= deadline) return hit;
+        await sleep(POLL_MS);
+      }
     },
   };
 }
