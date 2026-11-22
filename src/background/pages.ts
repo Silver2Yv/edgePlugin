@@ -77,6 +77,8 @@ export interface PageContext {
   topUrl: string | undefined;
   level: SiteLevel;
   notes: string[];
+  /** 顶层文档自己的内容指纹（合并子框架之前，D10）：只和顶层阅读器打交道的地方用它（页面图片 E2） */
+  topContentVersion?: string;
 }
 
 const NOTE = {
@@ -304,6 +306,7 @@ export function createPages(deps: BackgroundDeps) {
     cache.set(tabId, { doc: topDoc, bytes: r.bytes, at: deps.now() });
     evict();
     const doc = mergeFrameDocs(topDoc, sub.contents, sub.notes);
+    ctx.topContentVersion = topDoc.contentVersion;
     ctx.page = {
       pageKey: doc.pageKey,
       documentId: doc.documentId,

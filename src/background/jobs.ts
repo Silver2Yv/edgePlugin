@@ -1125,14 +1125,19 @@ export function createJobs(
       }
       // 页面图片（E2，contract-v1.5 增量）：开关开着、站点允许读取、且这次请求确实带了选区所在块时才取；
       // 模型明确看不了图（能力表 vision 为 no）时不取、写一句说明；unknown 照发。取图失败只跳过那一张，不影响这次请求
+      // 只问顶层阅读器：块号限顶层的块、版本用顶层自己的指纹（合并了子框架的指纹顶层阅读器对不上，D10）；
+      // 选区在子框架里时没有顶层块，不取图
       let fetchedImages: readonly FetchedPageImage[] = [];
       const imageNotes: string[] = [];
+      const topBlockIds = new Set(ctx.page?.blocks.filter((b) => b.frameId === 0).map((b) => b.id));
+      const imageBlockIds = ctx.selectionBlockIds.filter((id) => topBlockIds.has(id));
       if (
         pageImages &&
         settings.context.includePageImages &&
         ctx.page &&
+        ctx.topContentVersion !== undefined &&
         !ctx.siteNoRead &&
-        ctx.selectionBlockIds.length > 0
+        imageBlockIds.length > 0
       ) {
         if (effectiveCapabilities(target.conn, target.model.model).vision === 'no') {
           imageNotes.push('当前模型不支持看图，没有附带页面里的图片');
@@ -1140,8 +1145,8 @@ export function createJobs(
           const got = await pageImages.collect(
             tabId,
             ctx.page.documentId,
-            ctx.selectionBlockIds,
-            ctx.page.contentVersion,
+            imageBlockIds,
+            ctx.topContentVersion,
           );
           fetchedImages = got.images;
           imageNotes.push(...got.notes);

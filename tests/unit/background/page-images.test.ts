@@ -296,6 +296,45 @@ describe('发问：页面图片', () => {
     expect(h.db.tables.blobs.size).toBe(0);
   });
 
+  it('页面里有读成的子框架（D10）：只问顶层阅读器，块号限顶层、版本用顶层自己的指纹（不是合并后的）', async () => {
+    const h = makeHarness();
+    h.setSettings(withToggle(true));
+    const frame = { frameId: 2, documentId: 'doc-frame-2' };
+    h.setFrames([frame]);
+    const doc = report();
+    const f = withPageImages(h, doc, [IMG]);
+    const c = await readyFloat(h);
+    await h.message(click());
+    c.send(askMsg({ contextTier: 'fullPage' }));
+    await answerRead(h, doc);
+    await until(() => h.sent.some((s) => s.msg.type === 'page/read' && s.frameId === 2), '子框架读取');
+    const sub = h.sent.find((s) => s.msg.type === 'page/read' && s.frameId === 2)?.msg as unknown as {
+      readId: string;
+    };
+    const innerBlocks: BlockReport[] = [
+      { id: 'b1', kind: 'paragraph', text: '内嵌页面的正文。', headingPath: [] },
+    ];
+    const inner: PageDocReport = {
+      contentVersion: contentVersionOf('内嵌页面', innerBlocks),
+      title: '内嵌页面',
+      blocks: innerBlocks,
+      notes: [],
+      textLength: 8,
+      extractedAt: 1,
+    };
+    const parts = splitByJsonBytes(JSON.stringify(inner), 300);
+    for (const [index, data] of parts.entries())
+      await h.message(
+        { type: 'page/docPart', readId: sub.readId, index, total: parts.length, data },
+        h.frameSender(2, frame.documentId),
+      );
+    await until(() => h.fetches.length === 1, '请求发出');
+    const plan = c.ofType('conv/plan')[0]?.plan as { contentVersion: string; imageCount: number };
+    expect(plan.contentVersion).not.toBe(doc.contentVersion);
+    expect(f.imageFrames).toEqual([{ blockIds: ['b3'], contentVersion: doc.contentVersion }]);
+    expect(plan.imageCount).toBe(1);
+  });
+
   it('开关关着（默认）：不问阅读器、不取图，请求里没有图片，计划没有地址', async () => {
     const h = makeHarness();
     h.setSettings(withToggle(false));
