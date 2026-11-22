@@ -1,7 +1,7 @@
 // 哨兵（ARCHITECTURE 4.3 规则 3、5.1、5.2）：所有框架都会运行。
 // 无第三方依赖；加载时只挂被动监听，不读写 DOM、不建观察器——工具栏等到第一次有效选区才建。
 import { browser } from 'wxt/browser';
-import type { ActionId } from '@/core/domain/actions';
+import { type ActionSummary, BUILTIN_ACTIONS, DEFAULT_TOOLBAR } from '@/core/domain/actions';
 import { truncateByJsonBytes } from '@/core/domain/bytes';
 import { JOB_LIMITS } from '@/core/domain/job';
 import type { ContentToBackground, PageConfig } from '@/core/domain/messages';
@@ -12,10 +12,16 @@ import {
   readonlyInputRect,
   type SelectionDecision,
 } from './selection-policy';
-import { createToolbar, type ToolbarHost } from './toolbar';
+import { createToolbar, needsLongConfirm, type ToolbarHost } from './toolbar';
 
 /** 同一框架里只留一个哨兵：后台在安装或更新时会向已开网页再注入一次（L5） */
 const INSTANCE = Symbol.for('readingAssistant.sentinel');
+
+/** 还没问到后台配置之前，先用出厂的默认工具栏（A2），拿到真实配置后下次选中就是准的 */
+const FALLBACK_TOOLBAR: readonly ActionSummary[] = DEFAULT_TOOLBAR.flatMap((id) => {
+  const d = BUILTIN_ACTIONS.find((a) => a.id === id);
+  return d ? [{ id: d.id, label: d.label, kind: d.kind, needsInput: d.needsInput, scope: d.scope }] : [];
+});
 
 export function startSentinel(): void {
   const g = globalThis as unknown as Record<symbol, { dispose(): void } | undefined>;
@@ -23,34 +29,51 @@ export function startSentinel(): void {
   let selectionRevision = 0;
   let pendingText = '';
   let pendingInCode = false;
+  let pendingOriginalLength = 0;
   let toolbar: ToolbarHost | undefined;
+  let toolbarActions: readonly ActionSummary[] = FALLBACK_TOOLBAR;
   /**
-   * 子框架的站点级别按「顶层与框架来源取更严」（4.1、AR-14）。excludeMatches 只看框架自己的地址，
-   * 顶层被列入黑名单时子框架里的哨兵仍会加载，所以子框架第一次有选区时向后台问一次级别，不是正常级别就不弹。
-   * 顶层框架不问：它的黑名单由 excludeMatches 排除，问一次会推迟工具栏出现
+   * 页面侧配置只问一次（按需，第一次有效选区时）：工具栏按钮顺序/隐藏/自定义（A3）、子框架的站点级别（4.1、AR-14）。
+   * 顶层框架不等它就先用出厂默认列表弹出工具栏，配置到了就存起来，下次选中起生效（不强求这一次立刻更新，简单优先）
    */
   const isTop = window === window.top;
-  let allowed: Promise<boolean> | undefined;
-  const frameAllowed = (): Promise<boolean> => {
-    allowed ??= browser.runtime
+  let configPromise: Promise<PageConfig | undefined> | undefined;
+  const ensureConfig = (): Promise<PageConfig | undefined> => {
+    configPromise ??= browser.runtime
       .sendMessage({ type: 'config/get' } satisfies ContentToBackground)
-      .then((c: unknown) => (c as Partial<PageConfig> | undefined)?.siteLevel === 'normal')
-      .catch(() => false);
-    return allowed;
+      .then((c: unknown) => {
+        const cfg = c as PageConfig | undefined;
+        if (cfg?.toolbarActions?.length) toolbarActions = cfg.toolbarActions;
+        return cfg;
+      })
+      .catch(() => undefined);
+    return configPromise;
   };
 
   function getToolbar(): ToolbarHost {
     if (toolbar === undefined) {
-      // 点「问」后只收起工具栏，选区矩形留给阅读器给小窗定位用（不在这里清掉）
-      toolbar = createToolbar((actionId) => {
-        sendActionClick(actionId);
+      toolbar = createToolbar((action) => {
+        // 「存」本版本不接：提示一句，不发请求、不清掉工具栏（点别处、Esc 等仍会收起）
+        if (action.kind === 'save') {
+          toolbar?.tip('收藏功能即将上线');
+          return;
+        }
+        // 长选区先确认一次（A7）；「问」也算（长选区会作为引用发出去）
+        if (needsLongConfirm(action, pendingOriginalLength)) {
+          toolbar?.confirm(`选中约 ${pendingOriginalLength} 字，确定要发送吗？`, () => {
+            sendActionClick(action.id);
+            toolbar?.hide();
+          });
+          return;
+        }
+        sendActionClick(action.id);
         toolbar?.hide();
       });
     }
     return toolbar;
   }
 
-  // 选区失效（折叠、点别处、Esc）时调用：收起工具栏，并清掉给小窗定位用的矩形
+  // 选区失效（折叠、点别处、Esc、滚动、复制、开始输入）时调用：收起工具栏，矩形留给阅读器给小窗定位用（不在这里清掉）
   function clearSelection(): void {
     toolbar?.hide();
     setLastSelectionRect(null);
@@ -60,16 +83,17 @@ export function startSentinel(): void {
     selectionRevision += 1;
     pendingText = decision.text;
     pendingInCode = decision.inCode;
+    pendingOriginalLength = [...decision.text].length;
     const msg: ContentToBackground = {
       type: 'selection/ready',
       selectionRevision,
-      textLength: [...decision.text].length,
+      textLength: pendingOriginalLength,
       inCode: decision.inCode,
     };
     void browser.runtime.sendMessage(msg);
   }
 
-  function sendActionClick(actionId: ActionId): void {
+  function sendActionClick(actionId: ActionSummary['id']): void {
     const { text, truncated } = truncateByJsonBytes(pendingText, JOB_LIMITS.maxFieldBytes);
     const msg: ContentToBackground = {
       type: 'action/click',
@@ -77,7 +101,7 @@ export function startSentinel(): void {
       selectionRevision,
       text,
       truncated,
-      originalLength: [...pendingText].length,
+      originalLength: pendingOriginalLength,
       inCode: pendingInCode,
     };
     void browser.runtime.sendMessage(msg);
@@ -86,7 +110,7 @@ export function startSentinel(): void {
   function showFor(decision: SelectionDecision, rect: DOMRect): void {
     sendSelectionReady(decision);
     setLastSelectionRect(rect, selectionRevision);
-    getToolbar().show(rect);
+    getToolbar().show(rect, toolbarActions, decision.inCode);
   }
 
   function onSelectionChange(pointer?: { x: number; y: number }): void {
@@ -110,11 +134,13 @@ export function startSentinel(): void {
       return;
     }
     if (isTop) {
+      // 不等配置到了再弹，先用已知的列表（出厂默认或上次问到的）；配置到了存起来，下次选中生效
+      void ensureConfig();
       showFor(decision, rect);
       return;
     }
-    void frameAllowed().then((ok) => {
-      if (ok) showFor(decision, rect);
+    void ensureConfig().then((c) => {
+      if (c?.siteLevel === 'normal') showFor(decision, rect);
     });
   }
 
@@ -129,18 +155,31 @@ export function startSentinel(): void {
   const onMouseDown = (e: MouseEvent) => {
     if (e.isTrusted && toolbar !== undefined && !toolbar.el.contains(e.target as Node)) clearSelection();
   };
+  const onScroll = (e: Event) => {
+    if (e.isTrusted) clearSelection();
+  };
+  const onCopy = (e: ClipboardEvent) => {
+    if (e.isTrusted) clearSelection();
+  };
 
-  // 只挂 3 个被动监听：松开鼠标 / 键盘改变选区，Esc 隐藏，点别处隐藏。
-  // 挂在 window 的捕获阶段：不少网页在冒泡阶段拦截 mouseup（stopPropagation），挂在 document 上就收不到
+  // 只挂被动监听：松开鼠标 / 键盘改变选区，Esc 隐藏，点别处隐藏，滚动 / 复制后消失（A5）。
+  // 挂在 window 的捕获阶段：不少网页在冒泡阶段拦截事件（stopPropagation），挂在 document 上就收不到。
+  // 「滚动」只认页面本身的滚动，不用捕获阶段——scroll 不冒泡，捕获阶段会连带收到网页内部可滚动容器
+  // （代码块、textarea 内部因选中而回滚）自己的 scroll，把刚弹出的工具栏误收起（选中只读代码框全选会触发）
   const opts = { capture: true, passive: true } as const;
+  const passiveOpts: AddEventListenerOptions = { passive: true };
   window.addEventListener('mouseup', onMouseUp, opts);
   window.addEventListener('keyup', onKeyUp, opts);
   window.addEventListener('mousedown', onMouseDown, opts);
+  window.addEventListener('scroll', onScroll, passiveOpts);
+  window.addEventListener('copy', onCopy, opts);
 
   function dispose(): void {
     window.removeEventListener('mouseup', onMouseUp, opts);
     window.removeEventListener('keyup', onKeyUp, opts);
     window.removeEventListener('mousedown', onMouseDown, opts);
+    window.removeEventListener('scroll', onScroll, passiveOpts);
+    window.removeEventListener('copy', onCopy, opts);
     toolbar?.el.remove();
     toolbar = undefined;
     setLastSelectionRect(null);

@@ -143,8 +143,16 @@ function findByLabel(node: DomNode, label: string): DomNode | undefined {
 
 /** 顶层框架里可见的「问」按钮中心；没有或不可见返回 undefined */
 export async function askButtonCenter(cdp: CDPSession): Promise<{ x: number; y: number } | undefined> {
+  return toolbarButtonCenter(cdp, '问');
+}
+
+/** 顶层框架里可见的、指定 aria-label 的工具栏按钮中心（A6：代码选区第一个按钮是「解释代码」） */
+export async function toolbarButtonCenter(
+  cdp: CDPSession,
+  label: string,
+): Promise<{ x: number; y: number } | undefined> {
   const { root } = (await cdp.send('DOM.getDocument', { depth: -1, pierce: true })) as { root: DomNode };
-  const node = findByLabel(root, '问');
+  const node = findByLabel(root, label);
   if (!node) return undefined;
   try {
     const { model } = await cdp.send('DOM.getBoxModel', { backendNodeId: node.backendNodeId });
@@ -163,22 +171,27 @@ export async function askButtonCenter(cdp: CDPSession): Promise<{ x: number; y: 
 export const frameToolbarOpen = (frame: Frame) =>
   frame.evaluate(() => [...document.documentElement.children].some((el) => el.matches(':popover-open')));
 
-/** 等工具栏出现并点「问」 */
-export async function clickAsk(page: Page): Promise<void> {
+/** 等工具栏出现并点指定 aria-label 的按钮（A6 代码选区场景可以传「解释代码」） */
+export async function clickToolbarButton(page: Page, label: string): Promise<void> {
   const cdp = await page.context().newCDPSession(page);
   let center: { x: number; y: number } | undefined;
   await expect
     .poll(
       async () => {
-        center = await askButtonCenter(cdp);
+        center = await toolbarButtonCenter(cdp, label);
         return center !== undefined;
       },
-      { message: '工具栏出现', timeout: 5_000 },
+      { message: `工具栏出现「${label}」`, timeout: 5_000 },
     )
     .toBe(true);
   await cdp.detach();
   if (!center) throw new Error('取不到按钮位置');
   await page.mouse.click(center.x, center.y);
+}
+
+/** 等工具栏出现并点「问」 */
+export async function clickAsk(page: Page): Promise<void> {
+  return clickToolbarButton(page, '问');
 }
 
 /** 一段时间内工具栏都没出现 */

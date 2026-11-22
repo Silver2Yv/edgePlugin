@@ -24,7 +24,7 @@ export function createBackground(deps: BackgroundDeps) {
   const pages = createPages(deps);
   const jobs = createJobs(deps, store, hub, pages);
   const route = createRoute(deps, store, hub, host);
-  const intents = createIntents(deps, store, hub, host, pages, route);
+  const intents = createIntents(deps, store, hub, host, pages, route, jobs);
   const commands = createCommands(deps, store, hub, host, jobs, route);
   const options = createOptions(deps);
   const history = createHistory(deps, jobs);

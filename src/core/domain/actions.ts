@@ -46,3 +46,18 @@ export const DEFAULT_TOOLBAR: readonly ActionId[] = ['ask', 'explain', 'save'];
 export const TOOLBAR_MAX = 5;
 /** 右键菜单入口（A8） */
 export const CONTEXT_MENU_ACTIONS: readonly ActionId[] = ['ask', 'explain', 'summarizePage'];
+
+/**
+ * 动作摘要（contract-v1.4 增量）：后台下发给页面侧的动作信息，不含 promptOverride。
+ * 工具栏按 kind/needsInput/scope 决定点击后是等输入、直接发送、还是不发请求（A2、A3）。
+ */
+export interface ActionSummary {
+  id: ActionId;
+  label: string;
+  kind: ActionDef['kind'];
+  needsInput: boolean;
+  scope: ActionDef['scope'];
+}
+
+/** 选中内容超过这个字数（码点）时，工具栏先确认一次再发送（A7） */
+export const LONG_SELECTION_CHARS = 5000;

@@ -8,8 +8,8 @@
 import type { Page } from '@playwright/test';
 import { EXTENSION_ID, expect, test } from './fixtures';
 import {
-  askInFloat,
   clickAsk,
+  clickToolbarButton,
   collectLogs,
   convAsk,
   expectNoToolbar,
@@ -105,10 +105,10 @@ test('输入样本：只有只读代码 textarea 例外；整页读取的请求�
     });
   }
 
-  await test.step('只读代码 textarea 全选：弹出，问的是框里的代码', async () => {
-    await clickAsk(page);
+  await test.step('只读代码 textarea 全选：弹出，第一个按钮是「解释代码」（A6），直接发请求不经过输入框', async () => {
+    await clickToolbarButton(page, '解释代码');
     const frame = await floatFrame(page);
-    await askInFloat(frame, r, '这段代码做什么？');
+    await expect(frame.getByTestId('job-state')).toHaveText('completed', { timeout: 15_000 });
   });
 
   const body = r.bodies[0] ?? '';
