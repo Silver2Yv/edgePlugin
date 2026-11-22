@@ -165,6 +165,10 @@ export function makeHarness(
   /** open：现在有没有侧边栏开着（sidePanelOpen 的假实现） */
   const panel = { gesture: true, opens: [] as number[], open: false };
   const pageMessages: unknown[] = [];
+  /** D10：探测到的子框架（setFrames）、被注入过的子框架编号、注入会失败的子框架编号 */
+  let frames: { frameId: number; documentId: string; url: string; tooSmall: boolean }[] = [];
+  const injectedFrames: number[] = [];
+  const failInject = new Set<number>();
 
   const deps: BackgroundDeps = {
     self: { runtimeId: EXT_ID, protocol: 'chrome-extension:' },
@@ -181,8 +185,15 @@ export function makeHarness(
     }),
     getTabUrl: vi.fn(async (tabId: number) => (tabUrls.has(tabId) ? tabUrls.get(tabId) : tabUrl)),
     sendToFrame: vi.fn(async (tabId, frameId, documentId, msg) => {
-      if (documentId !== topDoc) throw new Error('No document');
+      const subframe = frames.find((f) => f.frameId === frameId && f.documentId === documentId);
+      if (documentId !== topDoc && !subframe) throw new Error('No document');
       sent.push({ tabId, frameId, documentId, msg });
+    }),
+    // D10：子框架探测与注入（默认没有子框架）；frames 由 setFrames 设定
+    probeSubframes: vi.fn(async () => frames.map((f) => ({ ...f }))),
+    injectSubframeReader: vi.fn(async (_tabId: number, frameId: number) => {
+      if (failInject.has(frameId)) throw new Error('Cannot access contents of the page');
+      injectedFrames.push(frameId);
     }),
     broadcastToTab: vi.fn(async (tabId, msg) => {
       broadcasts.push({ tabId, msg });
@@ -331,6 +342,30 @@ export function makeHarness(
     connect,
     panel,
     pageMessages,
+    injectedFrames,
+    failInject,
+    /** 设定标签页里探测得到的子框架（D10）；地址不给就用 https://embed.test/f<frameId> */
+    setFrames: (next: { frameId: number; documentId: string; url?: string; tooSmall?: boolean }[]) => {
+      frames = next.map((f) => ({
+        frameId: f.frameId,
+        documentId: f.documentId,
+        url: f.url ?? `https://embed.test/f${f.frameId}`,
+        tooSmall: f.tooSmall ?? false,
+      }));
+    },
+    /** 子框架里的阅读器发消息用的 sender：地址是框架自己的（浏览器给的） */
+    frameSender: (
+      frameId: number,
+      documentId: string,
+      url = `https://embed.test/f${frameId}`,
+    ): SenderLike => ({
+      id: EXT_ID,
+      url,
+      origin: new URL(url).origin,
+      tab: { id: TAB },
+      frameId,
+      documentId,
+    }),
     /** 把标签页挪到某个窗口（不存在的窗口一并建上） */
     moveTab: (tabId: number, windowId: number) => {
       tabWindows.set(tabId, windowId);

@@ -98,6 +98,8 @@ export function createCitations(deps: BackgroundDeps, jobs: Pick<Jobs, 'settled'
         m.contextSnapshotId === undefined ? undefined : await deps.db.getSnapshot(m.contextSnapshotId);
       const live = snap && (snap.refCount > 0 || snap.expiresAt > deps.now()) ? snap : undefined;
       const block = live?.blocks.find((b) => b.id === blockId);
+      // 块来自内嵌页面（iframe）：本版本只读取、不在子框架里定位，给出明确原因（D10）
+      if (block?.frameId !== undefined && block.frameId !== 0) return fail('subframe');
       // 原文只在快照的块里找；快照过期时它是唯一的依据，必须在回答原文里出现过（界面报来的不直接采信）
       const quote = block
         ? msg.quote

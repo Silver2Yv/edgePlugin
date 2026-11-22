@@ -641,6 +641,7 @@ export type PanelNoticeKind =
  * | notFound | 页面里找不到这段原文（页面已大改） |
  * | siteBlocked | 站点设为「不读取页面内容」 |
  * | unavailable | 页面不允许注入（浏览器内部页面等）或阅读器没有应答 |
+ * | subframe | 这段在内嵌页面（iframe）里，本版本只读取、不能在网页上定位（D10） |
  */
 export type CitationFailReason =
   | 'notCited'
@@ -648,7 +649,8 @@ export type CitationFailReason =
   | 'expired'
   | 'notFound'
   | 'siteBlocked'
-  | 'unavailable';
+  | 'unavailable'
+  | 'subframe';
 
 /** 上次总结（summary/last）：消息记录里去掉了思考过程，正文过长时截断 */
 export interface LastSummary {

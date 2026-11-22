@@ -1,6 +1,7 @@
 // 后台各模块的依赖（扩展接口、网络、时间、随机数）。真实实现在 browser-deps.ts，
 // 其余模块只依赖这里的接口，单测换成假的。
 
+import type { FrameProbe } from '@/core/context/frame-merge';
 import type { BackgroundToContent, BackgroundToPages } from '@/core/domain/messages';
 import type { MigrateResult } from '@/core/domain/settings';
 import type { InterfaceType, ModelAdapter } from '@/core/llm/adapter';
@@ -53,6 +54,14 @@ export interface BackgroundDeps {
    * 发问前决定读不读页面（4.1）。取不到返回 undefined。可选只是为了不打扰只测别的模块的单测，真实实现一定提供
    */
   getTabUrl?(tabId: number): Promise<string | undefined>;
+  /**
+   * 子框架正文读取（D10）：对标签页所有框架做一次一次性探测（scripting.executeScript allFrames，不常驻、不读页面内容，
+   * 只取框架地址与尺寸），返回各子框架（不含顶层）的探测结果。框架编号与文档编号取自注入结果（不信框架自报）。
+   * 可选只是为了不打扰只测别的模块的单测，真实实现一定提供；没提供按没有子框架处理
+   */
+  probeSubframes?(tabId: number): Promise<(FrameProbe & { documentId: string })[]>;
+  /** 往指定子框架注入子框架阅读器（只响应 page/read；同一文档重复注入无副作用）；框架已不在时失败 */
+  injectSubframeReader?(tabId: number, frameId: number): Promise<void>;
   /**
    * 打开指定窗口的侧边栏（sidePanel.open）。必须在用户手势的同步路径上调用，之前不得 await（规则 10）：
    * 调用方在事件处理的同步段里直接调它，再处理返回的 Promise。没有手势时 Promise 被拒

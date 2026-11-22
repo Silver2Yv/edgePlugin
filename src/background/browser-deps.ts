@@ -1,5 +1,6 @@
 // 后台依赖的真实实现：扩展接口、网络、随机数都在这里，其余模块只依赖 BackgroundDeps（单测换成假的）。
 import { browser } from 'wxt/browser';
+import { MIN_FRAME_SIZE } from '@/core/context/frame-merge';
 import { chatCompletionsAdapter } from '@/core/llm/chat-completions';
 import { createIdbConvDb } from '@/platform/conv-db';
 import { loadSettings } from '@/platform/settings-store';
@@ -39,6 +40,26 @@ async function injectReader(tabId: number): Promise<string> {
   return probe.documentId;
 }
 
+const SUBFRAME_READER_FILE = '/content-scripts/subframe-reader.js';
+
+/** 在每个框架里一次性执行：只返回框架自己的地址与尺寸（被序列化后在页面里跑，不能引用外部变量，尺寸门槛作参数传入） */
+function probeFrame(min: number): { href: string; tooSmall: boolean } {
+  return { href: location.href, tooSmall: innerWidth < min || innerHeight < min };
+}
+
+async function probeSubframes(tabId: number) {
+  const results = await browser.scripting.executeScript({
+    target: { tabId, allFrames: true },
+    func: probeFrame,
+    args: [MIN_FRAME_SIZE],
+  });
+  return results.flatMap((r) =>
+    r.frameId === 0 || r.result === undefined || r.documentId === undefined
+      ? []
+      : [{ frameId: r.frameId, documentId: r.documentId, url: r.result.href, tooSmall: r.result.tooSmall }],
+  );
+}
+
 const hex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 
 export function browserDeps(): BackgroundDeps {
@@ -55,6 +76,13 @@ export function browserDeps(): BackgroundDeps {
     },
     loadSettings,
     injectReader,
+    probeSubframes,
+    injectSubframeReader: async (tabId, frameId) => {
+      await browser.scripting.executeScript({
+        target: { tabId, frameIds: [frameId] },
+        files: [SUBFRAME_READER_FILE],
+      });
+    },
     getTabUrl: async (tabId) => (await browser.tabs.get(tabId)).url,
     // 不包 async：调用方在手势的同步段里调它，open 必须在这一刻发出（规则 10）
     openSidePanel: (windowId) => browser.sidePanel.open({ windowId }),

@@ -275,14 +275,16 @@ describe('站点策略（V-04）', () => {
     expect(h.logs.some((l) => l.event === 'ask/policyChanged')).toBe(true);
   });
 
-  it('选区在子框架里：不读顶层正文，计划说明', async () => {
+  it('选区在子框架里但那个框架没读成（探测不到）：照常读顶层，计划说明选区位置不明', async () => {
     const h = makeHarness();
     const c = await readyFloat(h);
     await h.message(click(), h.contentSender(2, 'doc-frame-2'));
     c.send(askMsg({ contextTier: 'nearby' }));
+    await respond(h, (await nextRead(h, 1)).msg.readId, report(PARAS));
     await until(() => h.fetches.length === 1);
-    expect(reads(h)).toHaveLength(0);
-    expect(notesOf(c, 0)).toContain('子框架');
+    expect(reads(h)).toHaveLength(1);
+    expect(notesOf(c, 0)).toContain('选区所在的内嵌页面没有被读取');
+    expect(sentOf(c, 0)).toEqual([]);
   });
 
   it('子框架的页面配置取顶层与框架来源更严', async () => {

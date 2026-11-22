@@ -268,7 +268,7 @@ const PAGE_NOTE_TEXT: Readonly<Record<PageNoteKind, string>> = {
   visibilityUncertain: '页面里有折叠或显示状态不确定的内容，读取可能不完整',
   fallbackBodyText: '没找到正文区域，按整页文字读取',
   tooLittleText: '页面正文很少',
-  frameSkipped: '页面里的子框架（iframe）内容没有读取',
+  frameSkipped: '页面里有子框架（iframe）没有读取',
   truncated: '页面过长，只读取了前面的部分',
 };
 
