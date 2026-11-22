@@ -28,6 +28,19 @@ const ARTICLE = `<!doctype html>
 ${Array.from({ length: 30 }, (_, i) => `<p style="margin: 24px 40px">第 ${i + 1} 段：拉长页面，好让滚动有地方去。</p>`).join('\n')}
 </body></html>`;
 
+/**
+ * 截图像素与 CSS 像素之比：实测一张可见区截图的宽度 ÷ 视口宽度。平时等于 devicePixelRatio；
+ * 有界面 Edge 上 Playwright 模拟了视口与 devicePixelRatio（=1），而截图按真实窗口与系统缩放出图，两者不相等，
+ * 这正是裁剪要「按实际图片尺寸 ÷ 视口现算、不假定 DPR」的原因。截图有每秒 2 次的配额，放在扩展自己的截图之后调用
+ */
+async function captureScale(page: Page, sw: import('@playwright/test').Worker): Promise<number> {
+  const width = await sw.evaluate(async () => {
+    const url = await chrome.tabs.captureVisibleTab({ format: 'png' });
+    return (await createImageBitmap(await (await fetch(url)).blob())).width;
+  });
+  return width / (await page.evaluate(() => window.innerWidth));
+}
+
 let r: Relay;
 test.beforeAll(async () => {
   r = await startRelay();
@@ -110,13 +123,13 @@ test('快捷键框选 → 小窗里出现缩略图 → 发问：请求里带 ima
   expect(Array.isArray(content)).toBe(true);
   const img = content.find((p) => p.type === 'image_url');
   expect(img?.image_url?.url).toMatch(/^data:image\/(png|jpeg);base64,/);
-  // 裁剪按真实截图尺寸换算：框了 320×200 的 CSS 区域，PNG 头里的宽高应与之按设备像素比成比例
+  // 裁剪按真实截图尺寸换算：框了 320×200 的 CSS 区域，PNG 头里的宽高应与之按截图像素比成比例
   const url = img?.image_url?.url ?? '';
   if (url.startsWith('data:image/png')) {
     const png = Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');
-    const dpr = await page.evaluate(() => window.devicePixelRatio);
-    expect(png.readUInt32BE(16)).toBe(Math.round(320 * dpr));
-    expect(png.readUInt32BE(20)).toBe(Math.round(200 * dpr));
+    const scale = await captureScale(page, serviceWorker);
+    expect(Math.abs(png.readUInt32BE(16) - 320 * scale)).toBeLessThanOrEqual(2);
+    expect(Math.abs(png.readUInt32BE(20) - 200 * scale)).toBeLessThanOrEqual(2);
   }
   const text = content.find((p) => p.type === 'text')?.text ?? '';
   expect(text).toContain('请看这张截图');
@@ -225,10 +238,7 @@ test('页面缩放 125%：裁剪按截图实际尺寸换算，图片宽高等于
   await expect.poll(() => floatOpen(page), { timeout: 10_000 }).toBe(true);
   const frame = await floatFrame(page);
   await expect(frame.getByTestId('capture-preview')).toBeVisible();
-  const { pts, dpr } = await page.evaluate(() => ({
-    pts: (window as unknown as { __pts: number[][] }).__pts,
-    dpr: window.devicePixelRatio,
-  }));
+  const pts = await page.evaluate(() => (window as unknown as { __pts: number[][] }).__pts);
   const down = pts[0] ?? [0, 0];
   const up = pts.at(-1) ?? [0, 0];
   await frame.getByLabel('输入问题').fill('图里是什么？');
@@ -238,9 +248,10 @@ test('页面缩放 125%：裁剪按截图实际尺寸换算，图片宽高等于
   const url = content.find((p) => p.type === 'image_url')?.image_url?.url ?? '';
   expect(url.startsWith('data:image/png')).toBe(true);
   const png = Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');
-  // 页面缩放下 devicePixelRatio 已含缩放（125% × 系统比例）：CSS 尺寸 × 它就是截图里的像素
-  const expectW = Math.abs((up[0] ?? 0) - (down[0] ?? 0)) * dpr;
-  const expectH = Math.abs((up[1] ?? 0) - (down[1] ?? 0)) * dpr;
+  // 页面缩放下截图像素比已含缩放（125% × 系统比例）：CSS 尺寸 × 它就是截图里的像素
+  const scale = await captureScale(page, serviceWorker);
+  const expectW = Math.abs((up[0] ?? 0) - (down[0] ?? 0)) * scale;
+  const expectH = Math.abs((up[1] ?? 0) - (down[1] ?? 0)) * scale;
   expect(Math.abs(png.readUInt32BE(16) - expectW)).toBeLessThanOrEqual(2);
   expect(Math.abs(png.readUInt32BE(20) - expectH)).toBeLessThanOrEqual(2);
   await shot(page, 'capture-zoom125.png');
