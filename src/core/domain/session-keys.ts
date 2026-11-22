@@ -19,4 +19,8 @@ export const SESSION_KEYS = {
   sidepanelToggle: (windowId: number) => `sidepanelToggle:${windowId}`,
   /** 本次后台进程的编号；启动扫描用它判断任务是否属于已结束的进程 */
   workerEpoch: 'workerEpoch',
+  /** 标签页上进行中的框选（CaptureStart，5.13）：后台在用户拖框期间被回收，收到 capture/rect 时从这里接上 */
+  captureStart: (tabId: number) => `captureStart:${tabId}`,
+  /** 标签页待确认的截图（PendingCapture，含原图 data URL）：发问时取走；只在内存型的 storage.session，不落盘 */
+  capture: (tabId: number) => `capture:${tabId}`,
 } as const;

@@ -52,9 +52,11 @@ import type {
   StreamEvent,
   Usage,
 } from '@/core/llm/adapter';
+import { effectiveCapabilities } from '@/core/llm/capabilities';
 import { decideParamRetry } from '@/core/llm/param-retry';
 import { type AskTurn, assembleAsk, resolveActionDef } from '@/core/prompt/ask';
 import type { DbWrites } from '@/platform/conv-db';
+import type { Capture, TakenCapture } from './capture';
 import type { BackgroundDeps } from './deps';
 import type { Hub } from './hub';
 import type { PageContext, Pages } from './pages';
@@ -141,6 +143,8 @@ type Accepted = {
   pageKey: string | undefined;
   contextSnapshotId: string;
   newConversation: NewConversationReason | undefined;
+  /** 这一问附带的截图（5.13）：已随接单事务写进库，装配时作为图片部分发送 */
+  image: TakenCapture | undefined;
 };
 
 /** 内存里最多保留的任务（含增量日志）；超出时丢最早的已终结任务 */
@@ -205,7 +209,7 @@ const thinkingParam = (t: AskMsg['thinking']): NonNullable<ChatRequest['thinking
 
 export type Jobs = ReturnType<typeof createJobs>;
 
-export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: Pages) {
+export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: Pages, capture?: Capture) {
   const db = deps.db;
   const epoch = deps.newId();
   const jobs = new Map<string, Job>();
@@ -699,12 +703,18 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       selection = await store.getSelection(tabId);
       if (selection?.selectionRevision !== msg.selectionRevision) return { reason: 'invalid' };
     }
+    // 附带的截图（5.13）：编号对不上、已被取走或过期就拒绝（gone），不悄悄当成没附图发出去
+    let image: TakenCapture | undefined;
+    if (msg.captureId !== undefined) {
+      image = await capture?.take(tabId, msg.captureId);
+      if (!image) return { reason: 'gone' };
+    }
     const loaded = await deps.loadSettings();
     if (!loaded.ok) return { reason: 'invalid' };
     // 没有选区也没有问题文字：只有不需要输入的动作（解释、总结本页等，问题由装配补默认值）才能这样发
     const actionDef = resolveActionDef(msg.actionId as ActionId, loaded.settings.customActions);
     const needsInput = actionDef?.needsInput ?? true;
-    if (!selection && msg.text.trim() === '' && needsInput) return { reason: 'invalid' };
+    if (!selection && !image && msg.text.trim() === '' && needsInput) return { reason: 'invalid' };
     // 对话里显示的这一轮提问：不需要输入的动作（解释、总结本页……）没有问题文字，显示动作名
     const shownText = msg.text.trim() === '' && !needsInput && actionDef ? actionDef.label : msg.text;
     const tabUrl = await deps.getTabUrl?.(tabId).catch(() => undefined);
@@ -714,6 +724,9 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
     if (!target) return { reason: 'modelGone' };
     const adapter = deps.adapters[target.conn.interfaceType];
     if (!adapter) return { reason: 'invalid' };
+    // 模型明确不能看图（能力表 vision 为 no，E3）：不发，界面提示换能看图的模型；unknown 照发
+    if (image && effectiveCapabilities(target.conn, target.model.model).vision === 'no')
+      return { reason: 'noVision' };
 
     // 选对话：指定了且这个标签页能接着问就直接续接；不指定（或小窗指定了别的页面的）按续接规则
     const now = deps.now();
@@ -800,6 +813,7 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
             },
           }
         : {}),
+      ...(image ? { images: [image.image] } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -834,7 +848,13 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
 
     // 先落库（对话、用户消息、占位助手消息，一个事务），再写 session 热副本，都成了才接单（5.5）
     try {
-      await persist(() => db.write({ conversations: [record], messages: [userMessage, baseMessage] }));
+      await persist(() =>
+        db.write({
+          conversations: [record],
+          messages: [userMessage, baseMessage],
+          ...(image ? { blobs: [image.blob] } : {}),
+        }),
+      );
     } catch (e) {
       deps.log('db/acceptFailed', { error: errName(e) });
       return { reason: 'storageFailed' };
@@ -847,11 +867,17 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         await db.remove({
           messages: [userMessage.id, baseMessage.id],
           ...(prev ? {} : { conversations: [conversationId] }),
+          ...(image ? { blobs: [image.blob.id] } : {}),
         });
         if (prev) await db.write({ conversations: [prev] });
       }).catch(() => undefined);
       return { reason: 'storageFailed' };
     }
+    // 截图已随这一问存进库：待确认的那份删掉，各界面收起预览
+    if (image && msg.captureId !== undefined)
+      void capture
+        ?.consumed(tabId, msg.captureId)
+        .catch((e: unknown) => deps.log('capture/consumeFailed', { error: errName(e) }));
 
     const state: ConvState = conv ?? {
       record,
@@ -904,6 +930,7 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       pageKey,
       contextSnapshotId: deps.newId(),
       newConversation,
+      image,
     };
   }
 
@@ -1099,6 +1126,7 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         actionId: msg.actionId as ActionId,
         promptOverrides: settings.promptOverrides,
         customActions: settings.customActions,
+        ...(a.image ? { image: { dataUrl: a.image.dataUrl } } : {}),
       });
       conv.lastFullPage = assembly.sentFullPage;
       job.userText = assembly.userText;
@@ -1121,6 +1149,7 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         budget: plan.budget,
         model: plan.model,
         notes: plan.notes.length,
+        imageCount: plan.imageCount,
       });
       // 发送计划先于请求推给界面（规则 8）
       job.plan = { type: 'conv/plan', jobId, contextSnapshotId, plan };

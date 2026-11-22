@@ -13,6 +13,7 @@ import {
 import { DEFAULT_SETTINGS } from '@/core/domain/settings';
 import { frameSiteLevel } from '@/core/domain/site-policy';
 import { SUMMARIZE_PAGE_QUESTION } from '@/core/prompt/ask';
+import type { Capture } from './capture';
 import type { Citations } from './citations';
 import type { BackgroundDeps, SenderLike } from './deps';
 import type { FloatHost } from './float-host';
@@ -47,9 +48,13 @@ export function createIntents(
   pages: Pages,
   route: Route,
   jobs: Jobs,
-  /** cite 块：再点「总结本页」时复用上次总结、定位结果（可选只是为了不打扰只测别的模块的单测） */
-  extra: { summary?: Summary; citations?: Citations } = {},
+  /**
+   * cite 块：再点「总结本页」时复用上次总结、定位结果；capture 块：框选的矩形与取消
+   * （都可选只是为了不打扰只测别的模块的单测）
+   */
+  extra: { summary?: Summary; citations?: Citations; capture?: Capture } = {},
 ) {
+  const { capture } = extra;
   const refuse = (reason: RejectReason, detail?: Record<string, unknown>): IntentResponse => {
     deps.log('intent/rejected', { reason, ...detail });
     return { ok: false, reason };
@@ -241,9 +246,15 @@ export function createIntents(
         return extra.citations?.onLocateResult(msg, s)
           ? { ok: true }
           : refuse('notOwner', { type: msg.type });
-      default:
-        // 截图本版本不做
-        return refuse('notAllowed', { type: msg.type });
+      // 框选截图（5.13）：身份取自 sender，对不上这次框选的标签页、顶层框架、文档就拒绝（规则 7）
+      case 'capture/rect':
+      case 'capture/cancel': {
+        if (!capture) return refuse('notAllowed', { type: msg.type });
+        const who = { tabId: s.tabId, frameId: s.frameId, documentId: s.documentId };
+        const reason =
+          msg.type === 'capture/rect' ? await capture.onRect(msg, who) : await capture.onCancel(msg, who);
+        return reason ? refuse(reason, { type: msg.type }) : { ok: true };
+      }
     }
   }
 

@@ -1,8 +1,10 @@
 // 阅读器（ARCHITECTURE 4.3 规则 1-5、5.3）：只在顶层框架，由后台注入。
-// 接小窗相关指令、网页提示（page/notice）、页面读取（page/read）、引用定位与高亮（page/locate、page/back，5.7）；截图框选（4.2）这轮不做。
+// 接小窗相关指令、网页提示（page/notice）、页面读取（page/read）、引用定位与高亮（page/locate、page/back，5.7）
+// 与截图框选（capture/*，见 capture.ts）。
 // 不发网络请求，不持有对话内容。
 import { browser } from 'wxt/browser';
 import { backgroundToContent, type ContentToBackground } from '@/core/domain/messages';
+import { createCaptureOverlay } from './capture';
 import { createFloatHost } from './float-host';
 import { attachFloatPort } from './float-port';
 import { createLocator } from './locate';
@@ -99,6 +101,11 @@ export function startReader(): void {
     () => notice.show('floatFailed'),
   );
   attachFloatPort(floatHost);
+  // 框选截图（5.13）：遮罩、视口修订号；截图期间小窗只藏起来，不收起
+  const capture = createCaptureOverlay({
+    send: (msg) => void browser.runtime.sendMessage(msg).catch(() => undefined),
+    setFloatHidden: (on) => floatHost.setCaptureHidden(on),
+  });
 
   // 点网页别处或在网页里按 Esc 收起小窗（6.1：隐藏，不销毁）。小窗内部的事件发生在 iframe 自己的文档里，
   // 不会传到网页文档；但小窗外壳（边框、拖动条、缩放把手）在网页文档里，按在上面不算「别处」，
@@ -106,14 +113,16 @@ export function startReader(): void {
   document.addEventListener(
     'pointerdown',
     (e) => {
-      // 钉住的小窗（B3 图钉）点网页别处不收起
-      if (e.isTrusted && !floatHost.owns(e) && !floatHost.keepsOpen()) floatHost.hide();
+      // 钉住的小窗（B3 图钉）点网页别处不收起；框选截图时在遮罩上拖动也不算
+      if (e.isTrusted && !floatHost.owns(e) && !floatHost.keepsOpen() && !capture.active()) floatHost.hide();
     },
     { capture: true, passive: true },
   );
-  document.addEventListener('keydown', (e) => e.isTrusted && e.key === 'Escape' && floatHost.hide(), {
-    capture: true,
-  });
+  document.addEventListener(
+    'keydown',
+    (e) => e.isTrusted && e.key === 'Escape' && !capture.active() && floatHost.hide(),
+    { capture: true },
+  );
 
   const pageReader = createPageReader((msg) => browser.runtime.sendMessage(msg));
   // 引用跳回（5.7）与回到刚才的位置（F4）：滚过去时让开显示着的小窗（小窗不挪，原文挪到它旁边）
@@ -123,7 +132,7 @@ export function startReader(): void {
   });
   const changeWatcher = createChangeWatcher((msg) => browser.runtime.sendMessage(msg));
 
-  browser.runtime.onMessage.addListener((raw, sender) => {
+  browser.runtime.onMessage.addListener((raw, sender, sendResponse) => {
     // 只认来自后台的指令：sender.id 是本扩展，且没有 sender.tab（内容脚本发的消息都带 tab）
     if (sender.id !== browser.runtime.id || sender.tab !== undefined) return;
     const r = backgroundToContent.parse(raw);
@@ -169,8 +178,17 @@ export function startReader(): void {
         if (r.value.enabled) changeWatcher.start();
         else changeWatcher.stop();
         break;
+      // 框选截图（5.13）：隐藏遮罩与小窗、等两帧后应答；结束时恢复。应答是当前视口修订号，后台据此核对
+      case 'capture/start':
+        capture.start(r.value.captureId);
+        break;
+      case 'capture/hideOverlay':
+        void capture.hide(r.value.captureId).then(sendResponse);
+        return true;
+      case 'capture/end':
+        sendResponse(capture.end(r.value.captureId));
+        break;
       default:
-        // capture/* 这轮不实现
         break;
     }
   });

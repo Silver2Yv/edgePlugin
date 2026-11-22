@@ -719,3 +719,71 @@ body {
   color: var(--ra-danger);
   background: var(--ra-danger-soft);
 }
+
+/* ───────────── 框选截图（E1–E4、5.13，capture 块） ───────────── */
+
+/* 待确认的截图：像引用条一样一张缩略图，可以 × 去掉 */
+.ra-capture {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 6px 0;
+  padding: 4px 2px 4px 6px;
+  font-size: 12px;
+  color: var(--ra-text-2);
+  background: var(--ra-surface-2);
+  border-left: 3px solid var(--ra-accent-solid);
+  border-radius: 4px;
+}
+.ra-capture__body {
+  flex: 1;
+  min-width: 0;
+}
+.ra-capture__label {
+  color: var(--ra-text);
+}
+.ra-capture__note {
+  margin: 2px 0 0;
+  color: var(--ra-muted);
+}
+.ra-capture__note--warn {
+  color: var(--ra-danger);
+}
+.ra-capture .ra-icon-btn {
+  width: 20px;
+  height: 20px;
+}
+
+/* 缩略图画在画布上（CSP img-src 'self'，data: 图片进不了 <img>）；画布按原尺寸，显示时等比缩小 */
+.ra-thumb {
+  display: block;
+  flex: none;
+  width: auto;
+  height: auto;
+  max-width: 96px;
+  max-height: 64px;
+  border: 1px solid var(--ra-border);
+  border-radius: 4px;
+  background: var(--ra-bg);
+}
+.ra-thumb--empty {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--ra-muted);
+}
+
+/* 用户消息里附带的截图 */
+.ra-msg-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.ra-msg-images .ra-thumb {
+  max-width: 180px;
+  max-height: 120px;
+}
+.ra-app--panel .ra-capture .ra-thumb {
+  max-width: 140px;
+  max-height: 96px;
+}

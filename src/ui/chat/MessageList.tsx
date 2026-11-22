@@ -8,6 +8,7 @@ import { AnswerView } from '../AnswerView';
 import type { CitationClick } from '../cite/useCite';
 import { type DisplayItem, groupTurns, type UserMessageView } from '../float/messages';
 import { T } from '../strings';
+import { MessageImages } from './CaptureParts';
 
 /** 用户消息气泡里引用摘要最多显示的字数（完整引用发问时在引用条里看过，这里只是提示问的是哪一段） */
 const QUOTE_PREVIEW_CHARS = 60;
@@ -24,7 +25,14 @@ function UserMessage({ message, showQuote }: { message: UserMessageView; showQuo
           {preview.length < full.length || q.truncated ? '…' : ''}
         </div>
       )}
-      {message.text ? message.text : <span className="ra-user__empty">{T.list.userNoText}</span>}
+      <MessageImages images={message.images} />
+      {message.text ? (
+        message.text
+      ) : (
+        <span className="ra-user__empty">
+          {message.images?.length && !message.quote ? T.capture.userNoText : T.list.userNoText}
+        </span>
+      )}
     </div>
   );
 }
@@ -79,6 +87,8 @@ export function MessageList({
       {turns.map((turn, ti) => {
         const last = ti === turns.length - 1;
         const first = turn[0] as DisplayItem;
+        // 这一轮附了截图：换个模型重问只能带上问题文字、带不上图，不提供（H12）
+        const hasImages = turn.some((i) => i.kind === 'user' && (i.message.images?.length ?? 0) > 0);
         return (
           <div
             key={first.kind === 'user' ? first.message.id : first.id}
@@ -104,7 +114,7 @@ export function MessageList({
                   onExpand={onExpand}
                   {...(onCitation ? { onCitation: (c: CitationClick) => onCitation(item.id, c) } : {})}
                   connections={connections}
-                  onSwitchModel={onSwitchModel}
+                  onSwitchModel={hasImages ? undefined : onSwitchModel}
                 />
               ),
             )}

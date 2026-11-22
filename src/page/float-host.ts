@@ -112,6 +112,10 @@ export interface FloatHostApi {
    * float-port.ts 订阅它，把结果经私有端口回报给小窗用于落盘（settled: true）。
    */
   onRectSettled(cb: (rect: FloatRect) => void): void;
+  /**
+   * 框选截图期间临时藏起小窗（5.13：截图里不能有小窗）：只改可见性，不收起、不销毁，结束后原样恢复（capture 块新增）
+   */
+  setCaptureHidden(on: boolean): void;
 }
 
 /**
@@ -439,6 +443,9 @@ export function createFloatHost(
     },
     onRectSettled(cb) {
       rectSettledCb = cb;
+    },
+    setCaptureHidden(on) {
+      if (host) host.style.visibility = on ? 'hidden' : '';
     },
   };
 }

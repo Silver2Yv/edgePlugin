@@ -37,7 +37,8 @@ export async function submitAsk(
 ): Promise<boolean> {
   const text = rawText.trim();
   const action = opts.request && opts.request.actionId !== 'ask' ? opts.request : undefined;
-  if (!text && !action) return false;
+  // 附了截图时可以不打字（装配补默认问题，E1）
+  if (!text && !action && !deps.getState().capture) return false;
   if (isGenerating(deps.getState().job)) {
     deps.dispatch({ kind: 'localError', message: T.error.generating });
     return false;
@@ -69,6 +70,7 @@ export async function submitAsk(
         fresh: s.freshConversation,
         ...params,
         ...(action ? { actionId: action.actionId } : {}),
+        ...(s.capture ? { captureId: s.capture.captureId } : {}),
       }),
     );
     deps.dispatch({
@@ -76,6 +78,7 @@ export async function submitAsk(
       clientRequestId,
       text,
       quote: s.quote,
+      capture: s.capture,
       ...(action ? { request: action } : {}),
     });
   } else {
@@ -105,6 +108,7 @@ export function flushQueuedAsk(state: FloatState, deps: Pick<AskDeps, 'post' | '
       model: ask.model,
       ...(ask.contextTier ? { contextTier: ask.contextTier } : {}),
       ...(ask.request ? { actionId: ask.request.actionId } : {}),
+      ...(state.capture ? { captureId: state.capture.captureId } : {}),
     }),
   );
   deps.dispatch({
@@ -113,6 +117,7 @@ export function flushQueuedAsk(state: FloatState, deps: Pick<AskDeps, 'post' | '
     text: ask.text,
     quote: state.quote,
     ...(ask.request ? { request: ask.request } : {}),
+    capture: state.capture,
   });
 }
 

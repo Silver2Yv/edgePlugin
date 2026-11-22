@@ -6,12 +6,14 @@
 // | 快捷键「打开小窗」 | 无选区唤起：注入阅读器、显示小窗（5.2 末条）；小窗失败过或这页放不了小窗时同步开侧边栏 |
 // | 快捷键 / 右键「总结本页」 | 同步开侧边栏，后台用固定问题发起一次整页请求，侧边栏订阅时接上（6.2 最小版） |
 // | 右键「问」 | 选中文字取自浏览器（info.selectionText），不依赖哨兵；按需注入阅读器走小窗，去向同工具栏 |
+// | 快捷键「框选截图」 | 去向同「问」：要改走侧边栏就同步 open；注入阅读器显示遮罩，截好后预览去小窗或侧边栏（capture.ts） |
 import { BUILTIN_ACTIONS, CONTEXT_MENU_ACTIONS } from '@/core/domain/actions';
 import { truncateByJsonBytes } from '@/core/domain/bytes';
 import { floatHostable } from '@/core/domain/float';
 import { JOB_LIMITS } from '@/core/domain/job';
 import type { PanelNoticeKind } from '@/core/domain/messages';
 import { SUMMARIZE_PAGE_QUESTION } from '@/core/prompt/ask';
+import type { Capture } from './capture';
 import type { BackgroundDeps } from './deps';
 import type { FloatHost } from './float-host';
 import type { Hub } from './hub';
@@ -61,8 +63,8 @@ export function createCommands(
   host: FloatHost,
   jobs: Jobs,
   route: Route,
-  /** cite 块：页面没变时复用上次总结（可选只是为了不打扰只测别的模块的单测） */
-  extra: { summary?: Summary } = {},
+  /** cite 块：页面没变时复用上次总结；capture 块：框选截图（都可选只是为了不打扰只测别的模块的单测） */
+  extra: { summary?: Summary; capture?: Capture } = {},
 ) {
   const notice = (tabId: number, kind: PanelNoticeKind) => {
     store.putNotice(tabId, kind);
@@ -177,8 +179,11 @@ export function createCommands(
         case 'summarize-page':
           summarize(tab);
           return;
+        case 'capture-region':
+          // 同步段里调用：要开侧边栏的当场 open（规则 10）
+          if (extra.capture) extra.capture.command(tab);
+          return;
         default:
-          // capture-region（框选截图）本版本不做
           deps.log('command/ignored', { command });
       }
     },

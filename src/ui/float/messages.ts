@@ -31,12 +31,23 @@ export interface UserMessageView extends MessageBase {
   pairedMessageId?: string;
   /** 这一轮的动作与页面档位（「换个模型再试」按原样重问）；界面自己发的普通提问没有，按「问」处理 */
   request?: AskRequest;
+  /**
+   * 附带的截图（capture 块）：本地暂存的发问带着缩略图（thumb）；快照来的只有位置（messageId + index），
+   * 缩略图按需向后台取（image/get）
+   */
+  images?: readonly UserImageView[];
 }
 
 /** 一轮发问的动作与页面档位 */
 export interface AskRequest {
   actionId: string;
   contextTier: ContextTier;
+}
+
+export interface UserImageView {
+  thumb?: string;
+  messageId?: string;
+  index: number;
 }
 
 /** 助手消息；正在生成的任务（JobView）字段是它的超集，回答区组件两种都收 */
@@ -116,6 +127,7 @@ export function recordToView(r: MessageRecord): MessageView {
         ? { quote: { text: sel.text, truncated: sel.truncated, originalLength: sel.originalLength } }
         : {}),
       ...(r.request ? { request: { actionId: r.request.actionId, contextTier: r.request.contextTier } } : {}),
+      ...(r.images?.length ? { images: r.images.map((_, index) => ({ messageId: r.id, index })) } : {}),
     };
   }
   return {
@@ -206,7 +218,7 @@ export function archiveJob(
 
 /** 界面自己发的问：接单后先在本地暂存一条用户消息（问题与引用界面都知道），不等快照 */
 export function localUserMessage(
-  ask: { text: string; quote: QuoteSummary | null; request?: AskRequest },
+  ask: { text: string; quote: QuoteSummary | null; request?: AskRequest; capture?: { thumb: string } },
   accepted: { messageId: string; conversationId: string },
 ): UserMessageView {
   return {
@@ -218,6 +230,7 @@ export function localUserMessage(
     pairedMessageId: accepted.messageId,
     ...(ask.quote ? { quote: ask.quote } : {}),
     ...(ask.request ? { request: ask.request } : {}),
+    ...(ask.capture ? { images: [{ thumb: ask.capture.thumb, index: 0 }] } : {}),
   };
 }
 

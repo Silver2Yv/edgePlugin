@@ -23,6 +23,7 @@ import {
   type SenderRole,
 } from '@/core/domain/messages';
 import type { ConversationRecord } from '@/core/domain/records';
+import type { Capture } from './capture';
 import type { Citations } from './citations';
 import type { BackgroundDeps, ConvPort } from './deps';
 import type { FloatHost } from './float-host';
@@ -77,9 +78,10 @@ export function createConv(
   host: FloatHost,
   jobs: Jobs,
   history: History,
-  /** cite 块：引用跳回、上次总结（可选只是为了不打扰只测别的模块的单测） */
-  extra: { citations?: Citations; summary?: Summary } = {},
+  /** cite 块：引用跳回、上次总结；capture 块：框选截图（都可选只是为了不打扰只测别的模块的单测） */
+  extra: { citations?: Citations; summary?: Summary; capture?: Capture } = {},
 ) {
+  const { capture } = extra;
   return function onConnect(port: ConvPort): void {
     if (port.name !== CONV_PORT) return;
     const sender = port.sender ?? {};
@@ -201,6 +203,8 @@ export function createConv(
       if (view === 'notOwner') return reject('notOwner', msg);
       const conversationId = view.conversation?.id;
       const notice = st.role === 'sidepanel' ? store.takeNotice(tabId) : undefined;
+      // 这个标签页待确认的截图（5.13 预览），随引用一起补发
+      const shot = await capture?.preview(tabId).catch(() => undefined);
       // —— 同步段开始
       hub.unsubscribe(port);
       st.tabId = tabId;
@@ -215,6 +219,7 @@ export function createConv(
       });
       if (notice) post({ type: 'conv/notice', kind: notice });
       if (sel) post(quoteOf(sel));
+      if (shot) post(shot);
       if (job) jobs.replayNow(tabId, job.jobId, resumed && msg.resume ? msg.resume.lastSeq : 0, post);
       hub.subscribe(tabId, port);
       // —— 同步段结束。续播的任务不在内存（后台重启过）：只能报热副本里的状态
@@ -354,6 +359,23 @@ export function createConv(
             post({ type: 'summary/last', requestId: msg.requestId, tabId });
           });
           return;
+        // 框选截图（5.13）：小窗截所在标签页，侧边栏截订阅的标签页（上面已核对仍在本窗口）
+        case 'capture/begin':
+          if (!capture) return reject('notAllowed', msg);
+          return capture.fromClient(
+            tabId,
+            st.role === 'sidepanel' ? st.windowId : sender.tab?.windowId,
+            st.role === 'sidepanel' ? 'panel' : 'float',
+          );
+        case 'capture/discard':
+          return capture?.discard(tabId, msg.captureId);
+        case 'image/get': {
+          if (!capture) return reject('notAllowed', msg);
+          const url = await deps.getTabUrl?.(tabId).catch(() => undefined);
+          const pageKey = url === undefined ? undefined : toPageKey(url);
+          const scope = st.role === 'sidepanel' ? 'any' : 'page';
+          return capture.sendImage(msg, (cid) => jobs.viewFor(tabId, cid, pageKey, scope), post, reject);
+        }
         default:
           // 切换档位与模型、收藏本版本不做
           return reject('notAllowed', msg);

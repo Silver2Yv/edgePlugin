@@ -95,6 +95,20 @@ export interface MessageRecord {
    * （background/history.ts 的 purgeNoRead），装配时也用 stripPageContent 再去一次。persist 块新增，可选：装配前就结束的发问没有
    */
   sentText?: string;
+  /**
+   * 仅用户消息：这一问附带的图片（框选截图，5.13）。图片本体在 blobs 表，这里只引用；接单时与消息同一个事务写入，
+   * 图片的 refCount 加一；删除对话时解引用，减到 0 的图片一并删除（5.11 级联）。capture 块新增，可选
+   */
+  images?: readonly MessageImage[];
+}
+
+/** 消息引用的一张图片（MessageRecord.images） */
+export interface MessageImage {
+  blobId: BlobId;
+  mime: string;
+  /** 发给模型的那张图的像素尺寸 */
+  width: number;
+  height: number;
 }
 
 /** 实际发送的页面块文本（引用回查用）。计划在消息里，这里只放大块文本，可被清理 */

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { canRetry, isTerminal } from '@/core/domain/job';
 import type { Connection, ModelRef } from '@/core/llm/adapter';
 import { isReadCoverageNote } from '@/core/prompt/ask';
+import { ImageAnswerNote } from './chat/CaptureParts';
 import type { CitationClick } from './cite/useCite';
 import { ERROR_LABEL } from './error-labels';
 import { type AnswerLike, citationIds } from './float/messages';
@@ -241,6 +242,7 @@ export function AnswerView({
       )}
       {view.state === 'interrupted' && <p className="ra-status">{T.answer.interrupted}</p>}
       {view.state === 'stopped' && <p className="ra-status">{T.answer.stopped}</p>}
+      <ImageAnswerNote view={view} />
       <div className="ra-actions">
         {live && canRetry(view.state) && (
           <button type="button" className="ra-btn ra-btn--small" onClick={onRetry}>

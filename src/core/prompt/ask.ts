@@ -74,6 +74,12 @@ export interface AskInput {
   promptOverrides?: Readonly<Record<string, string>>;
   /** 自定义动作定义（A3）；自定义动作的提示词取它自己的 promptOverride，不查 promptOverrides 表 */
   customActions?: readonly ActionDef[];
+  /**
+   * 本轮附带的截图（E1、5.13，capture 块新增）：作为本轮用户消息的图片部分发送（OpenAI 兼容格式由适配器转成 image_url）。
+   * 图片单列预算（5.9）：不计入文本预算，文本的取舍不因它改变；计划里 imageCount 照实写。只随这一轮发送，
+   * 之后的追问不重发（历史里留一句「本轮附有截图」的说明）
+   */
+  image?: { dataUrl: string };
 }
 
 export interface AskAssembly {
@@ -272,6 +278,11 @@ const PAGE_NOTE_TEXT: Readonly<Record<PageNoteKind, string>> = {
  */
 export const SUMMARIZE_PAGE_QUESTION = '总结本页';
 
+/** 附了截图却没打字、也没有选区时的默认问题（E1） */
+export const IMAGE_QUESTION = '请看这张截图，说明其中的内容。';
+/** 附了截图的那一轮，用户消息文字开头的说明：模型知道有图，之后的追问在历史里也看得出那一轮带过图 */
+export const IMAGE_LEAD = '（本轮附有一张用户在网页上框选的截图。）';
+
 export interface SystemPromptInput {
   lengthTier: LengthTier;
   language: string;
@@ -391,6 +402,7 @@ export function assembleAsk(input: AskInput): AskAssembly {
   const scope = actionDef?.scope ?? 'selection';
   const notes: string[] = [];
   const bareParts: string[] = [];
+  if (input.image) bareParts.push(IMAGE_LEAD);
   // 页面级动作（总结 / 提取要点 / 这页在讲什么 / scope 为 page 的自定义动作）不带选区，只带页面内容
   const includeSelection = selection !== undefined && scope !== 'page';
   if (includeSelection) {
@@ -405,7 +417,9 @@ export function assembleAsk(input: AskInput): AskAssembly {
   const needsDefaultQuestion = question === '' && (includeSelection || scope === 'page');
   const resolvedQuestion = needsDefaultQuestion
     ? defaultQuestionFor(input.actionId, input.promptOverrides, input.customActions)
-    : '';
+    : question === '' && input.image
+      ? IMAGE_QUESTION
+      : '';
   bareParts.push(question || resolvedQuestion);
   const isExpand = question === EXPAND_QUESTION;
   const actionPrompt = actionSystemAddition(input.actionId, input.promptOverrides, input.customActions);
@@ -530,7 +544,13 @@ export function assembleAsk(input: AskInput): AskAssembly {
   for (const t of history) {
     messages.push({ role: 'user', content: text(t.user) }, { role: 'assistant', content: text(t.assistant) });
   }
-  messages.push({ role: 'user', content: text(userText) });
+  messages.push({
+    role: 'user',
+    // 截图放在文字前面（图在前、问题在后，视觉模型的常见用法）；图片不计入上面的文本预算（5.9 单列）
+    content: input.image
+      ? [{ kind: 'image', dataUrl: input.image.dataUrl }, ...text(userText)]
+      : text(userText),
+  });
 
   const pageUsed = sent.length > 0 && page !== undefined;
   const plan: RequestContextPlan = {
@@ -552,7 +572,7 @@ export function assembleAsk(input: AskInput): AskAssembly {
     droppedHistoryTurns: dropped,
     historyHasPageText: history.some((t) => t.hasPageText),
     removedEarlierPageText: stripped || (input.previousFullPage === true && fullPageMsg === undefined),
-    imageCount: 0,
+    imageCount: input.image ? 1 : 0,
     budget,
     estimatedInputTokens: total,
     notes,

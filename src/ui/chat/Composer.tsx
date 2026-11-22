@@ -6,9 +6,10 @@ import type { Ref } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import type { ContextTier, ThinkingLevel } from '@/core/context/plan';
 import type { Connection, ModelRef } from '@/core/llm/adapter';
-import { type QuoteView, shouldSendOnEnter } from '../float/state';
-import type { ThinkingControlMode } from '../model/options';
+import { type CaptureView, type QuoteView, shouldSendOnEnter } from '../float/state';
+import { capabilitiesFor, type ThinkingControlMode } from '../model/options';
 import { T } from '../strings';
+import { CaptureButton, CapturePreview } from './CaptureParts';
 import { IconClose } from './Icons';
 import { ModelPicker } from './ModelPicker';
 
@@ -44,6 +45,10 @@ export interface ComposerProps {
   /** 所有连接（模型下拉按连接分组列出用户勾选的常用模型） */
   connections: readonly Connection[];
   onModel: (model: ModelRef | null) => void;
+  /** 框选截图（capture 块）：待确认的截图、去掉它、「截图」按钮。不给 onCapture 就不显示按钮 */
+  capture?: CaptureView | null;
+  onDismissCapture?: () => void;
+  onCapture?: () => void;
 }
 
 export function Composer(p: ComposerProps) {
@@ -94,6 +99,13 @@ export function Composer(p: ComposerProps) {
               <IconClose />
             </button>
           </div>
+        )}
+        {p.capture && (
+          <CapturePreview
+            capture={p.capture}
+            vision={capabilitiesFor(p.connections, p.model)?.vision ?? null}
+            onDismiss={p.onDismissCapture}
+          />
         )}
         <textarea
           ref={setRef}
@@ -169,6 +181,7 @@ export function Composer(p: ComposerProps) {
             defaultModel={p.defaultModel}
             onChange={p.onModel}
           />
+          {p.onCapture && <CaptureButton onClick={p.onCapture} disabled={p.generating} />}
         </div>
       </div>
     </div>
