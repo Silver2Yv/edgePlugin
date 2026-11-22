@@ -11,6 +11,7 @@ import {
   lastLineRect,
   readonlyInputRect,
   type SelectionDecision,
+  selectionTop,
 } from './selection-policy';
 import { createToolbar, needsLongConfirm, type ToolbarHost } from './toolbar';
 
@@ -153,11 +154,11 @@ export function startSentinel(): void {
     void browser.runtime.sendMessage(msg);
   }
 
-  function showFor(decision: SelectionDecision, rect: DOMRect): void {
+  function showFor(decision: SelectionDecision, rect: DOMRect, anchorTop: number): void {
     sendSelectionReady(decision);
     if (liveEnabled) sendLiveSelection();
     setLastSelectionRect(rect, selectionRevision);
-    getToolbar().show(rect, toolbarActions, decision.inCode);
+    getToolbar().show(rect, toolbarActions, decision.inCode, anchorTop);
   }
 
   function onSelectionChange(pointer?: { x: number; y: number }): void {
@@ -180,14 +181,17 @@ export function startSentinel(): void {
       clearSelection();
       return;
     }
+    // 整个选区的上沿（A5）：翻到上方时贴着它，不贴最后一行，免得盖住多行选区前面几行；
+    // 只读输入框用的是松开鼠标处拼出来的矩形，没有「选区第一行」的概念，直接用这个矩形自己的上沿
+    const anchorTop = (decision.readonlyInput ? null : selectionTop(sel)) ?? rect.top;
     if (isTop) {
       // 不等配置到了再弹，先用已知的列表（出厂默认或上次问到的）；配置到了存起来，下次选中生效
       void ensureConfig();
-      showFor(decision, rect);
+      showFor(decision, rect, anchorTop);
       return;
     }
     void ensureConfig().then((c) => {
-      if (c?.siteLevel === 'normal') showFor(decision, rect);
+      if (c?.siteLevel === 'normal') showFor(decision, rect, anchorTop);
     });
   }
 

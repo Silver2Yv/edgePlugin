@@ -497,6 +497,47 @@ test('生成中继续阅读与划词不被打断', async ({ page, serviceWorker,
   await expect(frame.getByTestId('job-state').last()).toHaveText('completed', { timeout: 15_000 });
 });
 
+/** 存储里 job:* 记录的状态，仅取 state（收起小窗后没有界面可看，只能读存储确认后台还在跑） */
+const sessionJobStates = (sw: Worker) =>
+  sw.evaluate(async () => {
+    const all = await chrome.storage.session.get(null);
+    return Object.entries(all)
+      .filter(([k]) => k.startsWith('job:'))
+      .map(([, v]) => (v as { state: string }).state);
+  });
+
+test('小窗在生成中收起：后台继续把回答生成完，再次呼出能看到完整内容（验收第 6 条）', async ({
+  page,
+  serviceWorker,
+  context,
+}) => {
+  await setup(page, serviceWorker, 'markdown');
+  const cdp = await context.newCDPSession(page);
+  const frame = await selectAndOpenFloat(page, cdp);
+  await askInFloat(frame, '渲染一下这份文档');
+  await expect(frame.getByTestId('job-state').last()).toHaveText('streaming', { timeout: 5_000 });
+
+  // 生成中收起（点网页别处）：小窗隐藏，但这是任务归后台所有，收起不影响任务继续跑
+  await page.mouse.click(5, 5);
+  await expect.poll(() => openPopovers(page)).toBe(0);
+  await expect.poll(() => floatHostOpen(page)).toBe(false);
+
+  // 后台把回答生成完（没有界面订阅，只能从存储确认）
+  await expect
+    .poll(() => sessionJobStates(serviceWorker), { message: '后台任务生成完成', timeout: 15_000 })
+    .toContain('completed');
+
+  // 再次选中同一段文字点「问」：小窗重新打开，看到完整回答
+  await selectAndOpenFloat(page, cdp);
+  await cdp.detach();
+  await expect(frame.getByTestId('job-state').last()).toHaveText('completed', { timeout: 5_000 });
+  await expect(frame.getByTestId('answer').last()).toContainText('正文结束');
+
+  // 中转站只收到这一次请求（收起再打开没有重新发请求）
+  const log = (await (await fetch(`${relay.url}/__log`)).json()) as { path: string }[];
+  expect(log.filter((e) => e.path.endsWith('/chat/completions'))).toHaveLength(1);
+});
+
 test('宿主打开原生模态 <dialog> 时小窗是否可交互（照实记录）', async ({ page, serviceWorker, context }) => {
   await setup(page, serviceWorker);
   const cdp = await context.newCDPSession(page);

@@ -148,7 +148,9 @@ describe('动作提示词（I1、A3、I6、A6）', () => {
     expect(summary.userText.endsWith('总结本页')).toBe(true);
     expect(textOf(summary.messages[0] as (typeof summary.messages)[number])).toContain('一句话结论');
     // 验收第 8 条：章节脉络带可点击的章节锚点（每节标注标题所在的资料编号）
-    expect(textOf(summary.messages[0] as (typeof summary.messages)[number])).toContain('该节标题所在的资料编号');
+    expect(textOf(summary.messages[0] as (typeof summary.messages)[number])).toContain(
+      '该节标题所在的资料编号',
+    );
     const key = run('keyPoints');
     expect(key.userText.endsWith('提取要点')).toBe(true);
     expect(textOf(key.messages[0] as (typeof key.messages)[number])).toContain('只输出要点列表');
@@ -219,6 +221,67 @@ describe('页面级动作的读取预算与覆盖说明（D9、AR-21）', () => 
     expect(a.plan.sentBlockIds.length).toBeLessThan(bigBlocks.length);
     expect(a.plan.notes.some((n) => /^本次读取全文的 \d+%，约 /.test(n))).toBe(true);
     expect(a.plan.estimatedInputTokens).toBeLessThanOrEqual(a.plan.budget.speedSoftBudget);
+  });
+});
+
+describe('实体回指的「只出现一次」提示（D5、5.6，验收第 3 条）', () => {
+  const SELECTION_TEXT = '光合作用在 2024 年有了新的发现。';
+  // 选区块（b6）前后各填 4 段无关内容：nearby 默认只往两侧各扩 3 个单元（NEARBY_UNITS），
+  // 第二次提及放在第 11 块，超出默认 nearby 范围，这样命中与否就能看出是不是靠实体回指并入的，
+  // 而不是本来就在 nearby 范围内
+  function entityPage(secondMention: boolean): AskPage {
+    const filler = (n: number): Block => ({
+      id: `b${n}`,
+      kind: 'paragraph',
+      text: `第 ${n} 段，与本例无关的填充内容。`,
+      headingPath: [],
+      frameId: 0,
+    });
+    const blocks: Block[] = [
+      { id: 'b1', kind: 'heading', level: 1, text: '标题一', headingPath: [], frameId: 0 },
+      filler(2),
+      filler(3),
+      filler(4),
+      filler(5),
+      { id: 'b6', kind: 'paragraph', text: SELECTION_TEXT, headingPath: ['标题一'], frameId: 0 },
+      filler(7),
+      filler(8),
+      filler(9),
+      filler(10),
+      {
+        id: 'b11',
+        kind: 'paragraph',
+        text: secondMention ? '2024 年的这项发现引发了后续讨论。' : '最后一段与前面的内容无关。',
+        headingPath: ['标题一'],
+        frameId: 0,
+      },
+    ];
+    return makePage({ blocks, textLength: blocks.reduce((n, b) => n + [...b.text].length, 0) });
+  }
+
+  it('带上下文（nearby）档、选区里的实体全页只出现一次时，提示可切换全文', () => {
+    const a = assembleAsk({
+      ...base,
+      selection: { text: SELECTION_TEXT, truncated: false, originalLength: SELECTION_TEXT.length },
+      requestedContextTier: 'nearby',
+      selectionBlockIds: ['b6'],
+      page: entityPage(false),
+    });
+    expect(a.plan.notes).toContain('『2024』在页面中只出现一次，答案可能在别处；可切换全文');
+    expect(a.plan.sentBlockIds).not.toContain('b11');
+  });
+
+  it('同一实体在全页别处也出现时，不提示「只出现一次」（改为并入那处提及）', () => {
+    const a = assembleAsk({
+      ...base,
+      selection: { text: SELECTION_TEXT, truncated: false, originalLength: SELECTION_TEXT.length },
+      requestedContextTier: 'nearby',
+      selectionBlockIds: ['b6'],
+      page: entityPage(true),
+    });
+    expect(a.plan.notes).not.toContain('『2024』在页面中只出现一次，答案可能在别处；可切换全文');
+    expect(a.plan.notes.some((n) => n.includes('命中 1 处提及'))).toBe(true);
+    expect(a.plan.sentBlockIds).toContain('b11');
   });
 });
 

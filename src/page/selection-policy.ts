@@ -90,6 +90,19 @@ export function lastLineRect(sel: Selection): DOMRect | null {
 }
 
 /**
+ * 选区第一行的顶边（A5）：工具栏翻到上方时要贴着整个选区的上沿，不能按最后一行算——
+ * 多行选区的最后一行贴近视口底部时，按最后一行翻上去会盖住选区前面几行。取不到时返回 null。
+ */
+export function selectionTop(sel: Selection): number | null {
+  if (sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  const rects = range.getClientRects();
+  if (rects.length > 0) return rects[0]?.top ?? null;
+  const fallback = range.getBoundingClientRect();
+  return fallback.width > 0 || fallback.height > 0 ? fallback.top : null;
+}
+
+/**
  * 只读输入框拿不到文字矩形时的定位（A1、5.2）：有松开鼠标的位置就用它（当作一行高的矩形），
  * 键盘选择时用输入框自身矩形的左下角
  */
