@@ -51,7 +51,7 @@ import type {
   StreamEvent,
   Usage,
 } from '@/core/llm/adapter';
-import { type AskTurn, assembleAsk } from '@/core/prompt/ask';
+import { type AskTurn, assembleAsk, resolveActionDef } from '@/core/prompt/ask';
 import type { DbWrites } from '@/platform/conv-db';
 import type { BackgroundDeps } from './deps';
 import type { Hub } from './hub';
@@ -643,10 +643,12 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
       selection = await store.getSelection(tabId);
       if (selection?.selectionRevision !== msg.selectionRevision) return { reason: 'invalid' };
     }
-    if (!selection && msg.text.trim() === '') return { reason: 'invalid' };
-
     const loaded = await deps.loadSettings();
     if (!loaded.ok) return { reason: 'invalid' };
+    // 没有选区也没有问题文字：只有不需要输入的动作（解释、总结本页等，问题由装配补默认值）才能这样发
+    const needsInput =
+      resolveActionDef(msg.actionId as ActionId, loaded.settings.customActions)?.needsInput ?? true;
+    if (!selection && msg.text.trim() === '' && needsInput) return { reason: 'invalid' };
     const tabUrl = await deps.getTabUrl?.(tabId).catch(() => undefined);
     const pageKey = tabUrl === undefined ? undefined : toPageKey(tabUrl);
     const settings = loaded.settings;

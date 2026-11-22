@@ -42,6 +42,25 @@ describe('conv/ask', () => {
     expect([...h.session.data.keys()].some((k) => k.startsWith('job:'))).toBe(false);
   });
 
+  it('没有选区也没有问题：「问」拒绝；不需要输入的动作（总结本页）照常接单', async () => {
+    const h = makeHarness();
+    const c = await readyFloat(h);
+    c.send(askMsg({ selectionRevision: undefined, text: '' }));
+    await until(() => c.ofType('conv/rejected').length === 1);
+    expect(c.ofType('conv/rejected')[0]).toMatchObject({ reason: 'invalid' });
+    expect(h.fetches).toHaveLength(0);
+    c.send(
+      askMsg({
+        clientRequestId: 'req-00000002',
+        selectionRevision: undefined,
+        text: '',
+        actionId: 'summarizePage',
+      }),
+    );
+    await until(() => h.fetches.length === 1, 'fetch');
+    expect(c.ofType('conv/accepted')).toHaveLength(1);
+  });
+
   it('先写 storage.session 再发请求；接单、计划、增量（seq 递增）、完成', async () => {
     const h = makeHarness();
     const { c, call } = await asked(h);
