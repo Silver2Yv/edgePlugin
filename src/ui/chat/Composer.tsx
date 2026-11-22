@@ -54,12 +54,18 @@ export interface ComposerProps {
 export function Composer(p: ComposerProps) {
   const localRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // 输入框跟着内容长高，到上限后内部滚动（上限在样式里）；清空后回到最小高度
+  // 输入框跟着内容长高，到上限后内部滚动（上限在样式里）；清空后回到最小高度。
+  // 宽度变了也重算：侧边栏刚打开时页面先按 0 宽排版，占位文字折成很多行，不重算就一直撑着最大高度
   useLayoutEffect(() => {
     const el = localRef.current;
     if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
+    const fitHeight = () => {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    };
+    fitHeight();
+    window.addEventListener('resize', fitHeight);
+    return () => window.removeEventListener('resize', fitHeight);
   }, [p.value]);
 
   const setRef = (el: HTMLTextAreaElement | null) => {

@@ -249,7 +249,7 @@ export async function askInFloat(frame: Frame, r: Relay, question: string, opts:
 
 /** 三击选中整段 → 点「问」→ 返回小窗 */
 export async function selectAndOpen(page: Page, selector: string): Promise<Frame> {
-  await page.locator(selector).click({ clickCount: 3 });
+  await tripleClick(page, selector);
   await clickAsk(page);
   return floatFrame(page);
 }
