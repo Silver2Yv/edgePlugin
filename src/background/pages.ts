@@ -3,16 +3,19 @@
 // documentId、块的 frameId 取自 sender，pageKey 与 url 取自标签页当前地址（浏览器给的，与 sender 同源），一律不信消息体）。
 // 缓存按标签页存最近一份，按 contentVersion 失效：每次使用前都让阅读器重新抽取核对，指纹没变才回 page/docUnchanged。
 // 「不读取」站点不抽取、不缓存，并清掉该标签页的旧缓存；策略变更时整体清空（4.1「旧缓存标记失效」）。
+// 子框架（D10）：顶层读完后，再探测所有框架、按站点矩阵与尺寸挑出要读的并行读取，并在顶层块之后、整页重新编号
+// （合并见 core/context/frame-merge.ts）；每个框架的消息同样按 sender 核对并盖章 frameId。缓存只存顶层那份。
 // 选区所在块：阅读器在同一次读取里先发 selection/anchored；版本对得上直接用块号，对不上用锚点重新定位，
 // 定位不了就不猜（不把旧锚点套到无关的新文档上，V-06）。
 import { type Anchor, matchAnchor } from '@/core/anchor/anchor';
 import { contentVersionOf } from '@/core/context/content-version';
-import type { Block, PageDoc } from '@/core/context/page-doc';
+import { type FrameContent, mergeFrameDocs, selectReadableFrames } from '@/core/context/frame-merge';
+import type { Block, PageDoc, PageNote } from '@/core/context/page-doc';
 import { toPageKey } from '@/core/context/page-key';
 import type { ContextTier } from '@/core/context/plan';
 import { type ContentToBackground, pageDocSchema, type RejectReason } from '@/core/domain/messages';
 import type { Settings } from '@/core/domain/settings';
-import { type SiteLevel, siteLevelForUrl } from '@/core/domain/site-policy';
+import { type SiteLevel, type SiteRule, siteLevelForUrl } from '@/core/domain/site-policy';
 import type { AskPage } from '@/core/prompt/ask';
 import type { BackgroundDeps } from './deps';
 import type { StoredSelection } from './store';
@@ -42,6 +45,8 @@ interface Cached {
 
 interface PendingRead {
   tabId: number;
+  /** 这次读取的框架：顶层为 0，子框架读取（D10）为探测到的框架编号 */
+  frameId: number;
   documentId: string;
   known: Cached | undefined;
   parts: (string | undefined)[];
@@ -54,6 +59,8 @@ type ReadResult =
 
 interface AnchoredSel {
   revision: number;
+  /** 发锚点的框架（D10：子框架里的选区也有锚点） */
+  frameId: number;
   documentId: string | undefined;
   contentVersion: string | undefined;
   anchor: Anchor;
@@ -73,7 +80,7 @@ export interface PageContext {
 }
 
 const NOTE = {
-  subframe: '选区在子框架里，没有读取页面正文',
+  subframeNotRead: '选区所在的内嵌页面没有被读取（站点规则不允许、太小或读取失败），没有按选区取前后段落',
   inject: '这个页面不允许读取（浏览器内部页面或拒绝注入），只发送了选中文字',
   timeout: '页面读取超时，只发送了选中文字',
   failed: '页面读取失败，只发送了选中文字',
@@ -115,10 +122,11 @@ export function createPages(deps: BackgroundDeps) {
     }
   }
 
-  /** 校验 sender 与这次读取的对象一致（规则 7）：标签页、顶层框架、文档都要对上 */
+  /** 校验 sender 与这次读取的对象一致（规则 7）：标签页、框架、文档都要对上 */
   function pendingFor(readId: string, s: PageSender): PendingRead | undefined {
     const p = reads.get(readId);
-    if (!p || p.tabId !== s.tabId || s.frameId !== 0 || s.documentId !== p.documentId) return undefined;
+    if (!p || p.tabId !== s.tabId || s.frameId !== p.frameId || s.documentId !== p.documentId)
+      return undefined;
     return p;
   }
 
@@ -128,7 +136,12 @@ export function createPages(deps: BackgroundDeps) {
     return { ...doc, pageKey, url: s.url, documentId: s.documentId };
   }
 
-  function read(tabId: number, documentId: string, known: Cached | undefined): Promise<ReadResult> {
+  function read(
+    tabId: number,
+    frameId: number,
+    documentId: string,
+    known: Cached | undefined,
+  ): Promise<ReadResult> {
     const readId = deps.newId();
     return new Promise((resolve) => {
       const timer = setTimeout(() => finish({ ok: false, error: 'timeout' }), READ_TIMEOUT_MS);
@@ -144,9 +157,9 @@ export function createPages(deps: BackgroundDeps) {
         );
         resolve(r);
       }
-      reads.set(readId, { tabId, documentId, known, parts: [], finish });
+      reads.set(readId, { tabId, frameId, documentId, known, parts: [], finish });
       deps
-        .sendToFrame(tabId, 0, documentId, {
+        .sendToFrame(tabId, frameId, documentId, {
           type: 'page/read',
           readId,
           ...(known ? { knownContentVersion: known.doc.contentVersion } : {}),
@@ -161,18 +174,28 @@ export function createPages(deps: BackgroundDeps) {
     doc: PageDoc,
     sel: StoredSelection,
     notes: string[],
+    /** 这次读到的各框架当前文档（顶层与读成的子框架）；选区所在文档不在其中说明那个框架没读或已换页 */
+    frameDocIds: ReadonlyMap<number, string>,
+    /** 顶层文档自己的内容指纹（合并子框架之前）：顶层选区的块号沿用只看它，子框架的块在合并时已重新编号 */
+    topVersion: string,
   ): readonly string[] {
-    if (sel.frameId !== 0) return [];
-    if (sel.documentId !== undefined && sel.documentId !== doc.documentId) {
-      notes.push(NOTE.staleSelection);
+    const expectedDocId = frameDocIds.get(sel.frameId);
+    if (sel.documentId !== undefined && sel.documentId !== expectedDocId) {
+      notes.push(sel.frameId === 0 ? NOTE.staleSelection : NOTE.subframeNotRead);
       return [];
     }
     const a = anchors.get(tabId);
     // 锚点取自读取那一刻网页上的选区；网页脚本可能已改写了选中的那段（修订号没变），
     // 锚点文字不在点「问」时存下的选区文字里，就不信它（V-06：不把旧选区套到改过的内容上）
     const fits = a !== undefined && normalize(sel.text).includes(normalize(a.anchor.exact));
-    if (a && fits && a.revision === sel.selectionRevision && a.documentId === doc.documentId) {
-      if (a.contentVersion === doc.contentVersion) {
+    if (
+      a &&
+      fits &&
+      a.revision === sel.selectionRevision &&
+      a.frameId === sel.frameId &&
+      a.documentId === expectedDocId
+    ) {
+      if (sel.frameId === 0 && a.contentVersion === topVersion) {
         const known = new Set(doc.blocks.map((b) => b.id));
         const ids = a.blockIds.filter((id) => known.has(id));
         if (ids.length > 0) return ids;
@@ -187,11 +210,64 @@ export function createPages(deps: BackgroundDeps) {
     return found.ids;
   }
 
-  /** 注入阅读器、读取、核对地址、缓存、定位选区；结果写进 ctx */
+  /**
+   * 子框架正文（D10）：一次性探测所有框架 → 按站点矩阵与尺寸挑出要读的 → 只对它们注入子框架阅读器并行读取。
+   * 每个框架读不到都只是跳过并在 notes 里说明，不影响顶层与其他框架。子框架每次都重新读，不进缓存
+   * （顶层的「未变」捷径照旧；合并后的指纹仍会随子框架内容变化）
+   */
+  async function readSubframes(
+    tabId: number,
+    topUrl: string | undefined,
+    rules: readonly SiteRule[],
+  ): Promise<{ contents: FrameContent[]; frameDocIds: Map<number, string>; notes: PageNote[] }> {
+    const none = { contents: [], frameDocIds: new Map<number, string>(), notes: [] as PageNote[] };
+    if (!deps.probeSubframes || !deps.injectSubframeReader) return none;
+    const inject = deps.injectSubframeReader;
+    let probes: Awaited<ReturnType<NonNullable<BackgroundDeps['probeSubframes']>>>;
+    try {
+      probes = await Promise.race([
+        deps.probeSubframes(tabId),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), READ_TIMEOUT_MS)),
+      ]);
+    } catch {
+      deps.log('page/read', { result: 'probeFailed' });
+      return none;
+    }
+    const { readable, notes } = selectReadableFrames(topUrl, probes, rules);
+    let failed = 0;
+    const docs = await Promise.all(
+      readable.map(async (f) => {
+        const doc = probes.find((p) => p.frameId === f.frameId);
+        if (!doc) return undefined;
+        try {
+          await inject(tabId, f.frameId);
+        } catch {
+          failed++;
+          return undefined;
+        }
+        const r = await read(tabId, f.frameId, doc.documentId, undefined);
+        if (!r.ok) failed++;
+        return r.ok ? r.doc : undefined;
+      }),
+    );
+    if (failed > 0) notes.push({ kind: 'frameSkipped', detail: `${failed} 个内嵌页面读取失败，未读取` });
+    const frameDocIds = new Map<number, string>();
+    const contents: FrameContent[] = [];
+    readable.forEach((f, i) => {
+      const d = docs[i];
+      if (!d) return;
+      frameDocIds.set(f.frameId, d.documentId);
+      if (d.blocks.length > 0) contents.push({ title: d.title, blocks: d.blocks });
+    });
+    return { contents, frameDocIds, notes };
+  }
+
+  /** 注入阅读器、读取、核对地址、缓存、定位选区；结果写进 ctx。子框架正文并在顶层之后（D10） */
   async function readInto(
     ctx: PageContext,
     tabId: number,
     selection: StoredSelection | undefined,
+    rules: readonly SiteRule[],
   ): Promise<void> {
     const { topUrl } = ctx;
     let documentId: string;
@@ -203,11 +279,12 @@ export function createPages(deps: BackgroundDeps) {
     }
     const cached = cache.get(tabId);
     const known = cached?.doc.documentId === documentId ? cached : undefined;
-    const r = await read(tabId, documentId, known);
+    const r = await read(tabId, 0, documentId, known);
     if (!r.ok) {
       ctx.notes.push(r.error === 'timeout' ? NOTE.timeout : NOTE.failed);
       return;
     }
+    const sub = await readSubframes(tabId, topUrl, rules);
     // 地址以标签页为准（V-06 实测：hash 路由、pushState 之后 sender.url 仍是文档创建时的地址，
     // 而标签页地址跟着变）。读取前后标签页地址必须一致、且与 sender 同源，否则说明读取期间换了页，不用这份正文
     const afterUrl = deps.getTabUrl ? await deps.getTabUrl(tabId).catch(() => undefined) : r.doc.url;
@@ -222,9 +299,11 @@ export function createPages(deps: BackgroundDeps) {
       ctx.notes.push(NOTE.navigated);
       return;
     }
-    const doc: PageDoc = { ...r.doc, url: docUrl, pageKey };
-    cache.set(tabId, { doc, bytes: r.bytes, at: deps.now() });
+    const topDoc: PageDoc = { ...r.doc, url: docUrl, pageKey };
+    // 缓存只存顶层自己的那份（「未变」捷径按顶层判断）；发给模型的是合并了子框架之后的
+    cache.set(tabId, { doc: topDoc, bytes: r.bytes, at: deps.now() });
     evict();
+    const doc = mergeFrameDocs(topDoc, sub.contents, sub.notes);
     ctx.page = {
       pageKey: doc.pageKey,
       documentId: doc.documentId,
@@ -235,7 +314,17 @@ export function createPages(deps: BackgroundDeps) {
       notes: doc.notes,
       ...(doc.lang === undefined ? {} : { lang: doc.lang }),
     };
-    if (selection) ctx.selectionBlockIds = selectionBlocks(tabId, doc, selection, ctx.notes);
+    if (selection) {
+      const frameDocIds = new Map([[0, topDoc.documentId], ...sub.frameDocIds]);
+      ctx.selectionBlockIds = selectionBlocks(
+        tabId,
+        doc,
+        selection,
+        ctx.notes,
+        frameDocIds,
+        topDoc.contentVersion,
+      );
+    }
   }
 
   return {
@@ -296,11 +385,11 @@ export function createPages(deps: BackgroundDeps) {
       return undefined;
     },
 
-    /** 选区锚点只收顶层框架阅读器发的（阅读器只在顶层） */
+    /** 选区锚点：顶层阅读器与读取时注入的子框架阅读器都会发（D10）；记下发送框架，对不上选区所在框架的不采用 */
     onAnchored(msg: Anchored, s: PageSender): boolean {
-      if (s.frameId !== 0) return false;
       anchors.set(s.tabId, {
         revision: msg.selectionRevision,
+        frameId: s.frameId,
         documentId: s.documentId,
         contentVersion: msg.contentVersion,
         anchor: msg.anchor,
@@ -311,7 +400,7 @@ export function createPages(deps: BackgroundDeps) {
 
     /**
      * 发问前取页面上下文。tier 为 selection 时不读；站点「不读取」时不注入、不抽取、清掉该页旧缓存；
-     * 选区在子框架里时不读（顶层正文不是选区所在的文档，且不知道框架来源的策略）
+     * 选区在子框架里照常读（D10）：读成了的子框架并进页面，选区所在块在合并后的页面里找
      */
     async prepare(
       tabId: number,
@@ -329,13 +418,9 @@ export function createPages(deps: BackgroundDeps) {
         return ctx;
       }
       if (tier === 'selection') return ctx;
-      if (selection && selection.frameId !== 0) {
-        ctx.notes.push(NOTE.subframe);
-        return ctx;
-      }
       // 读取出任何意外都只当作没读成：这次只发选区，不让任务卡在已接单
       try {
-        await readInto(ctx, tabId, selection);
+        await readInto(ctx, tabId, selection, settings.sites);
       } catch (e) {
         deps.log('page/read', { result: 'error', error: e instanceof Error ? e.name : 'unknown' });
         delete ctx.page;
@@ -384,7 +469,7 @@ export function createPages(deps: BackgroundDeps) {
       if (level === 'noRead') return undefined;
       const ctx: PageContext = { selectionBlockIds: [], siteNoRead: false, topUrl, level, notes: [] };
       try {
-        await readInto(ctx, tabId, undefined);
+        await readInto(ctx, tabId, undefined, settings.sites);
       } catch {
         return undefined;
       }

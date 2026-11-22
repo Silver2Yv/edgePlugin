@@ -461,13 +461,16 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
     const now = deps.now();
     let snapshot: SnapshotRecord | undefined;
     if (plan && page && plan.sentBlockIds.length > 0) {
-      const byId = new Map(page.blocks.map((b) => [b.id, b.text]));
+      const byId = new Map(page.blocks.map((b) => [b.id, b]));
       snapshot = {
         id: a.contextSnapshotId,
         conversationId: job.record.conversationId,
         pageKey: page.pageKey,
         contentVersion: page.contentVersion,
-        blocks: plan.sentBlockIds.map((id) => ({ id, text: byId.get(id) ?? '' })),
+        blocks: plan.sentBlockIds.map((id) => {
+          const b = byId.get(id);
+          return { id, text: b?.text ?? '', ...(b && b.frameId !== 0 ? { frameId: b.frameId } : {}) };
+        }),
         refCount: 0,
         expiresAt: now + SNAPSHOT_TTL_MS,
       };

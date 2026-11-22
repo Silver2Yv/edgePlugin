@@ -117,7 +117,8 @@ export interface SnapshotRecord {
   conversationId: ConversationId;
   pageKey?: PageKey;
   contentVersion?: ContentVersion;
-  blocks: readonly { id: BlockId; text: string }[];
+  /** frameId：块来自子框架时才有（D10），缺省表示顶层；引用跳回据此说明「在内嵌页面里」 */
+  blocks: readonly { id: BlockId; text: string; frameId?: number }[];
   /** 被收藏引用的次数；> 0 不随 7 天清理。过期后引用只能按引用原文定位 */
   refCount: number;
   expiresAt: number;
