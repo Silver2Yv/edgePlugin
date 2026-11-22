@@ -40,17 +40,73 @@ export interface PickResult<B> {
 
 const isUnit = (b: PickBlock) => b.kind !== 'heading';
 
-/** 从 [lo, hi] 往两侧各数 n 个上下文单元，返回扩展后的区间 */
-function widen(blocks: readonly PickBlock[], lo: number, hi: number, n: number): [number, number] {
+/**
+ * 上下文单元分组（5.6「列表项归入所属列表」）：连续的 listItem 块算同一个单元，其余非标题块各自一个单元。
+ * 标题记 -1（不计入任何单元）。修复 3（列表页粒度塌陷）把一个列表拆成多个 listItem 块后，靠这个分组
+ * 让「前后 3 段」的计数效果和「整组列表一个块」时一致：数到列表就把列表一次性记一个单元
+ */
+function unitGroupIds(blocks: readonly PickBlock[]): number[] {
+  const ids: number[] = [];
+  let cur = -1;
+  let prevListItem = false;
+  for (const b of blocks) {
+    if (!isUnit(b)) {
+      ids.push(-1);
+      prevListItem = false;
+      continue;
+    }
+    const isListItem = b.kind === 'listItem';
+    if (!(isListItem && prevListItem)) cur++;
+    ids.push(cur);
+    prevListItem = isListItem;
+  }
+  return ids;
+}
+
+/**
+ * 从 [lo, hi] 往两侧各数 n 个上下文单元，返回扩展后的区间。遇到一个单元横跨多个块（列表拆成的多个
+ * listItem）时，把这一组全部吞下去再判断是否已数满 n 个，不会在列表中间断开
+ */
+function widen(
+  blocks: readonly PickBlock[],
+  groupIds: readonly number[],
+  lo: number,
+  hi: number,
+  n: number,
+): [number, number] {
   let a = lo;
-  for (let units = 0, i = lo - 1; i >= 0 && units < n; i--) {
-    a = i;
-    if (isUnit(blocks[i] as PickBlock)) units++;
+  {
+    let count = 0;
+    let i = lo - 1;
+    while (i >= 0 && count < n) {
+      const g = groupIds[i] as number;
+      a = i;
+      if (g >= 0) {
+        count++;
+        while (i - 1 >= 0 && groupIds[i - 1] === g) {
+          i--;
+          a = i;
+        }
+      }
+      i--;
+    }
   }
   let b = hi;
-  for (let units = 0, i = hi + 1; i < blocks.length && units < n; i++) {
-    b = i;
-    if (isUnit(blocks[i] as PickBlock)) units++;
+  {
+    let count = 0;
+    let i = hi + 1;
+    while (i < blocks.length && count < n) {
+      const g = groupIds[i] as number;
+      b = i;
+      if (g >= 0) {
+        count++;
+        while (i + 1 < blocks.length && groupIds[i + 1] === g) {
+          i++;
+          b = i;
+        }
+      }
+      i++;
+    }
   }
   return [a, b];
 }
@@ -67,6 +123,7 @@ export function pickPageBlocks<B extends PickBlock>(input: PickInput<B>): PickRe
   const slice = (a: number, b: number) => blocks.slice(a, b + 1);
   if (blocks.length === 0 || maxTokens <= 0)
     return { blocks: [], truncated: blocks.length > 0, mode: 'none' };
+  const groupIds = unitGroupIds(blocks);
 
   const wanted = new Set(input.centerIds);
   const centers = blocks.flatMap((b, i) => (wanted.has(b.id) ? [i] : []));
@@ -77,7 +134,7 @@ export function pickPageBlocks<B extends PickBlock>(input: PickInput<B>): PickRe
 
   // 没有选区：从头截取（fullPage 按预算；nearby 只带开头 2n+1 个单元）
   if (centers.length === 0) {
-    let end = tier === 'nearby' ? widen(blocks, 0, 0, 2 * n)[1] : last;
+    let end = tier === 'nearby' ? widen(blocks, groupIds, 0, 0, 2 * n)[1] : last;
     const wantedEnd = end;
     let used = 0;
     let fit = -1;
@@ -105,7 +162,7 @@ export function pickPageBlocks<B extends PickBlock>(input: PickInput<B>): PickRe
   }
 
   if (tier === 'nearby') {
-    let [a, b] = widen(blocks, lo, hi, n);
+    let [a, b] = widen(blocks, groupIds, lo, hi, n);
     const full: [number, number] = [a, b];
     // 超预算：先去掉离中心更远的一侧
     while (sum(a, b) > maxTokens) {

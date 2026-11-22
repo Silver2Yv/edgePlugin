@@ -58,6 +58,18 @@ const LONG = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>长页面</title></head>
 <body><article><h1>长页面</h1>${LONG_PARAS.map((p, i) => `<p id="p${i + 1}">${p}</p>`).join('')}</article></body></html>`;
 
+/** 实体回指样本（D5）：第 15 段（选区）与第 5、25 段都提到同一个年份，相隔远超「前后 3 段」 */
+const ENTITY_YEAR = '1948';
+const ENTITY_PARAS = Array.from({ length: 30 }, (_, i) => {
+  if (i === 4) return `第${i + 1}段：多年以后回顾，仍会提到${ENTITY_YEAR}年发生的那次变化，细节占位占位占位。`;
+  if (i === 14) return `第${i + 1}段：这里提到了${ENTITY_YEAR}年的往事，具体经过是这样占位占位占位。`;
+  if (i === 24) return `第${i + 1}段：史料显示${ENTITY_YEAR}年前后局势出现了转折，占位占位占位占位。`;
+  return `第${i + 1}段：${'这是占位用的正文内容，'.repeat(6)}段末编号${i + 1}。`;
+});
+const ENTITY_PAGE = `<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>实体回指样本</title></head>
+<body><article><h1>实体回指样本</h1>${ENTITY_PARAS.map((p, i) => `<p id="ep${i + 1}">${p}</p>`).join('')}</article></body></html>`;
+
 const codePoints = (s: string) => [...s].length;
 
 /** 从请求正文重算估算的输入量：每条消息的文字各算一次再相加（与装配的口径一致） */
@@ -346,4 +358,31 @@ test('界面设置与请求一致：小窗按设置的长度档、回答语言�
   expect(sent).toEqual(plan.sentBlockIds);
   expect(sent.length).toBeGreaterThan(1);
   await expect((await floatFrame(page)).getByTestId('job-state')).toHaveText('completed');
+});
+
+test('实体回指（D5）：nearby 档的请求体里带上了远处提到同一年份的段落', async ({ page, serviceWorker }) => {
+  await writeSettings(serviceWorker, settingsWith(r));
+  await open(page, serviceWorker, ENTITY_PAGE);
+  const { res } = await selectAndConvAsk(page, serviceWorker, '#ep15', {
+    model,
+    text: '这段说的是什么',
+    contextTier: 'nearby',
+  });
+  expect(res.states.at(-1)).toBe('completed');
+  const body = parseBody(r.bodies[0]);
+  const plan = res.plan as Record<string, unknown> & {
+    sentBlockIds: string[];
+    entityBlockIds?: string[];
+    notes: string[];
+  };
+  const blocks = pageBlocksIn(body.messages.at(-1)?.content ?? '');
+  expect(blocks.map((b) => b.id)).toEqual(plan.sentBlockIds);
+  // 常规「前后 3 段」范围内没有第 5、25 段；它们是靠实体回指并入的
+  const texts = blocks.map((b) => b.text);
+  expect(texts.some((t) => t.includes('第15段'))).toBe(true);
+  expect(texts.some((t) => t.includes('第5段'))).toBe(true);
+  expect(texts.some((t) => t.includes('第25段'))).toBe(true);
+  expect(texts.filter((t) => t.includes(ENTITY_YEAR))).toHaveLength(3);
+  expect(plan.entityBlockIds?.length).toBe(2);
+  expect(plan.notes.join()).toContain('命中 2 处提及');
 });

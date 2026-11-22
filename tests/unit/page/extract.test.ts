@@ -42,7 +42,7 @@ describe('extractPage', () => {
     expect(code).toContain('```ts\nconst a = 1;\n```');
   });
 
-  it('结构：标题链、表格与列表整体一块、公式取 LaTeX 源、折叠区照读', async () => {
+  it('结构：标题链、表格整体一块、列表逐项成块、公式取 LaTeX 源、折叠区照读', async () => {
     document.body.innerHTML = PAGE;
     const { report } = await extractPage(document);
     const by = (kind: string) => report.blocks.filter((b) => b.kind === kind);
@@ -50,7 +50,7 @@ describe('extractPage', () => {
     const second = report.blocks.find((b) => b.text.startsWith('第二段'));
     expect(second?.headingPath).toEqual(['标题甲', '小节乙']);
     expect(by('table')[0]?.text).toBe('| 名 | 值 |\n| --- | --- |\n| 甲 | 1 |');
-    expect(by('listItem')[0]?.text).toBe('- 列表一\n- 列表二');
+    expect(by('listItem').map((b) => b.text)).toEqual(['- 列表一', '- 列表二']);
     expect(by('math')[0]?.text).toBe('$$\nE = mc^2\n$$');
     expect(report.blocks.some((b) => b.text.includes('折叠区里的正文'))).toBe(true);
     expect(report.notes.some((n) => n.kind === 'visibilityUncertain')).toBe(true);
@@ -71,5 +71,49 @@ describe('extractPage', () => {
     document.body.innerHTML = PAGE.replace('第二段正文', '第二段正义');
     const b = (await extractPage(document)).report.contentVersion;
     expect(a).not.toBe(b);
+  });
+
+  it('列表拆成多块后每项都能单独定位（修复 3：避免整组列表变成一个不可拆分的大块）', async () => {
+    document.body.innerHTML = `<main><h1>清单</h1><ul>${Array.from(
+      { length: 5 },
+      (_, i) => `<li>第 ${i + 1} 项，足够长的一项内容用来撑起正文占比。</li>`,
+    ).join('')}</ul></main>`;
+    const { report, elements } = await extractPage(document);
+    const items = report.blocks.filter((b) => b.kind === 'listItem');
+    expect(items.map((b) => b.text)).toEqual([
+      '- 第 1 项，足够长的一项内容用来撑起正文占比。',
+      '- 第 2 项，足够长的一项内容用来撑起正文占比。',
+      '- 第 3 项，足够长的一项内容用来撑起正文占比。',
+      '- 第 4 项，足够长的一项内容用来撑起正文占比。',
+      '- 第 5 项，足够长的一项内容用来撑起正文占比。',
+    ]);
+    // 每项各自映射到自己的 <li>，不是全部映射到同一个 <ul>
+    const mapped = new Set(items.map((b) => elements.get(b.id)));
+    expect(mapped.size).toBe(items.length);
+  });
+
+  it('候选根节点密度打分选中一个紧凑的小容器，但正文占比太低：退回整页文本（修复 1），而不是只读到那一小块', async () => {
+    const navLinks = Array.from(
+      { length: 40 },
+      (_, i) => `<a href="/x${i}">链接正文占位字符数文本第${i}条</a>`,
+    ).join('');
+    document.body.innerHTML = `
+      <div>${'这是导航区里掺杂的说明文字。'.repeat(8)}${navLinks}</div>
+      <div><p>${'紧凑小提示框里的文字。'.repeat(20)}</p><p>再补一段。</p><p>再补一段二。</p></div>
+    `;
+    const { report, rootMethod } = await extractPage(document);
+    expect(rootMethod).toBe('fallback-body');
+    expect(report.notes.some((n) => n.kind === 'fallbackBodyText')).toBe(true);
+    // 退回整页文本：导航区与小提示框的文字都读到了，不是只读了密度打分选中的那一小块
+    expect(report.blocks.some((b) => b.text.includes('导航区里掺杂的说明文字'))).toBe(true);
+    expect(report.blocks.some((b) => b.text.includes('紧凑小提示框里的文字'))).toBe(true);
+  });
+
+  it('正文几乎为零时（D15 失败兜底）不静默返回空结果，给出可操作的建议', async () => {
+    document.body.innerHTML = '<div id="canvas-app"></div>';
+    const { report } = await extractPage(document);
+    const note = report.notes.find((n) => n.kind === 'tooLittleText');
+    expect(note?.detail).toContain('框选');
+    expect(note?.detail).toContain('截图');
   });
 });

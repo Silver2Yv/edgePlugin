@@ -73,6 +73,10 @@ const MAX_BLOCKS = 20_000;
 /** 文本密度候选的正文至少占整页可读文字的比例，低于它视为误选（修复 1） */
 const ROOT_MIN_SHARE = 0.3;
 const TOO_LITTLE_TEXT = 200;
+/** 正文几乎为零（D15 失败兜底）：已经退到 body 兜底仍几乎读不到字，给出下一步建议而不是静默返回空结果 */
+const NEARLY_EMPTY_TEXT = 40;
+const NEARLY_EMPTY_HINT =
+  '可能是画布 / 图片类页面，正文几乎无法读取；可以框选需要的内容截图提问（截图功能尚未上线）';
 const HEADING_PATH_CHARS = 200;
 
 export interface ExtractResult {
@@ -186,13 +190,17 @@ function serializeTable(table: Element): string {
   return lines.join('\n');
 }
 
-/** 列表整组一个块（上下文单元），每项一行 */
-function serializeList(list: Element): string {
-  const ordered = list.tagName === 'OL';
-  const items = [...list.children].filter((c) => c.tagName === 'LI');
-  return items
-    .map((li, i) => `${ordered ? `${i + 1}.` : '-'} ${rawText(li).trim().replace(/\s+/g, ' ')}`)
-    .join('\n');
+/**
+ * 列表项：每个 <li> 一个块（修复 3：列表页粒度塌陷）。整组列表仍是同一个上下文单元（5.6「列表项归入
+ * 所属列表」），只是不再把所有项挤成一个不可拆分的大块：块越细，预算放不下时能保留前面几项而不是整组都丢，
+ * 引用锚点也能精确指到某一项，而不是整个列表。isUnit/widen（select.ts）按「连续的 listItem 算一个单元」
+ * 把这些块收拢回「一个单元」，对「前后 3 段」的计数效果和原先一样
+ */
+function listItemsOf(list: Element): Element[] {
+  return [...list.children].filter((c) => c.tagName === 'LI');
+}
+function formatListItem(li: Element, index: number, ordered: boolean): string {
+  return `${ordered ? `${index + 1}.` : '-'} ${rawText(li).trim().replace(/\s+/g, ' ')}`;
 }
 
 function codeLang(el: Element): string | undefined {
@@ -375,8 +383,12 @@ export async function extractPage(doc: Document, opts: { sliceMs?: number } = {}
       if (text) trail.push({ level, text: text.slice(0, HEADING_PATH_CHARS) });
       continue;
     }
-    if (tag === 'UL' || tag === 'OL') push('listItem', el, serializeList(el));
-    else if (tag === 'TABLE') push('table', el, serializeTable(el));
+    if (tag === 'UL' || tag === 'OL') {
+      const ordered = tag === 'OL';
+      listItemsOf(el).forEach((li, i) => {
+        push('listItem', li, formatListItem(li, i, ordered));
+      });
+    } else if (tag === 'TABLE') push('table', el, serializeTable(el));
     else if (tag === 'PRE') {
       const lang = codeLang(el);
       push('code', el, fence(rawText(el), lang), lang ? { lang } : {});
@@ -425,7 +437,11 @@ export async function extractPage(doc: Document, opts: { sliceMs?: number } = {}
   const frames = doc.querySelectorAll('iframe, frame').length;
   if (frames > 0) notes.push({ kind: 'frameSkipped', detail: `${frames} 个` });
   if (method === 'fallback-body') notes.push({ kind: 'fallbackBodyText' });
-  if (textLength < TOO_LITTLE_TEXT) notes.push({ kind: 'tooLittleText' });
+  if (textLength < TOO_LITTLE_TEXT)
+    notes.push({
+      kind: 'tooLittleText',
+      ...(textLength < NEARLY_EMPTY_TEXT ? { detail: NEARLY_EMPTY_HINT } : {}),
+    });
   if (collapsedRead) notes.push({ kind: 'visibilityUncertain', detail: '含折叠区里的内容' });
   if (truncated) notes.push({ kind: 'truncated' });
 
