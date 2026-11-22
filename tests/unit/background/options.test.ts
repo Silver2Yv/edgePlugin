@@ -34,6 +34,7 @@ function makeDeps(overrides: Partial<BackgroundDeps> = {}): BackgroundDeps {
     loadSettings: async () => ({ ok: true, settings: structuredClone(DEFAULT_SETTINGS), migratedFrom: 1 }),
     injectReader: async () => 'doc',
     sendToFrame: async () => undefined,
+    broadcastToTab: async () => undefined,
     fetch: (url, init) => fetch(url, init),
     adapters: { chatCompletions: chatCompletionsAdapter },
     now: () => Date.now(),

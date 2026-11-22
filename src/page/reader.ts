@@ -2,13 +2,83 @@
 // 接小窗相关指令、网页提示（page/notice）与页面读取（page/read）；定位高亮、截图框选（4.2）这轮不做。
 // 不发网络请求，不持有对话内容。
 import { browser } from 'wxt/browser';
-import { backgroundToContent } from '@/core/domain/messages';
+import { backgroundToContent, type ContentToBackground } from '@/core/domain/messages';
 import { createFloatHost } from './float-host';
 import { attachFloatPort } from './float-port';
 import { createPageNotice } from './notice';
 import { createPageReader } from './page-read';
 
 const INJECTED = Symbol.for('readingAssistant.readerInjected');
+
+/** live（contract-v1.5，5.1/5.6）：正文有实质变化、或是换了路由（看 CLAUDE.md 哨兵以外没有 10 KB 门槛） */
+const CHANGE_DEBOUNCE_MS = 1500;
+/** 字数变化小于这个数不算「实质变化」——光标闪烁、小动画一般不改 DOM 文本量，不会碰到这条线 */
+const CHANGE_MIN_DELTA = 40;
+
+/**
+ * 页面变化观察器：只在小窗/侧边栏开着期间挂（start/stop 由后台的 live/toggle 驱动，与引用实时上报同一个开关）。
+ * 正文的 MutationObserver 节流后比较文本长度；SPA 换路由（pushState/replaceState/popstate/hashchange）
+ * 不比字数，直接当作「已变化」（跳转后内容多半还在异步加载，字数比较这时不可靠）。
+ * history.pushState/replaceState 的补丁只打一次、常驻；start/stop 只切 MutationObserver 与一个 active 开关，
+ * 界面都关了之后 popstate 等监听器仍挂着但 active 为假、什么都不做，不是这里要断开的那个「观察器」
+ */
+function createChangeWatcher(send: (msg: ContentToBackground) => unknown) {
+  let active = false;
+  let observer: MutationObserver | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let baseline = 0;
+
+  const notify = () => void send({ type: 'page/changed' });
+
+  function checkMutation(): void {
+    if (!active) return;
+    const len = document.body?.textContent?.length ?? 0;
+    if (Math.abs(len - baseline) >= CHANGE_MIN_DELTA) notify();
+    baseline = len;
+  }
+  function scheduleCheck(): void {
+    if (!active) return;
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(checkMutation, CHANGE_DEBOUNCE_MS);
+  }
+  function onNavigate(): void {
+    if (!active) return;
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+    baseline = document.body?.textContent?.length ?? 0;
+    notify();
+  }
+
+  const origPush = history.pushState.bind(history);
+  const origReplace = history.replaceState.bind(history);
+  history.pushState = (...args: Parameters<History['pushState']>) => {
+    origPush(...args);
+    onNavigate();
+  };
+  history.replaceState = (...args: Parameters<History['replaceState']>) => {
+    origReplace(...args);
+    onNavigate();
+  };
+  window.addEventListener('popstate', onNavigate);
+  window.addEventListener('hashchange', onNavigate);
+
+  return {
+    start(): void {
+      if (active) return;
+      active = true;
+      baseline = document.body?.textContent?.length ?? 0;
+      observer = new MutationObserver(scheduleCheck);
+      observer.observe(document.body, { childList: true, characterData: true, subtree: true });
+    },
+    stop(): void {
+      active = false;
+      observer?.disconnect();
+      observer = undefined;
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
+    },
+  };
+}
 
 export function startReader(): void {
   const g = globalThis as unknown as Record<symbol, boolean | undefined>;
@@ -45,6 +115,7 @@ export function startReader(): void {
   });
 
   const pageReader = createPageReader((msg) => browser.runtime.sendMessage(msg));
+  const changeWatcher = createChangeWatcher((msg) => browser.runtime.sendMessage(msg));
 
   browser.runtime.onMessage.addListener((raw, sender) => {
     // 只认来自后台的指令：sender.id 是本扩展，且没有 sender.tab（内容脚本发的消息都带 tab）
@@ -69,6 +140,10 @@ export function startReader(): void {
       case 'page/read':
         // 页面读取（5.6）：抽取在时间片里做，结果经 page/docPart / page/docUnchanged 回传
         void pageReader.read(r.value.readId, r.value.knownContentVersion).catch(() => undefined);
+        break;
+      case 'live/toggle':
+        if (r.value.enabled) changeWatcher.start();
+        else changeWatcher.stop();
         break;
       default:
         // page/locate、capture/* 这轮不实现

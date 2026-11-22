@@ -6,7 +6,12 @@ import type { ConvPort } from './deps';
 
 export type Hub = ReturnType<typeof createHub>;
 
-export function createHub() {
+/**
+ * onSubscriberChange（contract-v1.5 增量，live）：某标签页的订阅者数量在 0 与正数之间跨越时回调一次
+ * （重复订阅同一标签页、同一端口换标签页都只在真正跨越时触发）。调用方据此广播 live/toggle，
+ * 告诉这个标签页的哨兵开始/停止实时上报选中的文字（没人看着就不上报）
+ */
+export function createHub(onSubscriberChange?: (tabId: number, hasSubscribers: boolean) => void) {
   const byTab = new Map<number, Set<ConvPort>>();
   const panels = new Map<number, Set<ConvPort>>();
   /** 等某个窗口的侧边栏握手的回调（route.ts 的 panelOpenIn） */
@@ -14,8 +19,11 @@ export function createHub() {
 
   function unsubscribe(port: ConvPort): void {
     for (const [tabId, set] of byTab) {
-      set.delete(port);
-      if (set.size === 0) byTab.delete(tabId);
+      if (!set.delete(port)) continue;
+      if (set.size === 0) {
+        byTab.delete(tabId);
+        onSubscriberChange?.(tabId, false);
+      }
     }
   }
 
@@ -31,9 +39,12 @@ export function createHub() {
     post,
     unsubscribe,
     subscribe(tabId: number, port: ConvPort): void {
-      const set = byTab.get(tabId) ?? new Set<ConvPort>();
-      set.add(port);
-      byTab.set(tabId, set);
+      const set = byTab.get(tabId);
+      const hadNone = !set || set.size === 0;
+      const next = set ?? new Set<ConvPort>();
+      next.add(port);
+      byTab.set(tabId, next);
+      if (hadNone) onSubscriberChange?.(tabId, true);
     },
     hasSubscribers: (tabId: number) => (byTab.get(tabId)?.size ?? 0) > 0,
     toTab(tabId: number, msg: BackgroundToClient): void {

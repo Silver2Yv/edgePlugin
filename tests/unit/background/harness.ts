@@ -148,6 +148,8 @@ export function makeHarness(
     documentId: string;
     msg: { type: string; token?: string };
   }[] = [];
+  /** live（contract-v1.5）：broadcastToTab 的调用记录（live/toggle 用它发出） */
+  const broadcasts: { tabId: number; msg: { type: string; enabled?: boolean } }[] = [];
   const logs: { event: string; detail?: Record<string, unknown> }[] = [];
   let topDoc = TOP_DOC;
   let tabUrl: string | undefined = 'https://example.test/article';
@@ -181,6 +183,9 @@ export function makeHarness(
     sendToFrame: vi.fn(async (tabId, frameId, documentId, msg) => {
       if (documentId !== topDoc) throw new Error('No document');
       sent.push({ tabId, frameId, documentId, msg });
+    }),
+    broadcastToTab: vi.fn(async (tabId, msg) => {
+      broadcasts.push({ tabId, msg });
     }),
     fetch: vi.fn(async (url: string, init: RequestInit) => {
       const all = await session.get(null);
@@ -316,6 +321,7 @@ export function makeHarness(
     db,
     fetches,
     sent,
+    broadcasts,
     logs,
     injected,
     contentSender,
@@ -365,6 +371,16 @@ export const SELECTED = '光合作用把光能转成化学能。';
 export const click = (rev = 1, actionId = 'ask', text = SELECTED) => ({
   type: 'action/click',
   actionId,
+  selectionRevision: rev,
+  text,
+  truncated: false,
+  originalLength: [...text].length,
+  inCode: false,
+});
+
+/** live（contract-v1.5）：实时上报的选区，形状与 action/click 一致但没有 actionId */
+export const liveSelection = (rev = 1, text = SELECTED) => ({
+  type: 'selection/live',
   selectionRevision: rev,
   text,
   truncated: false,

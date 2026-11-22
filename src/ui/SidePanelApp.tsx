@@ -258,6 +258,11 @@ export function SidePanelApp() {
             {T.notice.newConversationStarted}
           </p>
         )}
+        {state.pageChanged && (
+          <p data-testid="page-changed-notice" className="ra-note">
+            {T.notice.pageChanged}
+          </p>
+        )}
       </div>
       <MessageList
         items={displayItems(state.messages, state.job)}

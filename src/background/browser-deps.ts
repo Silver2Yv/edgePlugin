@@ -87,6 +87,12 @@ export function browserDeps(): BackgroundDeps {
     sendToFrame: async (tabId, frameId, documentId, msg) => {
       await browser.tabs.sendMessage(tabId, msg, { frameId, documentId });
     },
+    // 不指定 frameId/documentId：每个框架的哨兵各自收到。没有内容脚本在听（标签页已关、还没注入）不算失败
+    broadcastToTab: (tabId, msg) =>
+      browser.tabs.sendMessage(tabId, msg).then(
+        () => undefined,
+        () => undefined,
+      ),
     fetch: (url, init) => fetch(url, init),
     adapters: { chatCompletions: chatCompletionsAdapter },
     now: () => Date.now(),

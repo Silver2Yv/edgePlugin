@@ -76,6 +76,11 @@ export interface BackgroundDeps {
   notifyPages(msg: BackgroundToPages): Promise<void>;
   /** 指令只发给指定框架的指定文档；文档已不在时失败 */
   sendToFrame(tabId: number, frameId: number, documentId: string, msg: BackgroundToContent): Promise<void>;
+  /**
+   * contract-v1.5 增量（live）：指令广播给这个标签页的所有框架（不指定 frameId/documentId），
+   * 每个框架的哨兵各自收到。标签页没有内容脚本在听时不算失败
+   */
+  broadcastToTab(tabId: number, msg: BackgroundToContent): Promise<void>;
   fetch(url: string, init: RequestInit): Promise<Response>;
   adapters: Partial<Record<InterfaceType, ModelAdapter>>;
   now(): number;

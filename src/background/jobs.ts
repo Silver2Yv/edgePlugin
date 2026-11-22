@@ -58,6 +58,7 @@ import type { BackgroundDeps } from './deps';
 import type { Hub } from './hub';
 import type { PageContext, Pages } from './pages';
 import { loadQuirks, recordQuirk } from './quirk-store';
+import { quotePreviewOf } from './quote';
 import type { Store, StoredSelection } from './store';
 
 type AskMsg = Extract<ClientToBackground, { type: 'conv/ask' }>;
@@ -1033,11 +1034,19 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
         ...(a.newConversation ? { newConversation: a.newConversation } : {}),
       });
       // 同一标签页的其他界面（小窗、侧边栏）随之显示这个任务；这是在任何增量之前发出的
+      const quotePreview = quotePreviewOf(selection);
       hub.toTab(tabId, {
         type: 'conv/current',
         conversationId: conv.record.id,
         jobId,
         messageId: record.messageId,
+        // live（contract-v1.5）：带上这一轮的问题与引用摘要，发问端口之外的订阅者据此显示这一轮的提问
+        userMessage: {
+          id: job.userMessage.id,
+          ordinal: job.userMessage.ordinal,
+          text: msg.text,
+          ...(quotePreview ? { quote: quotePreview } : {}),
+        },
       });
 
       // 页面上下文（5.6、5.9）：接单之后、发请求之前读取。读取期间站点策略变了（设置页改了黑名单），

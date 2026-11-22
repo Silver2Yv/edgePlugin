@@ -67,7 +67,7 @@ const floatHostRect = (page: Page) =>
 /** 本轮用户消息（请求里的最后一条） */
 const lastUserText = (body: string | undefined) => parseBody(body).messages.at(-1)?.content ?? '';
 
-test('图钉：钉住后点网页不收起，新选中的文字点「问」只换引用、小窗留在原处；取消钉住后点网页照常收起', async ({
+test('图钉：钉住后点网页不收起，新选中的文字自动换引用（不用再点「问」）、小窗留在原处；取消钉住后点网页照常收起', async ({
   page,
 }) => {
   await page.goto('https://e2e.test/article');
@@ -83,11 +83,10 @@ test('图钉：钉住后点网页不收起，新选中的文字点「问」只�
   await page.waitForTimeout(400);
   expect(await floatOpen(page)).toBe(true);
 
-  // 钉住时换一段选中再点「问」：引用直接换成新的，小窗不挪位置（B5）
+  // 钉住时换一段选中：不用再点「问」，live（D11、B5、验收第 2 条）让引用自动换成新的，小窗不挪位置
   const before = await floatHostRect(page);
   await page.locator('#p1').click({ clickCount: 3 });
-  await clickAsk(page);
-  await expect(frame.getByTestId('quote')).toContainText(FIRST);
+  await expect(frame.getByTestId('quote')).toContainText(FIRST, { timeout: 5_000 });
   expect(await floatOpen(page)).toBe(true);
   expect(await floatHostRect(page)).toEqual(before);
 
