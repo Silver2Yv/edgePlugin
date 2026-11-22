@@ -396,6 +396,10 @@ export async function selectAndConvAsk(
 ): Promise<{ frame: Frame; res: ConvResult }> {
   const tabId = await tabIdOf(sw, page);
   const before = (await selectionInfo(sw, tabId)).at ?? -1;
+  // 先滚到位、等两帧再三击：locator.click 自带的滚动产生的 scroll 事件若晚于 mouseup 才派发，
+  // 哨兵会把刚弹出的工具栏当作「滚动后消失」收起（A5），用例就等不到工具栏
+  await page.locator(selector).scrollIntoViewIfNeeded();
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   await page.locator(selector).click({ clickCount: 3 });
   await clickAsk(page);
   const frame = await floatFrame(page);
