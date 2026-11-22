@@ -1,0 +1,598 @@
+/*
+ * 小窗与侧边栏共用的样式变量与组件样式（J2 深色跟随系统、J5 精致风格）。不引第三方 UI 库。
+ * 视觉上参考了 SelectLingo 的做法（冷灰底色、蓝色强调、小圆角、轻阴影），变量与规则都是重写的，没有拷贝它的样式。
+ *
+ * 用法：FloatApp / SidePanelApp 引入本文件；回答正文的排版在 render/styles.css，同样只用这里的变量。
+ * 小窗的外壳（边框、拖动条）在网页文档里，读不到这些变量：改 --ra-bg / --ra-bg-sunken / --ra-border-strong
+ * 要同步 src/page/float-host.ts 的 SHELL_COLORS。
+ * 扩展页面的 CSP 是 img-src 'self'：样式里不能用 data: 图片，图标一律是 JSX 里的内联 SVG 或纯 CSS 画的。
+ */
+:root {
+  color-scheme: light dark;
+  --ra-font: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ra-font-mono: ui-monospace, "Cascadia Code", Consolas, Menlo, monospace;
+
+  --ra-bg: #ffffff;
+  --ra-bg-sunken: #f6f7fa;
+  --ra-surface: #ffffff;
+  --ra-surface-2: #f2f4f8;
+  --ra-hover: #e9edf4;
+  --ra-border: #e5e9f0;
+  --ra-border-strong: #d5dae3;
+  --ra-text: #1b2333;
+  --ra-text-2: #4d5870;
+  --ra-muted: #7f899d;
+  --ra-accent: #3559d6;
+  --ra-accent-solid: #3b63e6;
+  --ra-accent-solid-hover: #2f52c8;
+  --ra-accent-soft: #edf1fe;
+  --ra-accent-ring: rgba(59, 99, 230, 0.2);
+  --ra-on-accent: #ffffff;
+  --ra-danger: #c73535;
+  --ra-danger-soft: #fdeeee;
+  --ra-code-bg: #f4f6fa;
+  --ra-mark: #fff0a6;
+
+  --ra-radius-sm: 6px;
+  --ra-radius: 10px;
+  --ra-radius-pill: 999px;
+  --ra-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* 代码高亮（highlight.js 的类名） */
+  --ra-hl-keyword: #a626a4;
+  --ra-hl-string: #2f7d32;
+  --ra-hl-number: #b35c00;
+  --ra-hl-comment: #8a93a5;
+  --ra-hl-title: #2a5bd0;
+  --ra-hl-attr: #9a5b13;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ra-bg: #171c26;
+    --ra-bg-sunken: #1e2431;
+    --ra-surface: #1c2230;
+    --ra-surface-2: #242c3c;
+    --ra-hover: #2b3447;
+    --ra-border: #2a3244;
+    --ra-border-strong: #38425a;
+    --ra-text: #e3e7ef;
+    --ra-text-2: #adb6c8;
+    --ra-muted: #808ba1;
+    --ra-accent: #8fa8ff;
+    --ra-accent-solid: #4a6cf0;
+    --ra-accent-solid-hover: #5d7cf5;
+    --ra-accent-soft: #232e4f;
+    --ra-accent-ring: rgba(120, 150, 255, 0.28);
+    --ra-on-accent: #ffffff;
+    --ra-danger: #ff8a8a;
+    --ra-danger-soft: #3a2024;
+    --ra-code-bg: #10151e;
+    --ra-mark: #5f4d00;
+
+    --ra-hl-keyword: #d08cf0;
+    --ra-hl-string: #9ad38a;
+    --ra-hl-number: #f0a868;
+    --ra-hl-comment: #717c93;
+    --ra-hl-title: #8fb4ff;
+    --ra-hl-attr: #e6c07b;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font: 13px / 1.55 var(--ra-font);
+  color: var(--ra-text);
+  background: var(--ra-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ───────────── 整体布局：顶栏 / 提示 / 对话列表（可滚动）/ 输入区 ───────────── */
+
+.ra-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+/* 侧边栏宽松一些：字号、留白都大一档 */
+.ra-app--panel {
+  font-size: 14px;
+}
+
+.ra-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 28px;
+  padding: 0 6px 3px 12px;
+  background: var(--ra-bg-sunken);
+  border-bottom: 1px solid var(--ra-border);
+}
+.ra-header__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ra-muted);
+}
+.ra-app--panel .ra-header {
+  align-items: flex-start;
+  padding: 10px 8px 9px 14px;
+}
+
+/* 侧边栏顶部的当前页信息（C3） */
+.ra-page {
+  flex: 1;
+  min-width: 0;
+}
+.ra-page__title {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ra-text);
+}
+.ra-page__meta {
+  margin-top: 1px;
+  font-size: 11px;
+  color: var(--ra-muted);
+}
+
+/* 一行小字的提示（M4：不弹窗、不挡输入） */
+.ra-notes {
+  flex: none;
+}
+.ra-note {
+  margin: 0;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: var(--ra-text-2);
+  background: var(--ra-bg-sunken);
+  border-bottom: 1px solid var(--ra-border);
+}
+.ra-note--error {
+  color: var(--ra-danger);
+  background: var(--ra-danger-soft);
+  border-bottom: 0;
+  border-top: 1px solid var(--ra-border);
+}
+.ra-app--panel .ra-note {
+  padding: 6px 14px;
+}
+
+/* ───────────── 按钮 ───────────── */
+
+.ra-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  color: var(--ra-text-2);
+  background: var(--ra-surface);
+  border: 1px solid var(--ra-border-strong);
+  border-radius: var(--ra-radius-sm);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s,
+    border-color 0.12s;
+}
+.ra-btn:hover {
+  color: var(--ra-text);
+  background: var(--ra-hover);
+}
+.ra-btn--primary {
+  min-width: 44px;
+  font-weight: 600;
+  color: var(--ra-on-accent);
+  background: var(--ra-accent-solid);
+  border-color: transparent;
+}
+.ra-btn--primary:hover {
+  color: var(--ra-on-accent);
+  background: var(--ra-accent-solid-hover);
+}
+.ra-btn--small {
+  height: 22px;
+  padding: 0 8px;
+}
+.ra-note .ra-btn {
+  margin-left: 8px;
+}
+
+.ra-icon-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--ra-text-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--ra-radius-sm);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.ra-icon-btn:hover {
+  color: var(--ra-text);
+  background: var(--ra-hover);
+}
+.ra-icon-btn[aria-pressed="true"] {
+  color: var(--ra-accent);
+  background: var(--ra-accent-soft);
+}
+.ra-app--panel .ra-icon-btn {
+  width: 28px;
+  height: 28px;
+}
+
+.ra-btn:disabled,
+.ra-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ra-btn:focus-visible,
+.ra-icon-btn:focus-visible,
+.ra-select:focus-visible,
+.ra-fold > summary:focus-visible {
+  outline: 2px solid var(--ra-accent);
+  outline-offset: 1px;
+}
+
+/* ───────────── 对话列表 ───────────── */
+
+.ra-list {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ra-border-strong) transparent;
+}
+.ra-app--panel .ra-list {
+  padding: 14px 14px 0;
+}
+
+.ra-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  margin: 0;
+  padding: 12px;
+  font-size: 12px;
+  text-align: center;
+  color: var(--ra-muted);
+}
+
+.ra-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 14px;
+}
+/* 最新一轮至少占满列表：发问后这一轮顶到列表上沿，回答从上往下长，不用跟着滚动（5.10 不自动滚动） */
+.ra-turn--last {
+  min-height: 100%;
+}
+
+.ra-user {
+  align-self: flex-end;
+  max-width: 88%;
+  padding: 6px 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ra-text);
+  background: var(--ra-accent-soft);
+  border-radius: 12px 12px 3px 12px;
+}
+.ra-user__quote {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-bottom: 4px;
+  padding-left: 7px;
+  font-size: 12px;
+  color: var(--ra-text-2);
+  border-left: 2px solid var(--ra-accent);
+}
+.ra-user__empty {
+  color: var(--ra-muted);
+}
+
+.ra-assistant {
+  min-width: 0;
+}
+.ra-answer {
+  overflow-wrap: anywhere;
+}
+
+/* 可展开的小块：思考过程、发送说明、用量 */
+.ra-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  list-style: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.ra-fold > summary::-webkit-details-marker {
+  display: none;
+}
+.ra-fold > summary::before {
+  content: "";
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin: 0 3px 1px 1px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 0.15s var(--ra-ease);
+}
+.ra-fold[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.ra-think {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--ra-muted);
+}
+.ra-think__body {
+  max-height: 220px;
+  margin-top: 4px;
+  padding: 2px 0 2px 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ra-text-2);
+  border-left: 2px solid var(--ra-border-strong);
+}
+/* 思考进行中的状态点 */
+.ra-pulse {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: 2px;
+  border-radius: 50%;
+  background: var(--ra-accent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ra-pulse {
+    animation: ra-pulse 1.2s ease-in-out infinite;
+  }
+}
+@keyframes ra-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.ra-status {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--ra-muted);
+}
+.ra-status--error {
+  color: var(--ra-danger);
+}
+
+.ra-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.ra-actions:empty {
+  display: none;
+}
+
+/* 回答下方的小字：实际发送说明（B8）、用量（J9） */
+.ra-meta {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ra-muted);
+}
+.ra-meta .ra-fold > summary > span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.ra-meta .ra-fold[open] > summary > span {
+  white-space: normal;
+}
+.ra-meta ul {
+  margin: 3px 0 4px;
+  padding-left: 22px;
+}
+.ra-meta li {
+  margin: 1px 0;
+}
+.ra-meta .ra-fold + .ra-fold {
+  margin-top: 2px;
+}
+
+/* ───────────── 输入区 ───────────── */
+
+.ra-composer {
+  flex: none;
+  padding: 8px 10px 10px;
+}
+.ra-app--panel .ra-composer {
+  padding: 10px 12px 12px;
+}
+.ra-composer__box {
+  background: var(--ra-surface);
+  border: 1px solid var(--ra-border-strong);
+  border-radius: var(--ra-radius);
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+.ra-composer__box:focus-within {
+  border-color: var(--ra-accent-solid);
+  box-shadow: 0 0 0 3px var(--ra-accent-ring);
+}
+
+/* 引用条：本次引用的开头几行，可以取消（B2、D11） */
+.ra-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 6px 6px 0;
+  padding: 4px 2px 4px 8px;
+  font-size: 12px;
+  color: var(--ra-text-2);
+  background: var(--ra-surface-2);
+  border-left: 3px solid var(--ra-accent-solid);
+  border-radius: 4px;
+}
+.ra-quote__body {
+  flex: 1;
+  min-width: 0;
+}
+.ra-quote__text {
+  max-height: 3.1em;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+}
+.ra-app--panel .ra-quote__text {
+  max-height: 7.75em;
+}
+.ra-quote__note {
+  margin: 2px 0 0;
+  color: var(--ra-muted);
+}
+.ra-quote .ra-icon-btn {
+  width: 20px;
+  height: 20px;
+}
+
+.ra-input {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  max-height: 140px;
+  padding: 8px 10px 2px;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  resize: none;
+}
+.ra-app--panel .ra-input {
+  min-height: 58px;
+  max-height: 220px;
+}
+.ra-input::placeholder {
+  color: var(--ra-muted);
+}
+
+.ra-composer__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 6px 8px;
+}
+/* 发送键在结构上紧跟输入框（Tab 一下就到），视觉上放在这一行最右 */
+.ra-composer__send {
+  order: 9;
+  margin-left: auto;
+}
+
+/* 档位与思考强度：原生下拉，样式做成小胶囊（下拉列表由浏览器画，不受小窗边界限制） */
+.ra-pick {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+.ra-pick::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  width: 5px;
+  height: 5px;
+  margin-top: -4px;
+  color: var(--ra-muted);
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.ra-select {
+  appearance: none;
+  max-width: 100%;
+  height: 24px;
+  padding: 0 22px 0 9px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ra-text-2);
+  background: var(--ra-surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--ra-radius-pill);
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.ra-select:hover {
+  color: var(--ra-text);
+  background: var(--ra-hover);
+}
+/* 临时改过、与设置里的默认值不同：点亮提示 */
+.ra-select[data-changed="true"] {
+  color: var(--ra-accent);
+  background: var(--ra-accent-soft);
+}
+
+.ra-model {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: var(--ra-muted);
+}

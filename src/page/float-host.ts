@@ -22,6 +22,15 @@ const MARGIN = 16;
 const DRAG_STRIP_HEIGHT = 16;
 const RESIZE_HANDLE_SIZE = 16;
 
+/**
+ * 外壳配色（J2 深色模式跟随系统）：外壳在网页文档里，读不到小窗页面的样式变量，这里按系统配色各给一组，
+ * 与 src/ui/theme.css 里小窗顶栏的底色、边框保持一致（改那边要同步这里）
+ */
+const SHELL_COLORS = {
+  light: { border: '#d5dae3', bg: '#ffffff', strip: '#f6f7fa', grip: '#c3c9d5', handle: '#aab2c0' },
+  dark: { border: '#38425a', bg: '#171c26', strip: '#1e2431', grip: '#4a556e', handle: '#5a6680' },
+} as const;
+
 interface Rect {
   left: number;
   right: number;
@@ -92,6 +101,10 @@ export interface FloatHostApi {
   reposition(x: number, y: number): FloatRect | null;
   /** 当前位置与尺寸；小窗未建好时为 null */
   getRect(): FloatRect | null;
+  /** 图钉（B3、B5）：钉住时点网页别处不收起，再次显示也留在原处；Esc、× 与后台的 float/hide 照常收起 */
+  setKeepOpen(on: boolean): void;
+  /** 「点网页别处收起」的判断用：小窗是否钉住 */
+  keepsOpen(): boolean;
   /** 小窗私有端口握手完成（attachFloatPort 收到合法连接）时调用；纯标记，供 e2e 等待后再做拖动/缩放 */
   markPortReady(): void;
   /**
@@ -127,6 +140,27 @@ export function createFloatHost(
    * 不再贴着选区重新摆放（用户在 Edge 实测：拖过之后收起再打开，位置回到了选区旁边）。新页面重新开始
    */
   let pinned = false;
+  /** 图钉：钉住时点网页别处不收起（小窗经私有端口告知，换了小窗文档重新开始） */
+  let keepOpen = false;
+  let dragHandleEl: HTMLElement | null = null;
+  let gripEl: HTMLElement | null = null;
+  let resizeHandleEl: HTMLElement | null = null;
+  const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+  /** 外壳按系统深浅色上色；系统配色变了重新上一遍 */
+  function paintShell(): void {
+    const c = darkQuery.matches ? SHELL_COLORS.dark : SHELL_COLORS.light;
+    if (host) {
+      host.style.borderColor = c.border;
+      host.style.background = c.bg;
+    }
+    if (dragHandleEl) dragHandleEl.style.background = c.strip;
+    if (gripEl) gripEl.style.background = c.grip;
+    // 右下角两道斜线，提示这里可以缩放
+    if (resizeHandleEl)
+      resizeHandleEl.style.background = `linear-gradient(135deg, transparent 0 52%, ${c.handle} 52% 60%, transparent 60% 72%, ${c.handle} 72% 80%, transparent 80%)`;
+  }
+  darkQuery.addEventListener('change', paintShell);
 
   const viewport = (): Size => ({ width: window.innerWidth, height: window.innerHeight });
 
@@ -180,11 +214,10 @@ export function createFloatHost(
       position: 'fixed',
       margin: '0',
       padding: '0',
-      // 有边框和阴影，回答变长时也和网页正文分得开
-      border: '1px solid #d0d0d0',
-      borderRadius: '8px',
-      boxShadow: '0 4px 16px rgba(0, 0, 0, 0.18)',
-      background: '#fff',
+      // 有边框和阴影，回答变长时也和网页正文分得开；颜色由 paintShell 按系统深浅色上
+      border: '1px solid',
+      borderRadius: '10px',
+      boxShadow: '0 12px 32px rgba(15, 23, 42, 0.18), 0 2px 6px rgba(15, 23, 42, 0.08)',
       boxSizing: 'border-box',
       inset: 'auto',
       overflow: 'hidden',
@@ -227,8 +260,6 @@ export function createFloatHost(
       right: '0',
       height: `${DRAG_STRIP_HEIGHT}px`,
       cursor: 'move',
-      background: '#f3f3f3',
-      borderBottom: '1px solid #e6e6e6',
       boxSizing: 'border-box',
     });
     // 拖动条中间一道短横线，提示这里可以拖（用户试用反馈：完全不可见时不知道能拖）
@@ -241,7 +272,6 @@ export function createFloatHost(
       height: '4px',
       margin: '-2px 0 0 -18px',
       borderRadius: '2px',
-      background: '#c4c4c4',
       pointerEvents: 'none',
     });
     dragHandle.append(grip);
@@ -264,9 +294,6 @@ export function createFloatHost(
       width: `${RESIZE_HANDLE_SIZE}px`,
       height: `${RESIZE_HANDLE_SIZE}px`,
       cursor: 'nwse-resize',
-      // 右下角两道斜线，提示这里可以缩放
-      background:
-        'linear-gradient(135deg, transparent 0 52%, #b5b5b5 52% 60%, transparent 60% 72%, #b5b5b5 72% 80%, transparent 80%)',
     });
     attachHandle(
       resizeHandle,
@@ -282,6 +309,10 @@ export function createFloatHost(
     document.documentElement.append(h);
     host = h;
     iframe = frame;
+    dragHandleEl = dragHandle;
+    gripEl = grip;
+    resizeHandleEl = resizeHandle;
+    paintShell();
     applyRect({ left: 0, top: 0, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
     timeoutId = setTimeout(() => {
       if (loaded) return;
@@ -307,6 +338,8 @@ export function createFloatHost(
     iframe = null;
     loaded = false;
     failed = false;
+    // 图钉状态是那个小窗文档报的：换了小窗，等新的来报
+    keepOpen = false;
   }
 
   /** 贴着最近一次选区重新定位；保留当前尺寸（用户缩放过也不被重置） */
@@ -359,8 +392,8 @@ export function createFloatHost(
         if (token === undefined) return; // 没令牌造不出小窗
         build(token);
       }
-      if (pinned) {
-        // 位置由用户定过：留在原处，只夹回视口（窗口可能缩小过）
+      if (pinned || (keepOpen && host?.matches(':popover-open'))) {
+        // 位置由用户定过，或钉住的小窗正开着（B5：新选中的文字只换引用）：留在原处，只夹回视口（窗口可能缩小过）
         if (rect !== null) applyRect(clampRect(rect, viewport()));
       } else {
         reposition();
@@ -394,6 +427,12 @@ export function createFloatHost(
     },
     getRect() {
       return rect;
+    },
+    setKeepOpen(on) {
+      keepOpen = on;
+    },
+    keepsOpen() {
+      return keepOpen;
     },
     markPortReady() {
       if (host) host.dataset.raFloatPortReady = 'true';

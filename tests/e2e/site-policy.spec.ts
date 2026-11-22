@@ -142,7 +142,7 @@ test('设置页改成「不读取」：新的发送立即只带选区，旧缓�
   await waitSentinelRegistered(serviceWorker);
   await page.goto('https://e2e.test/article');
 
-  // 选中、点「问」打开小窗（存下选区）。两轮问答走同一对话：小窗界面目前每问一次是新对话，
+  // 选中、点「问」打开小窗（存下选区）。两轮问答走同一对话，
   // 多轮装配从协议层验证（page-helpers 的 convAsk）
   const frame = await selectAndOpen(page, '#para');
   const model = { connectionId: 'e2e-conn-0001', model: MODEL };

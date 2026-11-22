@@ -27,6 +27,8 @@ export interface PanelHandle {
   /** 在输入框里键入并可选回车（真实按键） */
   type(text: string): Promise<void>;
   press(key: 'Enter'): Promise<void>;
+  /** 直接向侧边栏页面发一条调试协议命令（模拟深色模式、截图等） */
+  cdp<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
   detach(): Promise<void>;
 }
 
@@ -151,6 +153,7 @@ export async function attachPanel(
       await send('Input.dispatchKeyEvent', { type: 'keyDown', ...base, text: '\r' });
       await send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
     },
+    cdp: send,
     async detach() {
       await cdp.send('Target.detachFromTarget', { sessionId }).catch(() => undefined);
       await cdp.detach().catch(() => undefined);

@@ -1,4 +1,6 @@
 // 小窗（5.3）：从地址片段取令牌握手、订阅对话、发问、逐字渲染增量，断线后自动重连（5.5）。
+// 界面（B1–B3、B5、B8、C1）：顶栏（新对话、转到侧边栏、图钉、收起）→ 一行提示 → 对话列表 → 输入区
+// （引用条、输入框、上下文档位与思考强度）。样式与组件和侧边栏共用（theme.css、chat/）；逻辑共用 float/state.ts 的归约器。
 // 回答区的 Markdown/公式/高亮/引用渲染交给 src/ui/render（5.10）；对话内容只用文本节点或
 // 该模块产出的 DOM 渲染，不经过 window.postMessage（规则 4、5）。
 //
@@ -6,6 +8,9 @@
 // 大幅拖动都会立刻发生）就收不到后续 pointermove，这是 pointer capture 跨 iframe 边界的已知限制
 // （不是实现 bug），按 5.3 原文的退路改为宿主侧不可见把手直接处理（page/float-host.ts）。
 // 这里只做两件事：连接时按持久化设置回放一次记忆的位置/尺寸；收到手势结束后的最终 rect 时落盘。
+//
+// 图钉（B3、B5）：钉住时点网页别处不收起。「点别处收起」是阅读器在网页文档上判断的，所以图钉状态经私有端口
+// 告诉阅读器（float/pin）。打开时的状态取设置里的默认关闭方式（settings.float.closeMode），点图钉只临时切换。
 //
 // 转到侧边栏（6.4、AR-19）：小窗是扩展页面，在这里点按钮是扩展页面上的用户手势，点击处理里同步
 // sidePanel.open（窗口在加载时就取好，点击时不 await，规则 10），再发 handoff/start；侧边栏订阅并收到
@@ -22,10 +27,13 @@ import {
   type ReaderToFloat,
 } from '@/core/domain/messages';
 import { loadSettings, SETTINGS_KEY } from '@/platform/settings-store';
-import { AnswerView } from './AnswerView';
-import { loadAskDefaults } from './ask-defaults';
+import { EXPAND_QUESTION, NO_CONNECTION } from './ask-defaults';
+import { type AskDeps, flushQueuedAsk, submitAsk, useComposerDefaults } from './chat/ask';
+import { Composer } from './chat/Composer';
+import { IconClose, IconPanel, IconPin, IconPlus } from './chat/Icons';
+import { MessageList } from './chat/MessageList';
+import { displayItems } from './float/messages';
 import {
-  buildAskMessage,
   type FloatRectValue,
   type FloatState,
   floatReducer,
@@ -34,9 +42,10 @@ import {
   isGenerating,
   parseTokenFromHash,
   restoreCommandsOnConnect,
-  shouldSendOnEnter,
   subscribeMessage,
 } from './float/state';
+import { T } from './strings';
+import './theme.css';
 
 type Port = Browser.runtime.Port;
 
@@ -48,25 +57,30 @@ function takeToken(): string | null {
 }
 
 const CONN_MESSAGE: Readonly<Record<FloatState['connPhase'], string | null>> = {
-  noToken: '没有有效的令牌，无法连接',
-  connecting: '连接中…',
+  noToken: T.conn.float.noToken,
+  connecting: T.conn.float.connecting,
   ready: null,
-  versionMismatch: '扩展版本与页面不一致，请刷新页面后重试',
-  reconnecting: '连接已断开，正在重连…',
+  versionMismatch: T.conn.float.versionMismatch,
+  reconnecting: T.conn.float.reconnecting,
   idle: null,
-  expired: '连接已失效，请关闭小窗后重新点「问」',
+  expired: T.conn.float.expired,
 };
 
 export function FloatApp() {
   const [token] = useState(takeToken);
   const [state, dispatch] = useReducer(floatReducer, initialFloatState(token !== null));
   const [question, setQuestion] = useState('');
+  // 图钉：null 表示还没读到设置里的默认关闭方式（读到之前不向阅读器报状态）
+  const [pinned, setPinned] = useState<boolean | null>(null);
+  // 私有端口每连上一次加一：连上后要把图钉状态报给阅读器
+  const [floatPortSeq, setFloatPortSeq] = useState(0);
+  const defaults = useComposerDefaults();
   const portRef = useRef<Port | null>(null);
   // 异步操作（loadSettings）resolve 之后要读最新状态，不能用闭包里那份
   const stateRef = useRef(state);
   stateRef.current = state;
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  // 小窗私有端口（恢复位置尺寸 / 收起，5.3）；与所在标签页的阅读器直连，不经后台
+  // 小窗私有端口（恢复位置尺寸 / 图钉 / 收起，5.3）；与所在标签页的阅读器直连，不经后台
   const floatPortRef = useRef<Port | null>(null);
   // 所在窗口：加载时取好，点「转到侧边栏」时同步 open 要用（规则 10，点击处理里不能 await）
   const windowIdRef = useRef<number | null>(null);
@@ -82,6 +96,14 @@ export function FloatApp() {
 
   /** 从 idle 唤醒重连；其余状态下是空操作（onWake 只在 idle 时改变状态） */
   const wake = () => dispatch({ kind: 'wake' });
+
+  const askDeps: AskDeps = {
+    getState: () => stateRef.current,
+    post: (msg) => portRef.current?.postMessage(msg),
+    dispatch,
+    canSendNow: (s) => s.connPhase === 'ready',
+    wake,
+  };
 
   useEffect(() => {
     if (token !== null) connect({ type: 'conv/helloFloat', token });
@@ -124,6 +146,9 @@ export function FloatApp() {
     void loadSettings().then((r) => {
       if (disposed) return;
       settingsLoaded = r.ok ? r.settings.float : { placement: 'nearSelection' };
+      // 打开时钉不钉住取设置里的默认关闭方式（B3）；用户已经点过图钉就不覆盖
+      const pinnedByDefault = r.ok && r.settings.float.closeMode === 'pinned';
+      setPinned((cur) => cur ?? pinnedByDefault);
       tryRestore();
     });
 
@@ -132,6 +157,7 @@ export function FloatApp() {
       const p = browser.tabs.connect(tab.id, { name: FLOAT_PORT, frameId: 0 });
       port = p;
       floatPortRef.current = p;
+      setFloatPortSeq((n) => n + 1);
       p.onMessage.addListener((raw: ReaderToFloat) => {
         if (raw.type !== 'float/rect') return;
         lastRect = { x: raw.x, y: raw.y, w: raw.w, h: raw.h };
@@ -146,6 +172,12 @@ export function FloatApp() {
       floatPortRef.current = null;
     };
   }, [token]);
+
+  // 图钉状态报给阅读器：私有端口连上后一次（floatPortSeq 变了），之后每次切换一次
+  useEffect(() => {
+    if (pinned === null) return;
+    floatPortRef.current?.postMessage({ type: 'float/pin', pinned } satisfies FloatToReader);
+  }, [pinned, floatPortSeq]);
 
   const collapse = () =>
     floatPortRef.current?.postMessage({ type: 'float/collapse' } satisfies FloatToReader);
@@ -166,20 +198,7 @@ export function FloatApp() {
 
   // 这次订阅的初始推送（引用等）已收完：若有未就绪时存下的待发问，用这时最新的引用构造并发出
   useEffect(() => {
-    const ask = state.queuedAsk;
-    if (!ask) return;
-    portRef.current?.postMessage(
-      buildAskMessage({
-        clientRequestId: ask.clientRequestId,
-        text: ask.text,
-        quote: state.quote,
-        lengthTier: ask.lengthTier,
-        thinking: ask.thinking,
-        model: ask.model,
-        ...(ask.contextTier ? { contextTier: ask.contextTier } : {}),
-      }),
-    );
-    dispatch({ kind: 'askSent', clientRequestId: ask.clientRequestId });
+    flushQueuedAsk(state, askDeps);
   }, [state.snapshotSeq]);
 
   // 转接：连接就绪才发 handoff/start（点击时后台可能被回收了，先唤醒重连）
@@ -225,45 +244,13 @@ export function FloatApp() {
   }, []);
 
   const generating = isGenerating(state.job);
-  const job = state.job;
 
   const handleSend = async () => {
-    const text = question.trim();
-    if (!text) return;
-    if (generating) {
-      dispatch({ kind: 'localError', message: '回答进行中' });
-      return;
-    }
-    const defaults = await loadAskDefaults();
-    if (!defaults.ok) {
-      dispatch({ kind: 'localError', message: defaults.message });
-      return;
-    }
-    const { lengthTier, thinking, contextTier, model } = defaults;
-    const clientRequestId = crypto.randomUUID();
-    if (stateRef.current.connPhase === 'ready') {
-      portRef.current?.postMessage(
-        buildAskMessage({
-          clientRequestId,
-          text,
-          quote: stateRef.current.quote,
-          lengthTier,
-          thinking,
-          model,
-          contextTier,
-        }),
-      );
-      dispatch({ kind: 'askSent', clientRequestId });
-    } else {
-      // 没就绪：先存成待发，等重连、订阅、收到这次 conv/snapshot 后再用当时最新的引用发出
-      dispatch({
-        kind: 'queueAsk',
-        ask: { clientRequestId, text, lengthTier, thinking, model, contextTier },
-      });
-      wake();
-    }
-    setQuestion('');
+    if (await submitAsk(askDeps, question)) setQuestion('');
   };
+
+  /** 「展开讲讲」（I3）：在同一个对话里追问一句，长度档用详细 */
+  const handleExpand = () => void submitAsk(askDeps, EXPAND_QUESTION, { lengthTier: 'detailed' });
 
   const handleStop = () => {
     if (!state.job) return;
@@ -282,14 +269,12 @@ export function FloatApp() {
   const handleToPanel = () => {
     const windowId = windowIdRef.current;
     if (windowId === null) {
-      dispatch({ kind: 'localError', message: '还没准备好，请稍后再点一次' });
+      dispatch({ kind: 'localError', message: T.error.notReady });
       return;
     }
     void browser.sidePanel
       .open({ windowId })
-      .catch(() =>
-        dispatch({ kind: 'localError', message: '浏览器没有打开侧边栏，请点工具栏里的「阅读助手」图标' }),
-      );
+      .catch(() => dispatch({ kind: 'localError', message: T.error.panelNotOpened }));
     // 没握手、握手失败、版本不对：没有转接可确认，只打开侧边栏（侧边栏跟着本标签页，引用照样带过去）
     const phase = stateRef.current.connPhase;
     if (phase === 'noToken' || phase === 'expired' || phase === 'versionMismatch') return;
@@ -297,86 +282,112 @@ export function FloatApp() {
     wake();
   };
 
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (!shouldSendOnEnter(e)) return;
-    e.preventDefault();
-    void handleSend();
-  };
-
   const connMessage = CONN_MESSAGE[state.connPhase];
   // versionMismatch 重连也没用（得刷新页面），其余状态都允许输入：idle / connecting / reconnecting
-  // 下用户可以照常打字、点发送，连接没就绪时会先存成待发（见 handleSend）
+  // 下用户可以照常打字、点发送，连接没就绪时会先存成待发（见 submitAsk）
   const canType =
     state.connPhase !== 'noToken' && state.connPhase !== 'expired' && state.connPhase !== 'versionMismatch';
+  const isPinned = pinned === true;
+  const hasConversation = state.conversationId !== null || state.messages.length > 0 || state.job !== null;
 
   return (
-    <main style={{ width: '100%', boxSizing: 'border-box', padding: '8px', fontSize: '13px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '0 0 8px' }}>
-        <span style={{ flex: '1', color: '#666' }}>{connMessage}</span>
+    <main className="ra-app ra-app--float">
+      <header className="ra-header">
+        <span className="ra-header__title">{T.brand}</span>
         <button
           type="button"
+          className="ra-icon-btn"
+          aria-label={T.header.newConversation}
+          title={T.header.newConversationTitle}
+          disabled={generating || !hasConversation}
+          onClick={() => dispatch({ kind: 'newConversation' })}
+        >
+          <IconPlus />
+        </button>
+        <button
+          type="button"
+          className="ra-icon-btn"
+          aria-label={T.header.toPanel}
+          title={T.header.toPanelTitle}
           onClick={handleToPanel}
           disabled={state.handoff !== null && !state.handoff.slow}
         >
-          转到侧边栏
+          <IconPanel />
         </button>
+        <button
+          type="button"
+          className="ra-icon-btn"
+          aria-label={T.header.pin}
+          aria-pressed={isPinned}
+          title={isPinned ? T.header.unpinTitle : T.header.pinTitle}
+          onClick={() => setPinned(!isPinned)}
+        >
+          <IconPin filled={isPinned} />
+        </button>
+        <button
+          type="button"
+          className="ra-icon-btn"
+          aria-label={T.header.close}
+          title={T.header.closeTitle}
+          onClick={collapse}
+        >
+          <IconClose />
+        </button>
+      </header>
+      <div className="ra-notes">
+        {connMessage && <p className="ra-note">{connMessage}</p>}
+        {state.handoff?.slow && (
+          <p data-testid="handoff-hint" className="ra-note">
+            {T.notice.handoffSlow}
+          </p>
+        )}
+        {state.convHint === 'newConversation' && (
+          <p data-testid="conv-hint" className="ra-note">
+            {T.notice.newConversationStarted}
+          </p>
+        )}
       </div>
-      {state.handoff?.slow && (
-        <p data-testid="handoff-hint" style={{ margin: '0 0 8px', color: '#999' }}>
-          侧边栏还没有接上，小窗先留着；可以稍后再点一次
-        </p>
-      )}
-      {state.quote && (
-        <div style={{ margin: '0 0 8px', padding: '6px', background: '#f5f5f5', borderRadius: '4px' }}>
-          <div style={{ maxHeight: '80px', overflow: 'auto', whiteSpace: 'pre-wrap', color: '#555' }}>
-            {state.quote.text}
-          </div>
-          {state.quote.truncated && (
-            <p style={{ margin: '4px 0 0', color: '#999' }}>
-              选区过长，只发送了其中一部分（原文共 {state.quote.originalLength} 字）
-            </p>
-          )}
-        </div>
-      )}
-      {canType && (
-        <>
-          <textarea
-            ref={textareaRef}
-            aria-label="输入问题"
-            value={question}
-            onInput={(e) => setQuestion((e.target as HTMLTextAreaElement).value)}
-            onKeyDown={onKeyDown}
-            onFocus={wake}
-            style={{ width: '100%', boxSizing: 'border-box', minHeight: '60px', resize: 'vertical' }}
-          />
-          <div style={{ marginTop: '6px', textAlign: 'right' }}>
-            {generating ? (
-              <button type="button" onClick={handleStop}>
-                停止
-              </button>
-            ) : (
-              <button type="button" onClick={() => void handleSend()}>
-                问
-              </button>
-            )}
-          </div>
-        </>
-      )}
+      <MessageList
+        items={displayItems(state.messages, state.job)}
+        emptyText={canType ? T.list.emptyFloat : ''}
+        generating={generating}
+        onRetry={handleRetry}
+        onExpand={handleExpand}
+      />
       {state.actionError && (
-        <p style={{ margin: '6px 0 0', color: '#c33' }}>
+        <p data-testid="action-error" className="ra-note ra-note--error">
           {state.actionError}
-          {state.actionError === '请先在设置里添加连接' && (
+          {state.actionError === NO_CONNECTION && (
             <button
               type="button"
-              style={{ marginLeft: '6px' }}
+              className="ra-btn ra-btn--small"
               onClick={() => void browser.runtime.openOptionsPage()}
             >
-              打开设置
+              {T.notice.openSettings}
             </button>
           )}
         </p>
       )}
-      {job && <AnswerView job={job} onRetry={handleRetry} />}
+      {canType && (
+        <Composer
+          inputRef={textareaRef}
+          value={question}
+          onInput={setQuestion}
+          onSend={() => void handleSend()}
+          onStop={handleStop}
+          onFocus={wake}
+          generating={generating}
+          quote={state.quote}
+          onDismissQuote={() => dispatch({ kind: 'dismissQuote' })}
+          tier={state.tierOverride ?? defaults.contextTier}
+          thinking={state.thinkingOverride ?? defaults.thinking}
+          tierChanged={state.tierOverride !== null && state.tierOverride !== defaults.contextTier}
+          thinkingChanged={state.thinkingOverride !== null && state.thinkingOverride !== defaults.thinking}
+          onTier={(contextTier) => dispatch({ kind: 'setTier', contextTier })}
+          onThinking={(thinking) => dispatch({ kind: 'setThinking', thinking })}
+          model={defaults.model}
+        />
+      )}
     </main>
   );
 }

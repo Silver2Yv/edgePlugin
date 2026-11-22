@@ -1,6 +1,7 @@
 /**
- * 回答区最小可读样式（5.10）：px 单位；小窗宽约 380px，代码块与表格超宽时横向滚动，
- * 不撑破小窗布局。KaTeX 的 CSS 与字体随本文件一起打包，字体文件走本地相对路径，不走网络。
+ * 回答正文的排版（5.10）：px 单位；小窗宽约 380px，代码块与表格超宽时横向滚动，不撑破布局。
+ * 颜色都取 src/ui/theme.css 的变量（深色模式跟随系统，J2），后面的值是没有引入 theme.css 时的兜底。
+ * KaTeX 的 CSS 与字体随本文件一起打包，字体文件走本地相对路径，不走网络。
  */
 @import "katex/dist/katex.min.css";
 
@@ -19,17 +20,22 @@
   font-weight: 600;
 }
 .ra-block h1 {
-  font-size: 18px;
+  font-size: 1.3em;
 }
 .ra-block h2 {
-  font-size: 16px;
+  font-size: 1.15em;
 }
 .ra-block h3 {
-  font-size: 14px;
+  font-size: 1.05em;
+}
+.ra-block:first-child h1,
+.ra-block:first-child h2,
+.ra-block:first-child h3 {
+  margin-top: 0;
 }
 .ra-block p {
   margin: 0 0 8px;
-  line-height: 1.6;
+  line-height: 1.65;
 }
 .ra-block ul,
 .ra-block ol {
@@ -38,37 +44,45 @@
 }
 .ra-block li {
   margin: 2px 0;
+  line-height: 1.6;
 }
 .ra-block blockquote {
   margin: 0 0 8px;
   padding: 2px 10px;
-  border-left: 3px solid #ddd;
-  color: #666;
+  border-left: 3px solid var(--ra-border-strong, #ddd);
+  color: var(--ra-text-2, #666);
 }
 .ra-block a {
-  color: #06c;
+  color: var(--ra-accent, #06c);
   word-break: break-all;
+}
+.ra-block hr {
+  margin: 10px 0;
+  border: 0;
+  border-top: 1px solid var(--ra-border, #ddd);
 }
 
 .ra-code-inline {
   padding: 1px 4px;
-  background: #f0f0f0;
+  background: var(--ra-code-bg, #f0f0f0);
   border-radius: 3px;
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 12px;
+  font-family: var(--ra-font-mono, ui-monospace, Consolas, monospace);
+  font-size: 0.92em;
 }
 
 .ra-code {
   display: block;
   margin: 0 0 8px;
-  padding: 8px;
-  background: #f5f5f5;
-  border-radius: 4px;
+  padding: 8px 10px;
+  background: var(--ra-code-bg, #f5f5f5);
+  border: 1px solid var(--ra-border, transparent);
+  border-radius: var(--ra-radius-sm, 4px);
   overflow-x: auto;
   max-width: 100%;
-  font-family: ui-monospace, Consolas, monospace;
+  font-family: var(--ra-font-mono, ui-monospace, Consolas, monospace);
   font-size: 12px;
   line-height: 1.5;
+  scrollbar-width: thin;
 }
 .ra-code code {
   white-space: pre;
@@ -85,16 +99,65 @@
   top: 6px;
   right: 6px;
   padding: 2px 8px;
+  font: inherit;
   font-size: 11px;
   line-height: 1.6;
-  color: #555;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 3px;
+  color: var(--ra-text-2, #555);
+  background: var(--ra-surface, #fff);
+  border: 1px solid var(--ra-border-strong, #ddd);
+  border-radius: 4px;
   cursor: pointer;
 }
 .ra-code-copy:hover {
-  background: #eee;
+  color: var(--ra-text, #222);
+  background: var(--ra-hover, #eee);
+}
+
+/* 代码高亮配色（highlight.js 只产出类名，颜色在这里给；深浅两套在 theme.css 的变量里） */
+.ra-code .hljs-keyword,
+.ra-code .hljs-selector-tag,
+.ra-code .hljs-built_in,
+.ra-code .hljs-literal,
+.ra-code .hljs-type {
+  color: var(--ra-hl-keyword, #a626a4);
+}
+.ra-code .hljs-string,
+.ra-code .hljs-regexp,
+.ra-code .hljs-addition,
+.ra-code .hljs-meta .hljs-string {
+  color: var(--ra-hl-string, #2f7d32);
+}
+.ra-code .hljs-number,
+.ra-code .hljs-symbol,
+.ra-code .hljs-bullet,
+.ra-code .hljs-variable,
+.ra-code .hljs-template-variable {
+  color: var(--ra-hl-number, #b35c00);
+}
+.ra-code .hljs-comment,
+.ra-code .hljs-quote,
+.ra-code .hljs-deletion,
+.ra-code .hljs-meta {
+  color: var(--ra-hl-comment, #8a93a5);
+}
+.ra-code .hljs-title,
+.ra-code .hljs-section,
+.ra-code .hljs-name,
+.ra-code .hljs-selector-id,
+.ra-code .hljs-selector-class {
+  color: var(--ra-hl-title, #2a5bd0);
+}
+.ra-code .hljs-attr,
+.ra-code .hljs-attribute,
+.ra-code .hljs-property,
+.ra-code .hljs-params {
+  color: var(--ra-hl-attr, #9a5b13);
+}
+.ra-code .hljs-emphasis {
+  font-style: italic;
+}
+.ra-code .hljs-strong {
+  font-weight: 600;
 }
 
 .ra-block table {
@@ -103,12 +166,17 @@
   max-width: 100%;
   border-collapse: collapse;
   font-size: 12px;
+  scrollbar-width: thin;
 }
 .ra-block th,
 .ra-block td {
-  border: 1px solid #ddd;
+  border: 1px solid var(--ra-border-strong, #ddd);
   padding: 4px 8px;
   white-space: nowrap;
+}
+.ra-block th {
+  background: var(--ra-surface-2, #f5f5f5);
+  font-weight: 600;
 }
 
 .ra-math-block {
@@ -118,29 +186,32 @@
   margin: 4px 0;
 }
 .ra-math-error {
-  color: #c33;
-  font-family: ui-monospace, Consolas, monospace;
+  color: var(--ra-danger, #c33);
+  font-family: var(--ra-font-mono, ui-monospace, Consolas, monospace);
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-all;
 }
 
+/* 引用编号：点击跳回原文（F1）还没接上，先不做成可点的样子；接上后改回 cursor: pointer */
 .ra-citation {
-  cursor: pointer;
-  color: #06c;
+  cursor: default;
+  color: var(--ra-accent, #06c);
   margin: 0 1px;
 }
 .ra-citation-quote {
-  background: #fff3b0;
+  color: inherit;
+  background: var(--ra-mark, #fff3b0);
+  border-radius: 2px;
 }
 
 .ra-image-link,
 .ra-image-placeholder {
-  color: #999;
+  color: var(--ra-muted, #999);
   font-size: 12px;
 }
 
 .ra-truncated-notice {
-  color: #999;
+  color: var(--ra-muted, #999);
   font-size: 12px;
 }

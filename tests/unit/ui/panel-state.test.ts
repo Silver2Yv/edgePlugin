@@ -129,7 +129,7 @@ describe('侧边栏换订阅', () => {
     expect(panelSubscribeMessage(initialPanelState())).toBeNull();
   });
 
-  it('侧边栏续问带上正在显示的对话；小窗不带（每次是新对话）', () => {
+  it('续问带上正在显示的对话；还没有对话（第一次发问、点了「新对话」）时不带', () => {
     const base = {
       clientRequestId: 'req-00000001',
       text: '再说说',

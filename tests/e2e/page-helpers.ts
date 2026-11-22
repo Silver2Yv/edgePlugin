@@ -207,7 +207,8 @@ export async function floatFrame(page: Page): Promise<Frame> {
 
 /**
  * 在小窗里提问，等请求到达模拟中转站、小窗显示答完。fill 用于超长问题（逐字输入太慢）。
- * 小窗只显示当前任务：请求到达时接单早已推给小窗，此后看到的 completed 一定是这次的
+ * 小窗里带 job-state 标记的只有正在显示的那个任务（之前的回答留在对话列表里，不带这个标记）：
+ * 请求到达时接单早已推给小窗，此后看到的 completed 一定是这次的
  */
 export async function askInFloat(frame: Frame, r: Relay, question: string, opts: { fill?: boolean } = {}) {
   const n = r.bodies.length + 1;

@@ -1,12 +1,16 @@
-// 回答区（小窗与侧边栏共用）：任务状态、思考过程、逐字渲染的回答、等待提示、错误、重试。
+// 回答区（小窗与侧边栏共用）：思考过程、逐字渲染的回答、等待提示、错误、重试、「展开讲讲」、
+// 实际发送说明（B8）与用量（J9）。对话里的每条助手消息都用它：正在显示的任务（live）与历史消息走同一条渲染管线。
 // 回答的 Markdown/公式/高亮/引用渲染交给 src/ui/render（5.10）；对话内容只用文本节点或该模块产出的 DOM 渲染（规则 4、5）。
-// 父组件只在有任务时挂载它；换任务、换尝试时清空回答区重新开始。
+// 引用编号只在这条消息自己的发送计划（plan.sentBlockIds）内有效（规则 9）。
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { canRetry, isTerminal } from '@/core/domain/job';
 import { ERROR_LABEL } from './error-labels';
-import { type JobView, waitHintText } from './float/state';
+import { type AnswerLike, citationIds } from './float/messages';
+import { sendSummary } from './float/send-summary';
+import { waitHintText } from './float/state';
 import './float/wait-hint.css';
 import { type AnswerRenderer, createAnswerRenderer } from './render';
+import { T } from './strings';
 
 /** 把提示文案里的省略号包一层 span 做闪烁动画（wait-hint.css），其余文字原样显示 */
 function renderWaitHint(text: string) {
@@ -21,7 +25,24 @@ function renderWaitHint(text: string) {
   );
 }
 
-export function AnswerView({ job, onRetry }: { job: JobView; onRetry: () => void }) {
+const NO_BLOCKS: readonly string[] = [];
+
+export interface AnswerViewProps {
+  view: AnswerLike;
+  /**
+   * 正在显示的任务：带 data-testid="job-state" / "answer"（界面上同一时刻只有一个），有等待提示，可以重试。
+   * 历史消息为 false，只渲染内容
+   */
+  live: boolean;
+  /** 这条回答对应的发问选中了多少字（发送说明用），不知道为 null */
+  selectedChars: number | null;
+  /** 显示「展开讲讲」（I3）：简短档的回答答完了，且是对话的最后一条 */
+  canExpand: boolean;
+  onRetry: () => void;
+  onExpand: () => void;
+}
+
+export function AnswerView({ view, live, selectedChars, canExpand, onRetry, onExpand }: AnswerViewProps) {
   const answerRef = useRef<HTMLDivElement | null>(null);
   const answerRendererRef = useRef<AnswerRenderer | null>(null);
 
@@ -33,7 +54,12 @@ export function AnswerView({ job, onRetry }: { job: JobView; onRetry: () => void
     return answerRendererRef.current;
   };
 
-  const allowedCitationIds = useMemo(() => new Set(job.sentBlockIds), [job.sentBlockIds]);
+  // 回答里的引用写法是全角【12】，发送的块编号是 b12：换成去掉前缀的数字再交给渲染管线
+  const sentBlockIds = view.plan?.sentBlockIds ?? NO_BLOCKS;
+  const allowedCitationIds = useMemo(() => citationIds(sentBlockIds), [sentBlockIds]);
+
+  // 还在生成的只有正在显示的任务；历史消息不论记录里的状态是什么都按已定稿渲染
+  const streaming = live && !isTerminal(view.state);
 
   // 等待提示（纯函数见 float/state.ts 的 waitHintText）：askStartedAtRef 记发问/重试开始的时间，
   // lastDeltaAtRef 记最近一次收到正文/思考增量的时间；1 秒定时器只用来驱动重渲染，
@@ -42,81 +68,141 @@ export function AnswerView({ job, onRetry }: { job: JobView; onRetry: () => void
   const lastDeltaAtRef = useRef<number | null>(null);
   const [, bumpWaitTick] = useState(0);
 
-  // 新任务 / 新尝试：清空回答区重新开始（job.jobId 或 attemptId 变化），同时重新起算等待计时
+  // 新任务 / 新尝试：清空回答区重新开始（jobId 或 attemptId 变化），同时重新起算等待计时
   useEffect(() => {
     const now = Date.now();
     askStartedAtRef.current = now;
     lastDeltaAtRef.current = now;
     getAnswerRenderer()?.reset();
-  }, [job.jobId, job.attemptId]);
+  }, [view.jobId, view.attemptId]);
 
   // 收到正文或思考的新增量：刷新「距上次增量过去多久」的参照点
   useEffect(() => {
     lastDeltaAtRef.current = Date.now();
-  }, [job.text, job.reasoning]);
+  }, [view.text, view.reasoning]);
 
   // 任务进行中才跑定时器；到终态时停表（清掉 interval）
   useEffect(() => {
-    if (isTerminal(job.state)) return;
+    if (!streaming) return;
     const timer = setInterval(() => bumpWaitTick((v) => v + 1), 1000);
     return () => clearInterval(timer);
-  }, [job.jobId, job.attemptId, job.state]);
+  }, [view.jobId, view.attemptId, streaming]);
 
-  const waitHint = waitHintText({
-    elapsedMs: askStartedAtRef.current ? Date.now() - askStartedAtRef.current : 0,
-    hasAnswerText: job.text.length > 0,
-    hasReasoningText: job.reasoning.length > 0,
-    msSinceLastDelta: lastDeltaAtRef.current ? Date.now() - lastDeltaAtRef.current : 0,
-    jobState: job.state,
-  });
+  const waitHint = streaming
+    ? waitHintText({
+        elapsedMs: askStartedAtRef.current ? Date.now() - askStartedAtRef.current : 0,
+        hasAnswerText: view.text.length > 0,
+        hasReasoningText: view.reasoning.length > 0,
+        msSinceLastDelta: lastDeltaAtRef.current ? Date.now() - lastDeltaAtRef.current : 0,
+        jobState: view.state,
+      })
+    : null;
 
-  // 增量更新：走节流调度（rAF 合并同帧更新；超长回答降到至少 200ms 一次），终态交给下面那条 finalize
+  // 增量更新：走节流调度（rAF 合并同帧更新；超长回答降到至少 200ms 一次），终态交给下面那条 finalize。
+  // 依赖里带上任务与尝试：上面那条清空回答区之后，这两条跟着重新渲染（同一次提交里按声明顺序执行）
   useEffect(() => {
-    if (isTerminal(job.state)) return;
-    getAnswerRenderer()?.scheduleUpdate(job.text, allowedCitationIds);
-  }, [job.text, job.state, allowedCitationIds]);
+    if (!streaming) return;
+    getAnswerRenderer()?.scheduleUpdate(view.text, allowedCitationIds);
+  }, [view.text, streaming, allowedCitationIds, view.jobId, view.attemptId]);
 
-  // 到达终态：立即做一次完整校正（流式阶段可能遗留的前向引用等在这里被纠正）
+  // 到达终态（或本来就是历史消息）：立即做一次完整校正（流式阶段可能遗留的前向引用等在这里被纠正）
   useEffect(() => {
-    if (!isTerminal(job.state)) return;
-    getAnswerRenderer()?.finalize(job.text, allowedCitationIds);
-  }, [job.state, job.text, allowedCitationIds]);
+    if (streaming) return;
+    getAnswerRenderer()?.finalize(view.text, allowedCitationIds);
+  }, [streaming, view.text, allowedCitationIds, view.jobId, view.attemptId]);
 
   // 卸载：移除渲染器的 selectionchange 监听
   useEffect(() => () => answerRendererRef.current?.destroy(), []);
 
+  // 思考进行中（H6）：有思考内容、正文还没开始
+  const reasoningNow = streaming && view.reasoning.length > 0 && view.text.length === 0;
+  const summary = view.plan ? sendSummary(view.plan, selectedChars) : null;
+  const usage = view.usage;
+  const usageParts = usage
+    ? [
+        usage.inputTokens === undefined ? null : T.answer.usageInput(usage.inputTokens),
+        usage.outputTokens === undefined ? null : T.answer.usageOutput(usage.outputTokens),
+        usage.reasoningTokens === undefined ? null : T.answer.usageReasoning(usage.reasoningTokens),
+      ].filter((p): p is string => p !== null)
+    : [];
+
   return (
-    <div style={{ marginTop: '8px' }}>
-      <div data-testid="job-state" style={{ color: '#999' }}>
-        {job.state}
-      </div>
-      {job.reasoning && (
-        <details style={{ marginTop: '4px' }}>
-          <summary>思考过程</summary>
-          <div style={{ whiteSpace: 'pre-wrap', color: '#777' }}>{job.reasoning}</div>
+    <div className="ra-assistant">
+      {/* 给端到端测试与读屏之外的排查用的原始状态；界面上的状态由下面的提示文字表达 */}
+      {live && (
+        <span data-testid="job-state" hidden>
+          {view.state}
+        </span>
+      )}
+      {view.reasoning && (
+        <details className="ra-fold ra-think">
+          <summary>
+            {reasoningNow ? T.answer.reasoningNow : T.answer.reasoning}
+            {reasoningNow && <span className="ra-pulse" />}
+          </summary>
+          <div className="ra-think__body">{view.reasoning}</div>
         </details>
       )}
       {/* 子节点完全由 src/ui/render（createAnswerRenderer）管理，这里不写 children，
           Preact 不会对它做子节点 diff（见 render/mount.ts） */}
-      <div ref={answerRef} data-testid="answer" style={{ marginTop: '4px' }} />
+      <div ref={answerRef} data-testid={live ? 'answer' : 'history-answer'} className="ra-answer" />
       {waitHint && (
-        <p data-testid="wait-hint" aria-live="polite" style={{ margin: '4px 0 0', color: '#999' }}>
+        <p data-testid="wait-hint" aria-live="polite" className="ra-status">
           {renderWaitHint(waitHint)}
         </p>
       )}
-      {job.state === 'failed' && job.error && (
-        <p style={{ margin: '4px 0 0', color: '#c33' }}>
-          {ERROR_LABEL[job.error.kind]}
-          {job.error.message && `：${job.error.message}`}
+      {view.state === 'failed' && view.error && (
+        <p className="ra-status ra-status--error">
+          {ERROR_LABEL[view.error.kind]}
+          {view.error.message && `：${view.error.message}`}
         </p>
       )}
-      {job.state === 'interrupted' && (
-        <p style={{ margin: '4px 0 0', color: '#999' }}>上次请求的结果未知，重试可能重新计费</p>
-      )}
-      {canRetry(job.state) && (
-        <button type="button" style={{ marginTop: '4px' }} onClick={onRetry}>
-          重试
-        </button>
+      {view.state === 'interrupted' && <p className="ra-status">{T.answer.interrupted}</p>}
+      {view.state === 'stopped' && <p className="ra-status">{T.answer.stopped}</p>}
+      <div className="ra-actions">
+        {live && canRetry(view.state) && (
+          <button type="button" className="ra-btn ra-btn--small" onClick={onRetry}>
+            {T.answer.retry}
+          </button>
+        )}
+        {canExpand && (
+          <button
+            type="button"
+            className="ra-btn ra-btn--small"
+            title={T.answer.expandTitle}
+            onClick={onExpand}
+          >
+            {T.answer.expand}
+          </button>
+        )}
+      </div>
+      {(summary || usageParts.length > 0) && (
+        <div className="ra-meta">
+          {summary && (
+            <details className="ra-fold" data-testid="send-note">
+              <summary title={T.sent.label}>
+                <span>{summary.parts.join(' · ')}</span>
+              </summary>
+              <ul>
+                {summary.details.map((d) => (
+                  <li key={d}>{d}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+          {usageParts.length > 0 && (
+            <details className="ra-fold" data-testid="usage">
+              <summary>
+                <span>{T.answer.usage}</span>
+              </summary>
+              <ul>
+                {usageParts.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
       )}
     </div>
   );

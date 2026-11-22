@@ -35,7 +35,8 @@ export function startReader(): void {
   document.addEventListener(
     'pointerdown',
     (e) => {
-      if (e.isTrusted && !floatHost.owns(e)) floatHost.hide();
+      // 钉住的小窗（B3 图钉）点网页别处不收起
+      if (e.isTrusted && !floatHost.owns(e) && !floatHost.keepsOpen()) floatHost.hide();
     },
     { capture: true, passive: true },
   );
