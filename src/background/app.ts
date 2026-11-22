@@ -17,6 +17,7 @@ import { senderRole } from './roles';
 import { createRoute } from './route';
 import { createStore } from './store';
 import { createSummary } from './summary';
+import { createWelcomeDemo } from './welcome-demo';
 
 export type Background = ReturnType<typeof createBackground>;
 
@@ -48,7 +49,8 @@ export function createBackground(deps: BackgroundDeps) {
     capture,
   });
   const commands = createCommands(deps, store, hub, host, jobs, route, { summary, capture });
-  const options = createOptions(deps);
+  // 欢迎页示例文章的「问」「解释」（L3，onboard 块）
+  const options = createOptions(deps, createWelcomeDemo(deps, store, hub, jobs));
   // 每次启动都收紧一次（5.11）：顶层同步路径里发起，不 await，不阻塞监听器注册；
   // 失败不当作安全保证，设置页写 Key 前会再调一次 settings/ensureLocked 确认
   void deps.lockStorage().catch((e: unknown) => deps.log('storage/lockFailed', { error: errName(e) }));

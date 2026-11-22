@@ -23,4 +23,12 @@ export const SESSION_KEYS = {
   captureStart: (tabId: number) => `captureStart:${tabId}`,
   /** 标签页待确认的截图（PendingCapture，含原图 data URL）：发问时取走；只在内存型的 storage.session，不落盘 */
   capture: (tabId: number) => `capture:${tabId}`,
+  /** 安装时向已开网页补注入哨兵的结果（L5，InstallOpenTabs）：欢迎页据此提示哪些网页要刷新一次 */
+  installOpenTabs: 'installOpenTabs',
 } as const;
+
+/** 安装时已经打开的普通网页：直接生效了几个、没能注入的有几个（商店页、出错页等） */
+export interface InstallOpenTabs {
+  injected: number;
+  failed: number;
+}

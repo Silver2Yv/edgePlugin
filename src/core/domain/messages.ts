@@ -688,6 +688,22 @@ export const optionsToBackground = tagged({
   }),
   /** 拉取模型列表；失败不否定已成功的对话测试，界面允许手填。应答 ListModelsResult */
   'connection/listModels': obj({ type: lit('connection/listModels'), connectionId: id }),
+  /**
+   * contract-v1.5 增量：欢迎页「快速上手」的示例文章上点了工具栏的「问」或「解释」（L3、决策 038）。
+   * 内容脚本进不了扩展自己的页面，欢迎页自己装配工具栏，把选中的示例文字交给后台，在侧边栏里回答
+   * （侧边栏由欢迎页在点击的同步段里自己打开）。后台只做与右键「问」相同的事：按 sender.tab 存下选区、
+   * 推给该标签页的订阅者；「解释」再按默认模型起一个任务。
+   * 授权：只认 sender 是本扩展 welcome.html 且在标签页顶层框架里的（设置页发来也拒绝）；选区只记在发送者
+   * 自己的标签页名下。消息里没有地址、Key、标签页编号；内容脚本的角色发不了这条消息。应答 DemoAskResult
+   */
+  'demo/ask': obj({
+    type: lit('demo/ask'),
+    actionId: oneOf(['ask', 'explain']),
+    selectionRevision: int({ min: 0 }),
+    text: selectionText,
+    truncated: bool,
+    originalLength: int({ min: 0 }),
+  }),
 });
 export type OptionsToBackground = Infer<typeof optionsToBackground>;
 
@@ -704,6 +720,8 @@ export type ConnectionTestResult =
 export type ListModelsResult =
   | { ok: true; models: readonly string[] }
   | { ok: false; error: ModelError; suggestedBaseUrl?: string };
+/** contract-v1.5 增量：demo/ask 的应答。noModel：还没有默认模型，「解释」没有发出（选区照样存下） */
+export type DemoAskResult = { ok: true; started: boolean } | { ok: false; reason: RejectReason | 'noModel' };
 
 // ───────────── 小窗私有端口：小窗 ↔ 阅读器（FLOAT_PORT） ─────────────
 
@@ -806,6 +824,8 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
     'capture/discard',
     'image/get',
   ]),
+  // contract-v1.5：欢迎页没有另开角色，仍是 options。其中 demo/ask 只有 welcome.html 所在标签页能发，
+  // 这一层由处理函数按 sender 再核对（background/welcome-demo.ts），设置页发来也拒绝
   options: new Set(Object.keys(optionsToBackground.variants)),
   unknown: new Set(),
 };

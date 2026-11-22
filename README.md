@@ -23,4 +23,18 @@
 | `pnpm verify` | 本地跑一遍 CI：lint、类型、依赖方向、单测、构建、体积、清单权限 |
 | `pnpm test` / `pnpm test:e2e` | 单元测试 / 端到端（需先 build） |
 
-在浏览器里试用：`pnpm build` 后打开 `edge://extensions`（或 `chrome://extensions`），开启「开发人员模式」，「加载解压缩的扩展」选 `.output/chrome-mv3/`。快捷键在 `edge://extensions/shortcuts` 查看与绑定；建议键位可能因冲突没有自动绑上。
+在浏览器里试用：`pnpm build` 后打开 `edge://extensions`（或 `chrome://extensions`），开启「开发人员模式」，「加载解压缩的扩展」选 `.output/chrome-mv3/`。首次安装会自动打开欢迎页（配置向导、示例文章、快捷键）；快捷键在 `edge://extensions/shortcuts` 查看与绑定，建议键位可能因冲突没有自动绑上，欢迎页与设置页会提示。
+
+## 每个权限的用途
+
+扩展没有后端，不收集、不上传任何数据；页面内容只发往你配置的模型服务。设置页「高级选项 → 权限说明」里是同一张表（文案在 `src/ui/options/strings.ts` 的 `permissions.items`，改清单权限时两处一起改，并同步 `scripts/manifest-baseline.json`）。
+
+| 权限 | 用途 |
+| --- | --- |
+| `storage` | 把设置（含 API Key）保存在这台电脑的浏览器里，不同步。 |
+| `unlimitedStorage` | 对话历史、收藏和页面快照保存在本机，不受默认的存储配额限制。 |
+| `sidePanel` | 显示侧边栏。 |
+| `contextMenus` | 在右键菜单里加上「问」和「总结本页」。 |
+| `scripting` | 在网页里放划词工具栏，并在你提问时读取页面正文；黑名单里的网站不放。 |
+| `webRequest` | 只读。只在连接出错时读取浏览器的网络错误码（如域名解析失败、证书错误），用来告诉你连不上的原因。只看发往你登记的模型地址的请求，不拦截、不修改任何请求。 |
+| 主机权限 `<all_urls>` | 在任意网页上划词、读取你要问的页面内容、框选截图；向你填写的任意模型地址（包括内网中转站）发请求。 |

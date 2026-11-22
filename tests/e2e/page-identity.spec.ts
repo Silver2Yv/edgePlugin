@@ -3,7 +3,7 @@
 // 证据：发送计划（conv/plan 的 pageKey / documentId / contentVersion / coverage）、模拟中转站收到的完整请求、
 // 后台诊断日志里的 page/read 结果（parts = 重新回传正文，unchanged = 指纹相同用缓存）。
 import { type BrowserContext, chromium, type Page } from '@playwright/test';
-import { EXTENSION_PATH, expect, test } from './fixtures';
+import { dismissWelcome, EXTENSION_PATH, expect, test } from './fixtures';
 import {
   collectLogs,
   connection,
@@ -214,6 +214,8 @@ const bfTest = test.extend<{ context: BrowserContext }>({
       ignoreDefaultArgs: ['--disable-back-forward-cache'],
       args: [`--disable-extensions-except=${EXTENSION_PATH}`, `--load-extension=${EXTENSION_PATH}`],
     });
+    // 自己起的浏览器同样是首次安装：关掉自动打开的欢迎页，免得它抢走前台
+    await dismissWelcome(context);
     await use(context);
     await context.close();
   },

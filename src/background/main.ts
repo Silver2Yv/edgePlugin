@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { SESSION_KEYS } from '@/core/domain/session-keys';
 import { migrateSettings } from '@/core/domain/settings';
 import { SETTINGS_KEY } from '@/platform/settings-store';
 import { createBackground } from './app';
@@ -26,10 +27,21 @@ const sitesOf = (raw: unknown) => {
 // 后台入口：监听器必须在顶层同步挂上，Service Worker 被唤醒时才收得到事件
 export function startBackground(): void {
   void browser.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-  browser.runtime.onInstalled.addListener(() => {
+  browser.runtime.onInstalled.addListener((details) => {
     createMenus();
     void reconcileSentinel().catch(warn('哨兵注册失败'));
-    void injectSentinelIntoOpenTabs().catch(warn('向已开网页注入哨兵失败'));
+    const injected = injectSentinelIntoOpenTabs();
+    // 首次安装后自动打开欢迎页（L1）；更新、浏览器升级时不打开。补注入的结果留给欢迎页提示刷新（L5）
+    if (details.reason === 'install') {
+      void browser.tabs
+        .create({ url: browser.runtime.getURL('/welcome.html') })
+        .catch(warn('打开欢迎页失败'));
+      void injected
+        .then((r) => browser.storage.session.set({ [SESSION_KEYS.installOpenTabs]: r }))
+        .catch(warn('向已开网页注入哨兵失败'));
+    } else {
+      void injected.catch(warn('向已开网页注入哨兵失败'));
+    }
   });
   browser.runtime.onStartup.addListener(() => void reconcileSentinel().catch(warn('哨兵注册失败')));
 

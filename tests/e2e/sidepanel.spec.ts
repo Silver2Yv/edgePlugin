@@ -3,7 +3,7 @@
 // 侧边栏页面 Playwright 拿不到，经浏览器级调试协议附加（sidepanel-helpers.ts）。
 import { chromium, type Page, type Worker } from '@playwright/test';
 import type { browser } from 'wxt/browser';
-import { EXTENSION_ID, EXTENSION_PATH, expect, test } from './fixtures';
+import { dismissWelcome, EXTENSION_ID, EXTENSION_PATH, expect, test } from './fixtures';
 import {
   ANSWER,
   askInFloat,
@@ -389,6 +389,8 @@ test('V-12：侧边栏开合时网页重排，记录视口顶部段落与块内�
   });
   try {
     const sw = ctx.serviceWorkers()[0] ?? (await ctx.waitForEvent('serviceworker'));
+    // 自己起的浏览器同样是首次安装：关掉自动打开的欢迎页，免得它抢走前台
+    await dismissWelcome(ctx);
     const paras = Array.from(
       { length: 80 },
       (_, i) => `<p id="p${i}">第${i}段：${'这是一段用来观察重排的正文，'.repeat(8)}</p>`,
