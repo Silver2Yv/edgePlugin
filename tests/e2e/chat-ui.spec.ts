@@ -159,6 +159,13 @@ test('临时切换档位与思考强度：切到「带全文」「思考 高」�
   serviceWorker,
 }) => {
   const logs = collectLogs(page.context(), serviceWorker);
+  // 思考参数按厂商发（H6）：mock 模型名认不出厂商，连接预设定成 openai，让强度按 reasoning_effort 透传；
+  // 这里断言的是「界面的临时切换传到了请求里」，厂商映射本身见 core/llm/thinking.test.ts
+  const s = settingsWith(r);
+  await writeSettings(serviceWorker, {
+    ...s,
+    connections: s.connections.map((c) => ({ ...c, preset: 'openai' })),
+  });
   await page.goto('https://e2e.test/article');
   const frame = await selectAndOpen(page, '#target');
   const tier = frame.getByLabel('上下文档位');
