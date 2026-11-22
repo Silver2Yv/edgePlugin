@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { contentVersionOf } from '@/core/context/content-version';
 import { TOKEN_PATTERN, TOKEN_TTL_MS } from '@/core/domain/float';
 import { SESSION_KEYS } from '@/core/domain/session-keys';
 import {
@@ -6,9 +7,11 @@ import {
   EXT_ID,
   FLOAT_DOC,
   fakeSession,
+  MODEL,
   makeHarness,
   readyFloat,
   SELECTED,
+  SETTINGS,
   selectionReady,
   TAB,
   TOP_DOC,
@@ -48,10 +51,10 @@ describe('selection/ready：注入阅读器并预热小窗', () => {
 });
 
 describe('action/click', () => {
-  it('只接「问」：其他动作拒绝，不存选区、不发指令', async () => {
+  it('内置「存」：拒绝，不存选区、不发指令（工具栏本应已本地拦截，这里是兜底）', async () => {
     const h = makeHarness();
     const before = h.session.data.size;
-    expect(await h.message(click(1, 'explain'))).toEqual({ ok: false, reason: 'notAllowed' });
+    expect(await h.message(click(1, 'save'))).toEqual({ ok: false, reason: 'notAllowed' });
     expect(h.session.data.size).toBe(before);
     expect(h.sent).toHaveLength(0);
   });
@@ -114,6 +117,68 @@ describe('action/click', () => {
     const q = c.ofType('conv/quote').at(-1);
     expect(q).toMatchObject({ selectionRevision: 5, truncated: true, originalLength: 2500 });
     expect([...String(q?.text)].length).toBe(2000);
+  });
+
+  it('选区类直接发送动作（如「解释」）：路由后由后台自己起任务，不等界面输入', async () => {
+    const h = makeHarness();
+    // 档位用 selection，避免这个用例还要模拟页面读取（上下文装配不是本模块职责）
+    h.setSettings({ ...SETTINGS, context: { ...SETTINGS.context, defaultTier: 'selection' } });
+    expect(await h.message(click(1, 'explain'))).toEqual({ ok: true });
+    expect(h.session.data.get(SESSION_KEYS.selection(TAB))).toMatchObject({
+      text: SELECTED,
+      selectionRevision: 1,
+    });
+    expect(h.sent.some((s) => s.msg.type === 'float/show')).toBe(true);
+    await until(() => h.fetches.length === 1, '后台自己发起的请求');
+    const req = JSON.parse(String(h.fetches[0]?.init.body)) as { model: string; messages: unknown[] };
+    expect(req.model).toBe(MODEL.model);
+    expect(JSON.stringify(req.messages)).toContain(SELECTED);
+  });
+
+  it('页面类直接发送动作（如工具栏里的「总结本页」）：不带选区，用固定问题整页发起', async () => {
+    const h = makeHarness();
+    expect(await h.message(click(1, 'summarizePage'))).toEqual({ ok: true });
+    await until(() => h.sent.some((s) => s.msg.type === 'page/read'), 'page/read');
+    const read = h.sent.find((s) => s.msg.type === 'page/read')?.msg as unknown as { readId: string };
+    const blocks = [{ id: 'b1', kind: 'paragraph' as const, text: '正文第一段。', headingPath: [] }];
+    const doc = {
+      contentVersion: contentVersionOf('测试文章', blocks),
+      title: '测试文章',
+      blocks,
+      notes: [],
+      textLength: 6,
+      extractedAt: 1,
+    };
+    await h.message({
+      type: 'page/docPart',
+      readId: read.readId,
+      index: 0,
+      total: 1,
+      data: JSON.stringify(doc),
+    });
+    await until(() => h.fetches.length === 1, '总结请求');
+    const body = JSON.stringify(JSON.parse(String(h.fetches[0]?.init.body)).messages);
+    expect(body).toContain('总结本页');
+    expect(body).toContain('正文第一段。');
+  });
+
+  it('直接发送动作但没有连接：路由仍成功，不发请求，并按已订阅的小窗提示原因', async () => {
+    const h = makeHarness();
+    const { defaultModel: _unused, ...noModel } = SETTINGS;
+    h.setSettings(noModel);
+    const c = await readyFloat(h);
+    expect(await h.message(click(2, 'explain'))).toEqual({ ok: true });
+    await until(() => c.ofType('conv/notice').length > 0, 'notice');
+    expect(c.ofType('conv/notice').at(-1)).toEqual({ type: 'conv/notice', kind: 'noConnection' });
+    expect(h.fetches).toHaveLength(0);
+  });
+
+  it('未知自定义动作：路由仍成功，但不起任务（已知设置变更竞态，不是正常路径）', async () => {
+    const h = makeHarness();
+    expect(await h.message(click(1, 'custom:12345678'))).toEqual({ ok: true });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(h.fetches).toHaveLength(0);
+    expect(h.logs.some((l) => l.event === 'action/unknown')).toBe(true);
   });
 });
 

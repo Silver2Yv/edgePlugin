@@ -25,4 +25,12 @@ describe('computeToolbarPosition', () => {
     const rect = { left: -50, right: 10, top: 300, bottom: 320 };
     expect(computeToolbarPosition(rect, SIZE, VIEWPORT).left).toBe(8);
   });
+
+  it('选区本身（上下都）在视口外（超长选区最后一行远在屏幕下方）：夹到视口底部，不跟着超出（A5）', () => {
+    const rect = { left: 100, right: 200, top: 1300, bottom: 1340 };
+    expect(computeToolbarPosition(rect, SIZE, VIEWPORT)).toEqual({
+      left: 100,
+      top: VIEWPORT.height - SIZE.height - 8,
+    });
+  });
 });

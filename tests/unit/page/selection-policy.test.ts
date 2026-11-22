@@ -61,6 +61,11 @@ describe('evaluateSelection', () => {
     expect(decision.show).toBe(true);
     expect(decision.inCode).toBe(false);
   });
+
+  it('选中少于 2 个字不弹（A5）', () => {
+    const sel = selectNodeContents('<p id="t">h</p>', 't');
+    expect(evaluateSelection(sel)).toEqual({ show: false, text: '', inCode: false });
+  });
 });
 
 describe('输入框里的选区（M6 与 A1 的唯一例外）', () => {
@@ -108,6 +113,11 @@ describe('输入框里的选区（M6 与 A1 的唯一例外）', () => {
       const sel = focusAndSelect(html, 'x', 0, 4);
       expect(evaluateSelection(sel)).toEqual({ show: false, text: '', inCode: false });
     }
+  });
+
+  it('只读多行输入框里选中少于 2 个字：不弹（A5）', () => {
+    const sel = focusAndSelect('<div><textarea id="ro" readonly>abc</textarea></div>', 'ro', 0, 1);
+    expect(evaluateSelection(sel)).toEqual({ show: false, text: '', inCode: false });
   });
 
   it('isReadonlyCodeInput 只认未禁用的只读 textarea', () => {

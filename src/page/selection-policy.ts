@@ -23,6 +23,10 @@ export interface SelectionDecision {
 
 const NO: SelectionDecision = { show: false, text: '', inCode: false };
 
+/** 选中少于 2 个字不弹（A5），按码点数，与 originalLength 同口径 */
+const MIN_SELECTION_CHARS = 2;
+const longEnough = (text: string): boolean => [...text].length >= MIN_SELECTION_CHARS;
+
 /** 只读多行输入框：A1/M6 的唯一例外。抽取（extract.ts）与选区共用这一个判断 */
 export function isReadonlyCodeInput(el: Element | null | undefined): el is HTMLTextAreaElement {
   if (el?.tagName !== 'TEXTAREA') return false;
@@ -64,11 +68,13 @@ export function evaluateSelection(sel: Selection | null): SelectionDecision {
     if (!isReadonlyCodeInput(active)) return NO;
     const { selectionStart, selectionEnd, value } = active;
     const text = value.slice(Math.min(selectionStart, selectionEnd), Math.max(selectionStart, selectionEnd));
-    return text.trim() === '' ? NO : { show: true, text, inCode: true, readonlyInput: active };
+    if (text.trim() === '' || !longEnough(text)) return NO;
+    return { show: true, text, inCode: true, readonlyInput: active };
   }
   if (sel.isCollapsed) return NO;
   const text = sel.toString();
   if (text.trim() === '') return NO;
+  if (!longEnough(text)) return NO;
   if (inFormField(sel)) return NO;
   return { show: true, text, inCode: inCodeBlock(sel) };
 }

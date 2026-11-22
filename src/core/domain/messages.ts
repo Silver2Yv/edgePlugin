@@ -17,7 +17,7 @@
 import { BLOCK_KINDS, PAGE_NOTE_KINDS } from '../context/page-doc';
 import type { RequestContextPlan } from '../context/plan';
 import type { ModelError, ModelErrorKind } from '../llm/adapter';
-import { BUILTIN_ACTION_IDS } from './actions';
+import { type ActionSummary, BUILTIN_ACTION_IDS } from './actions';
 import type { AskRoute } from './float';
 import { FLOAT_LIMITS, TOKEN_PATTERN } from './float';
 import { ID_PATTERN } from './ids';
@@ -146,7 +146,8 @@ export type ContentToBackground = Infer<typeof contentToBackground>;
 /** 页面侧配置（config/get 的应答）。不含 Key、连接地址、历史 */
 export interface PageConfig {
   siteLevel: SiteLevel;
-  toolbarActions: readonly { id: string; label: string }[];
+  /** contract-v1.4 增量：补上 kind/needsInput/scope——工具栏据此决定点击后是等输入、直接发送、还是不发请求（A2/A3/A6） */
+  toolbarActions: readonly ActionSummary[];
   /** 这次提问去小窗还是侧边栏（B7） */
   askRoute: AskRoute;
 }
