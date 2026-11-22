@@ -47,6 +47,11 @@ export interface Settings {
   float: {
     placement: 'nearSelection' | 'remembered';
     rect?: { x: number; y: number; w: number; h: number };
+    /**
+     * 小窗默认关闭方式（B3、K5，contract-v1.4 增量）：auto 点网页自动收起；pinned 打开时就是钉住的。
+     * 小窗上的图钉按钮只临时切换（到这个页面关掉为止），不改这里
+     */
+    closeMode: 'auto' | 'pinned';
   };
   suggestions: { model: boolean; rules: boolean };
   updates: { autoCheck: boolean };
@@ -62,7 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   promptOverrides: {},
   reply: { lengthTier: 'normal', language: 'auto', thinking: 'off' },
   context: { speedSoftBudgetRatio: 0.5, summaryReadRatio: 0.3, defaultTier: 'nearby' },
-  float: { placement: 'nearSelection' },
+  float: { placement: 'nearSelection', closeMode: 'auto' },
   suggestions: { model: true, rules: true },
   updates: { autoCheck: false },
 };
@@ -130,6 +135,7 @@ const settingsSchema = obj({
         h: num({ min: FLOAT_LIMITS.minHeight }),
       }),
     ),
+    closeMode: oneOf(['auto', 'pinned']),
   }),
   suggestions: obj({ model: bool, rules: bool }),
   updates: obj({ autoCheck: bool }),

@@ -51,6 +51,9 @@ export function handleFloatToReaderMessage(raw: unknown, host: FloatHostApi): vo
     case 'float/collapse':
       host.hide();
       break;
+    case 'float/pin':
+      host.setKeepOpen(r.value.pinned);
+      break;
     default:
       // anchor/jump、anchor/back：本版本不实现
       break;

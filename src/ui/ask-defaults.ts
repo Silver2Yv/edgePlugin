@@ -10,6 +10,12 @@ export type AskDefaults =
 
 export const NO_CONNECTION = '请先在设置里添加连接';
 
+/**
+ * 「展开讲讲」（I3）发出的追问文字。占位：提示词模块（core/prompt）给出同名常量后改为从那里引用，
+ * 两边的文字要一致（提示词可能按这句话识别「展开」）
+ */
+export const EXPAND_QUESTION = '展开讲讲';
+
 export async function loadAskDefaults(): Promise<AskDefaults> {
   const result = await loadSettings();
   const model = result.ok ? result.settings.defaultModel : undefined;

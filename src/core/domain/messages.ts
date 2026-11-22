@@ -457,6 +457,11 @@ export const floatToReader = tagged({
   'float/collapse': obj({ type: lit('float/collapse') }),
   'anchor/jump': obj({ type: lit('anchor/jump'), anchor: anchorSchema }),
   'anchor/back': obj({ type: lit('anchor/back') }),
+  /**
+   * contract-v1.4 增量：图钉（B3、B5）。pinned 为真时点网页别处不收起小窗，再点「问」也留在原处只换引用；
+   * Esc 与 × 照常收起。小窗连上私有端口后先发一次当前状态（默认取 settings.float.closeMode），之后每点一次图钉再发
+   */
+  'float/pin': obj({ type: lit('float/pin'), pinned: bool }),
 });
 export type FloatToReader = Infer<typeof floatToReader>;
 

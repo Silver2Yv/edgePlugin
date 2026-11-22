@@ -2,6 +2,7 @@
 // 移植自 prototypes/v10-render/test/citation.test.ts（V-10 原型已验证），断言内容未改动，
 // 只是改从 @/ui/render 公开入口导入。
 import { describe, expect, it } from 'vitest';
+import { citationIds } from '@/ui/float/messages';
 import { applyCitations, findCitationMatches } from '@/ui/render';
 
 describe('V-09 引用标记解析（在 V-10 里复用）', () => {
@@ -41,6 +42,14 @@ describe('5.10：引用只对允许集合内的编号生效（DOM 挂载）', ()
     expect(sup?.getAttribute('data-ids')).toBe('12');
     expect(container.textContent).toContain('【99】');
     expect(container.querySelector('[data-ids="99"]')).toBeNull();
+  });
+
+  it('发送计划里的块编号是 b12：换成数字后才对得上回答里的【12】（界面传给渲染管线的就是换过的）', () => {
+    const raw = applyAndRead('要点【12】。', new Set(['b12']));
+    expect(raw.querySelector('sup.ra-citation')).toBeNull();
+    const aligned = applyAndRead('要点【12】，没发送的【7】。', citationIds(['b3', 'b12']));
+    expect(aligned.querySelector('sup.ra-citation')?.getAttribute('data-ids')).toBe('12');
+    expect(aligned.textContent).toContain('【7】');
   });
 
   it('多编号中只要有一个不在允许集合内，整条标记整体保持纯文本（不展示半个引用）', () => {

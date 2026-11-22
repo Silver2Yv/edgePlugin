@@ -1,10 +1,12 @@
-// 侧边栏最小版（5.4、6.4）：每个窗口一个面板，显示本窗口当前活动标签页的对话；跟随切换标签页与地址变化
-// （监听器挂在面板自己身上，面板关着时不唤醒后台）。内容：顶部说明、引用条、输入框、回答、停止 / 重试、等待提示。
+// 侧边栏（5.4、6.4）：每个窗口一个面板，显示本窗口当前活动标签页的对话；跟随切换标签页与地址变化
+// （监听器挂在面板自己身上，面板关着时不唤醒后台）。
+// 界面（C1、C3）：顶部当前页信息（标题、可读取的字数、有没有截断；「上次总结的时间」留了位置，下一轮接）→
+// 一行提示 → 对话列表 → 输入区。样式与组件和小窗共用（theme.css、chat/），比小窗宽松一档；
 // 逻辑与小窗共用 float/state.ts 的归约器；后台按本窗口授权（见 background/conv.ts）。
 //
 // 开关快捷键（5.4）：后台在命令处理里总是同步 open，并广播带命令时间的 sidepanel/toggle、同时记进 storage.session。
 // 面板在那个时间之前就已存在，说明这次命令是「关」，自行 window.close()。先挂监听再读记录，两者之间不留空隙。
-// 历史、收藏、引用跳回、样式打磨不在这一版。
+// 历史列表、收藏、引用跳回不在这一版。
 import { useEffect, useReducer, useRef, useState } from 'preact/hooks';
 import type { Browser } from 'wxt/browser';
 import { browser } from 'wxt/browser';
@@ -15,10 +17,14 @@ import {
   CONV_PORT,
 } from '@/core/domain/messages';
 import { SESSION_KEYS } from '@/core/domain/session-keys';
-import { AnswerView } from './AnswerView';
-import { loadAskDefaults, NO_CONNECTION } from './ask-defaults';
+import { EXPAND_QUESTION, NO_CONNECTION } from './ask-defaults';
+import { type AskDeps, flushQueuedAsk, submitAsk, useComposerDefaults } from './chat/ask';
+import { Composer } from './chat/Composer';
+import { IconPlus } from './chat/Icons';
+import { MessageList } from './chat/MessageList';
+import { displayItems, latestPlan } from './float/messages';
+import { pageInfo } from './float/send-summary';
 import {
-  buildAskMessage,
   type FloatState,
   floatReducer,
   initialPanelState,
@@ -26,25 +32,29 @@ import {
   PANEL_NOTICE_TEXT,
   panelSubscribeMessage,
   shouldCloseOnToggle,
-  shouldSendOnEnter,
 } from './float/state';
+import { T } from './strings';
+import './theme.css';
 
 type Port = Browser.runtime.Port;
 
 const CONN_MESSAGE: Readonly<Record<FloatState['connPhase'], string | null>> = {
   noToken: null,
-  connecting: '连接中…',
+  connecting: T.conn.panel.connecting,
   ready: null,
-  versionMismatch: '扩展版本已更新，请关闭侧边栏后重新打开',
-  reconnecting: '连接已断开，正在重连…',
+  versionMismatch: T.conn.panel.versionMismatch,
+  reconnecting: T.conn.panel.reconnecting,
   idle: null,
-  expired: '连接已失效，请关闭侧边栏后重新打开',
+  expired: T.conn.panel.expired,
 };
 
 export function SidePanelApp() {
   const [windowId, setWindowId] = useState<number | null>(null);
   const [state, dispatch] = useReducer(floatReducer, undefined, initialPanelState);
   const [question, setQuestion] = useState('');
+  // 当前页标题（C3）：取自所订阅的标签页
+  const [pageTitle, setPageTitle] = useState<string | null>(null);
+  const defaults = useComposerDefaults();
   const portRef = useRef<Port | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -53,6 +63,14 @@ export function SidePanelApp() {
   const retarget = (tabId: number) => {
     dispatch({ kind: 'retarget', tabId });
     wake();
+  };
+
+  const askDeps: AskDeps = {
+    getState: () => stateRef.current,
+    post: (msg) => portRef.current?.postMessage(msg),
+    dispatch,
+    canSendNow: (s) => s.connPhase === 'ready' && s.targetConfirmed,
+    wake,
   };
 
   useEffect(() => {
@@ -100,8 +118,10 @@ export function SidePanelApp() {
     const onActivated = (info: { tabId: number; windowId: number }) => {
       if (info.windowId === windowId) retarget(info.tabId);
     };
-    const onUpdated = (tabId: number, change: { url?: string }, tab: Browser.tabs.Tab) => {
+    const onUpdated = (tabId: number, change: { url?: string; title?: string }, tab: Browser.tabs.Tab) => {
       if (change.url !== undefined && tab.active && tab.windowId === windowId) retarget(tabId);
+      // 当前页标题变了（页面加载完、单页应用换页）：顶部的页面信息跟着换
+      if (change.title !== undefined && tabId === stateRef.current.target) setPageTitle(change.title);
     };
     browser.tabs.onActivated.addListener(onActivated);
     browser.tabs.onUpdated.addListener(onUpdated);
@@ -113,6 +133,23 @@ export function SidePanelApp() {
       browser.tabs.onUpdated.removeListener(onUpdated);
     };
   }, [windowId]);
+
+  // 换了要显示的标签页：取它的标题（C3）
+  useEffect(() => {
+    const tabId = state.target;
+    if (tabId === null) return;
+    let stale = false;
+    setPageTitle(null);
+    void browser.tabs.get(tabId).then(
+      (tab) => {
+        if (!stale) setPageTitle(tab.title ?? null);
+      },
+      () => undefined,
+    );
+    return () => {
+      stale = true;
+    };
+  }, [state.target]);
 
   // 小窗转来的对话（handoff/pending）：带着转接编号订阅那个标签页，后台据此让小窗收起
   useEffect(() => {
@@ -132,21 +169,7 @@ export function SidePanelApp() {
 
   // 重连并订阅完之后：发出未就绪时存下的待发问
   useEffect(() => {
-    const ask = state.queuedAsk;
-    if (!ask) return;
-    portRef.current?.postMessage(
-      buildAskMessage({
-        clientRequestId: ask.clientRequestId,
-        text: ask.text,
-        quote: state.quote,
-        conversationId: state.conversationId,
-        lengthTier: ask.lengthTier,
-        thinking: ask.thinking,
-        model: ask.model,
-        ...(ask.contextTier ? { contextTier: ask.contextTier } : {}),
-      }),
-    );
-    dispatch({ kind: 'askSent', clientRequestId: ask.clientRequestId });
+    flushQueuedAsk(state, askDeps);
   }, [state.snapshotSeq]);
 
   useEffect(() => {
@@ -156,46 +179,13 @@ export function SidePanelApp() {
   }, []);
 
   const generating = isGenerating(state.job);
-  const job = state.job;
 
   const handleSend = async () => {
-    const text = question.trim();
-    if (!text) return;
-    if (generating) {
-      dispatch({ kind: 'localError', message: '回答进行中' });
-      return;
-    }
-    const defaults = await loadAskDefaults();
-    if (!defaults.ok) {
-      dispatch({ kind: 'localError', message: defaults.message });
-      return;
-    }
-    const { lengthTier, thinking, contextTier, model } = defaults;
-    const clientRequestId = crypto.randomUUID();
-    const s = stateRef.current;
-    if (s.connPhase === 'ready' && s.targetConfirmed) {
-      portRef.current?.postMessage(
-        buildAskMessage({
-          clientRequestId,
-          text,
-          quote: s.quote,
-          conversationId: s.conversationId,
-          lengthTier,
-          thinking,
-          model,
-          contextTier,
-        }),
-      );
-      dispatch({ kind: 'askSent', clientRequestId });
-    } else {
-      dispatch({
-        kind: 'queueAsk',
-        ask: { clientRequestId, text, lengthTier, thinking, model, contextTier },
-      });
-      wake();
-    }
-    setQuestion('');
+    if (await submitAsk(askDeps, question)) setQuestion('');
   };
+
+  /** 「展开讲讲」（I3）：在同一个对话里追问一句，长度档用详细 */
+  const handleExpand = () => void submitAsk(askDeps, EXPAND_QUESTION, { lengthTier: 'detailed' });
 
   const handleStop = () => {
     if (!state.job) return;
@@ -207,93 +197,108 @@ export function SidePanelApp() {
     portRef.current?.postMessage({ type: 'conv/retry', jobId: state.job.jobId } satisfies ClientToBackground);
   };
 
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (!shouldSendOnEnter(e)) return;
-    e.preventDefault();
-    void handleSend();
-  };
-
   const connMessage = CONN_MESSAGE[state.connPhase];
   const canType = state.connPhase !== 'expired' && state.connPhase !== 'versionMismatch';
   const noticeText = state.notice ? PANEL_NOTICE_TEXT[state.notice] : null;
+  const hasConversation = state.conversationId !== null || state.messages.length > 0 || state.job !== null;
+
+  // 当前页信息（C3）：能读取的字数、有没有截断，取自最近一次请求的发送计划
+  const info = pageInfo(latestPlan(state.messages, state.job));
+  const pageMeta = info
+    ? [
+        info.readableChars === null ? null : T.page.readable(info.readableChars),
+        info.notRead ? T.page.notRead : null,
+        info.truncated === null ? null : info.truncated ? T.page.truncated : T.page.complete,
+      ].filter((p): p is string => p !== null)
+    : [];
 
   return (
-    <main
-      style={{
-        boxSizing: 'border-box',
-        padding: '12px',
-        fontSize: '13px',
-        fontFamily: 'system-ui, sans-serif',
-      }}
-    >
-      {noticeText && (
-        <p data-testid="panel-notice" style={{ margin: '0 0 8px', color: '#888', fontSize: '12px' }}>
-          {noticeText}
-          {state.notice === 'noConnection' && (
-            <button
-              type="button"
-              style={{ marginLeft: '6px' }}
-              onClick={() => void browser.runtime.openOptionsPage()}
-            >
-              打开设置
-            </button>
-          )}
-        </p>
-      )}
-      {connMessage && <p style={{ margin: '0 0 8px', color: '#666' }}>{connMessage}</p>}
-      {state.quote && (
-        <div
-          data-testid="quote"
-          style={{ margin: '0 0 8px', padding: '6px', background: '#f5f5f5', borderRadius: '4px' }}
-        >
-          <div style={{ maxHeight: '120px', overflow: 'auto', whiteSpace: 'pre-wrap', color: '#555' }}>
-            {state.quote.text}
+    <main className="ra-app ra-app--panel">
+      <header className="ra-header">
+        <div className="ra-page">
+          <div className="ra-page__title" data-testid="page-title" title={pageTitle ?? undefined}>
+            {pageTitle || T.page.untitled}
           </div>
-          {state.quote.truncated && (
-            <p style={{ margin: '4px 0 0', color: '#999' }}>
-              选区过长，只发送了其中一部分（原文共 {state.quote.originalLength} 字）
-            </p>
+          {/* 「上次总结的时间」（C3）下一轮接：有了就接在这一行后面（T.page.lastSummary） */}
+          {pageMeta.length > 0 && (
+            <div className="ra-page__meta" data-testid="page-meta">
+              {pageMeta.join(' · ')}
+            </div>
           )}
         </div>
-      )}
-      {canType && (
-        <>
-          <textarea
-            aria-label="输入问题"
-            value={question}
-            onInput={(e) => setQuestion((e.target as HTMLTextAreaElement).value)}
-            onKeyDown={onKeyDown}
-            onFocus={wake}
-            style={{ width: '100%', boxSizing: 'border-box', minHeight: '72px', resize: 'vertical' }}
-          />
-          <div style={{ marginTop: '6px', textAlign: 'right' }}>
-            {generating ? (
-              <button type="button" onClick={handleStop}>
-                停止
-              </button>
-            ) : (
-              <button type="button" onClick={() => void handleSend()}>
-                问
+        <button
+          type="button"
+          className="ra-icon-btn"
+          aria-label={T.header.newConversation}
+          title={T.header.newConversationTitle}
+          disabled={generating || !hasConversation}
+          onClick={() => dispatch({ kind: 'newConversation' })}
+        >
+          <IconPlus />
+        </button>
+      </header>
+      <div className="ra-notes">
+        {noticeText && (
+          <p data-testid="panel-notice" className="ra-note">
+            {noticeText}
+            {state.notice === 'noConnection' && (
+              <button
+                type="button"
+                className="ra-btn ra-btn--small"
+                onClick={() => void browser.runtime.openOptionsPage()}
+              >
+                {T.notice.openSettings}
               </button>
             )}
-          </div>
-        </>
-      )}
+          </p>
+        )}
+        {connMessage && <p className="ra-note">{connMessage}</p>}
+        {state.convHint === 'newConversation' && (
+          <p data-testid="conv-hint" className="ra-note">
+            {T.notice.newConversationStarted}
+          </p>
+        )}
+      </div>
+      <MessageList
+        items={displayItems(state.messages, state.job)}
+        emptyText={canType ? T.list.emptyPanel : ''}
+        generating={generating}
+        onRetry={handleRetry}
+        onExpand={handleExpand}
+      />
       {state.actionError && (
-        <p data-testid="action-error" style={{ margin: '6px 0 0', color: '#c33' }}>
+        <p data-testid="action-error" className="ra-note ra-note--error">
           {state.actionError}
           {state.actionError === NO_CONNECTION && (
             <button
               type="button"
-              style={{ marginLeft: '6px' }}
+              className="ra-btn ra-btn--small"
               onClick={() => void browser.runtime.openOptionsPage()}
             >
-              打开设置
+              {T.notice.openSettings}
             </button>
           )}
         </p>
       )}
-      {job && <AnswerView job={job} onRetry={handleRetry} />}
+      {canType && (
+        <Composer
+          value={question}
+          onInput={setQuestion}
+          onSend={() => void handleSend()}
+          onStop={handleStop}
+          onFocus={wake}
+          generating={generating}
+          quote={state.quote}
+          onDismissQuote={() => dispatch({ kind: 'dismissQuote' })}
+          tier={state.tierOverride ?? defaults.contextTier}
+          thinking={state.thinkingOverride ?? defaults.thinking}
+          tierChanged={state.tierOverride !== null && state.tierOverride !== defaults.contextTier}
+          thinkingChanged={state.thinkingOverride !== null && state.thinkingOverride !== defaults.thinking}
+          onTier={(contextTier) => dispatch({ kind: 'setTier', contextTier })}
+          onThinking={(thinking) => dispatch({ kind: 'setThinking', thinking })}
+          model={defaults.model}
+        />
+      )}
     </main>
   );
 }

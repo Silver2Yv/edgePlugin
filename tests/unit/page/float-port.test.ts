@@ -46,6 +46,8 @@ function fakeHost(rect: FloatRect | null = { left: 0, top: 0, width: 380, height
     getRect: vi.fn(() => rect),
     markPortReady: vi.fn(),
     onRectSettled: vi.fn(),
+    setKeepOpen: vi.fn(),
+    keepsOpen: vi.fn(() => false),
   };
 }
 
@@ -66,6 +68,17 @@ describe('handleFloatToReaderMessage：按消息类型分派到 FloatHostApi', (
     const host = fakeHost();
     handleFloatToReaderMessage({ type: 'float/collapse' }, host);
     expect(host.hide).toHaveBeenCalled();
+  });
+
+  it('float/pin：把图钉状态交给 host.setKeepOpen；缺字段的不合法消息丢弃', () => {
+    const host = fakeHost();
+    handleFloatToReaderMessage({ type: 'float/pin', pinned: true }, host);
+    expect(host.setKeepOpen).toHaveBeenCalledWith(true);
+    handleFloatToReaderMessage({ type: 'float/pin', pinned: false }, host);
+    expect(host.setKeepOpen).toHaveBeenLastCalledWith(false);
+    handleFloatToReaderMessage({ type: 'float/pin' }, host);
+    handleFloatToReaderMessage({ type: 'float/pin', pinned: 'yes' }, host);
+    expect(host.setKeepOpen).toHaveBeenCalledTimes(2);
   });
 
   it('anchor/jump、anchor/back：本版本不实现，合法消息但不调用任何 host 方法', () => {

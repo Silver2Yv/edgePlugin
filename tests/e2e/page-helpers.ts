@@ -207,7 +207,8 @@ export async function floatFrame(page: Page): Promise<Frame> {
 
 /**
  * 在小窗里提问，等请求到达模拟中转站、小窗显示答完。fill 用于超长问题（逐字输入太慢）。
- * 小窗只显示当前任务：请求到达时接单早已推给小窗，此后看到的 completed 一定是这次的
+ * 小窗里带 job-state 标记的只有正在显示的那个任务（之前的回答留在对话列表里，不带这个标记）：
+ * 请求到达时接单早已推给小窗，此后看到的 completed 一定是这次的
  */
 export async function askInFloat(frame: Frame, r: Relay, question: string, opts: { fill?: boolean } = {}) {
   const n = r.bodies.length + 1;
@@ -271,8 +272,8 @@ export interface ConvResult {
 
 /**
  * 在小窗页面里另开一条对话端口（conv/resumeFloat 按 sender 恢复握手），发一次 conv/ask 并等到终态。
- * 现在的小窗界面每次发问都是新对话（不带 conversationId），多轮历史、降档、历史去正文这些装配行为
- * 只能这样从协议层验证；返回这次任务的发送计划（conv/plan）
+ * 从协议层发问可以精确指定对话、档位、长度档等参数：多轮历史、降档、历史去正文这些装配行为
+ * 这样验证；返回这次任务的发送计划（conv/plan）
  */
 export function convAsk(
   frame: Frame,

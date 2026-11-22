@@ -322,8 +322,8 @@ async function v03(context: import('@playwright/test').BrowserContext, page: Pag
   })`);
   expect(conversationId).toMatch(/^[a-z0-9-]{8,64}$/);
 
-  // 小窗界面每次发问是新对话，不会向同一对话发；这里用小窗身份的对话端口（resumeFloat）在同一时刻
-  // 向同一对话发问，与侧边栏界面里的发送并发
+  // 要与侧边栏界面里的发送卡在同一时刻：用小窗身份的对话端口（resumeFloat）直接向同一对话发问，
+  // 与侧边栏的发送并发
   await panel.click('textarea[aria-label="输入问题"]');
   await panel.type('侧边栏这边问');
   const floatAsk = frame.evaluate(
