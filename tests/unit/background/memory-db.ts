@@ -87,6 +87,32 @@ export function memoryConvDb(): MemoryConvDb {
       read();
       return clone(tables.snapshots.get(id));
     },
+    async getBlob(id) {
+      read();
+      return clone(tables.blobs.get(id));
+    },
+    async getFavorite(id) {
+      read();
+      return clone(tables.favorites.get(id));
+    },
+    async listFavorites(q) {
+      read();
+      return clone(
+        [...tables.favorites.values()]
+          .filter(
+            (f) =>
+              (q.pageKey === undefined || f.pageKey === q.pageKey) &&
+              (q.before === undefined || f.createdAt < q.before),
+          )
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, q.limit),
+      );
+    },
+    async countFavorites(pageKey) {
+      read();
+      return [...tables.favorites.values()].filter((f) => pageKey === undefined || f.pageKey === pageKey)
+        .length;
+    },
     async write(w) {
       if (self.failWrites) throw new Error('写入失败（测试）');
       self.writes.push(clone(w));

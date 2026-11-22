@@ -51,12 +51,17 @@ describe('selection/ready：注入阅读器并预热小窗', () => {
 });
 
 describe('action/click', () => {
-  it('内置「存」：拒绝，不存选区、不发指令（工具栏本应已本地拦截，这里是兜底）', async () => {
+  it('内置「存」：落库后才回 ok（带 favoriteId），不碰选区会话态、不发指令、不走去向流程', async () => {
     const h = makeHarness();
     const before = h.session.data.size;
-    expect(await h.message(click(1, 'save'))).toEqual({ ok: false, reason: 'notAllowed' });
+    const res = await h.message(click(1, 'save'));
+    expect(res).toMatchObject({ ok: true });
+    expect((res as { favoriteId?: string }).favoriteId).toMatch(/^id-/);
     expect(h.session.data.size).toBe(before);
     expect(h.sent).toHaveLength(0);
+    const favs = await h.db.listFavorites({ limit: 10 });
+    expect(favs).toHaveLength(1);
+    expect(favs[0]).toMatchObject({ selection: SELECTED, blobIds: [] });
   });
 
   it('未知字段、别的扩展、扩展页面发来的意图一律拒绝且无副作用', async () => {

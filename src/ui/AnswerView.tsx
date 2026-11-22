@@ -26,6 +26,8 @@ function renderWaitHint(text: string) {
 }
 
 const NO_BLOCKS: readonly string[] = [];
+/** 「存」点了之后等这么久还没确认就恢复按钮（后台没回应、或消息丢了），不是真正的请求超时 */
+const SAVE_PENDING_MS = 8_000;
 
 export interface AnswerViewProps {
   view: AnswerLike;
@@ -40,9 +42,25 @@ export interface AnswerViewProps {
   canExpand: boolean;
   onRetry: () => void;
   onExpand: () => void;
+  /**
+   * 「存」（G3，核心功能开发第二批）：收藏这条回答连同提问与引用。不传（没有对话编号时，如还没落库的
+   * 本地暂存消息）不显示按钮；只对已完成的回答显示
+   */
+  onSave?: () => void;
+  /** 已经收到 favorite/saved 确认（按钮改「已存」） */
+  saved?: boolean;
 }
 
-export function AnswerView({ view, live, selectedChars, canExpand, onRetry, onExpand }: AnswerViewProps) {
+export function AnswerView({
+  view,
+  live,
+  selectedChars,
+  canExpand,
+  onRetry,
+  onExpand,
+  onSave,
+  saved,
+}: AnswerViewProps) {
   const answerRef = useRef<HTMLDivElement | null>(null);
   const answerRendererRef = useRef<AnswerRenderer | null>(null);
 
@@ -67,6 +85,19 @@ export function AnswerView({ view, live, selectedChars, canExpand, onRetry, onEx
   const askStartedAtRef = useRef<number | null>(null);
   const lastDeltaAtRef = useRef<number | null>(null);
   const [, bumpWaitTick] = useState(0);
+
+  // 「存」（G3）：点了之后短暂禁用，收到 favorite/saved（saved 变真）就定住；迟迟没有确认（失败、丢消息）
+  // SAVE_PENDING_MS 后自动恢复，不让按钮永远卡在禁用态
+  const [savePending, setSavePending] = useState(false);
+  useEffect(() => {
+    if (!savePending) return;
+    if (saved) {
+      setSavePending(false);
+      return;
+    }
+    const timer = setTimeout(() => setSavePending(false), SAVE_PENDING_MS);
+    return () => clearTimeout(timer);
+  }, [savePending, saved]);
 
   // 新任务 / 新尝试：清空回答区重新开始（jobId 或 attemptId 变化），同时重新起算等待计时
   useEffect(() => {
@@ -173,6 +204,21 @@ export function AnswerView({ view, live, selectedChars, canExpand, onRetry, onEx
             onClick={onExpand}
           >
             {T.answer.expand}
+          </button>
+        )}
+        {onSave && view.state === 'completed' && (
+          <button
+            type="button"
+            className="ra-btn ra-btn--small"
+            data-testid="answer-save"
+            title={T.answer.saveTitle}
+            disabled={saved || savePending}
+            onClick={() => {
+              setSavePending(true);
+              onSave();
+            }}
+          >
+            {saved ? T.answer.saved : T.answer.save}
           </button>
         )}
       </div>

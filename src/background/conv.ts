@@ -24,6 +24,7 @@ import {
 } from '@/core/domain/messages';
 import type { ConversationRecord } from '@/core/domain/records';
 import type { BackgroundDeps, ConvPort } from './deps';
+import type { Favorites } from './favorites';
 import type { FloatHost } from './float-host';
 import type { History } from './history';
 import type { Hub } from './hub';
@@ -75,6 +76,7 @@ export function createConv(
   host: FloatHost,
   jobs: Jobs,
   history: History,
+  favorites: Favorites,
 ) {
   return function onConnect(port: ConvPort): void {
     if (port.name !== CONV_PORT) return;
@@ -300,6 +302,10 @@ export function createConv(
       // 历史（仅侧边栏，授权表已限定）：不针对某个标签页
       if (msg.type === 'history/query') return history.query(msg, post, reject);
       if (msg.type === 'history/delete') return history.remove(msg, post, reject);
+      // 收藏（小窗与侧边栏，contract-v1.5）：不针对某个标签页，按对话/消息或收藏编号直接操作
+      if (msg.type === 'favorite/add') return favorites.addFromMessage(msg, post, reject);
+      if (msg.type === 'favorite/update') return favorites.update(msg, post, reject);
+      if (msg.type === 'favorite/remove') return favorites.remove(msg, post, reject);
       // 以下需要目标标签页：小窗是令牌绑定的那个，侧边栏是当前订阅的那个（须仍在本窗口）
       const tabId = st.tabId;
       if (tabId === undefined) return reject('notAllowed', msg);
@@ -327,7 +333,7 @@ export function createConv(
         case 'handoff/start':
           return startHandoff(tabId, msg);
         default:
-          // 切换档位与模型、收藏、引用跳回本版本不做
+          // 切换档位与模型、引用跳回本版本不做
           return reject('notAllowed', msg);
       }
     }

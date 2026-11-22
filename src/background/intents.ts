@@ -1,5 +1,7 @@
 // 意图通道（runtime.onMessage，5.12）：内容脚本（哨兵 / 阅读器）→ 后台。
 // 角色与身份只取自 sender（规则 7）；每条消息先过 parseFrom，拒绝时不写入、不发指令。
+
+import { toPageKey } from '@/core/context/page-key';
 import { type ActionDef, BUILTIN_ACTIONS } from '@/core/domain/actions';
 import { routeOnAsk } from '@/core/domain/float';
 import {
@@ -14,6 +16,7 @@ import { DEFAULT_SETTINGS } from '@/core/domain/settings';
 import { frameSiteLevel } from '@/core/domain/site-policy';
 import { SUMMARIZE_PAGE_QUESTION } from '@/core/prompt/ask';
 import type { BackgroundDeps, SenderLike } from './deps';
+import type { Favorites } from './favorites';
 import type { FloatHost } from './float-host';
 import type { Hub } from './hub';
 import type { Jobs } from './jobs';
@@ -23,8 +26,11 @@ import { senderRole } from './roles';
 import type { Route } from './route';
 import type { Store, StoredSelection } from './store';
 
-/** 意图的应答。config/get 直接回 PageConfig */
-export type IntentResponse = { ok: true } | { ok: false; reason: RejectReason } | PageConfig;
+/** 意图的应答。config/get 直接回 PageConfig；工具栏「存」成功时带上 favoriteId */
+export type IntentResponse =
+  | { ok: true; favoriteId?: string }
+  | { ok: false; reason: RejectReason }
+  | PageConfig;
 
 interface ContentSender {
   tabId: number;
@@ -45,6 +51,7 @@ export function createIntents(
   pages: Pages,
   route: Route,
   jobs: Jobs,
+  favorites: Favorites,
 ) {
   const refuse = (reason: RejectReason, detail?: Record<string, unknown>): IntentResponse => {
     deps.log('intent/rejected', { reason, ...detail });
@@ -123,6 +130,27 @@ export function createIntents(
     };
   }
 
+  /**
+   * 工具栏「存」（G1、G3）：选区 + 原文快照（锚点前后文）+ 锚点 + 来源页面；不经对话，不发请求。
+   * 事务提交后才回 ok，工具栏据此才显示「已存」（AR-17）。「不读取页面内容」站点不取锚点，只存选中文字。
+   */
+  async function handleSave(
+    msg: Extract<ContentToBackground, { type: 'action/click' }>,
+    s: ContentSender,
+  ): Promise<IntentResponse> {
+    const loaded = await deps.loadSettings();
+    const settings = loaded.ok ? loaded.settings : DEFAULT_SETTINGS;
+    const topUrl = s.frameId === 0 ? s.url : await deps.getTabUrl?.(s.tabId).catch(() => undefined);
+    const pageUrl = topUrl ?? s.url;
+    const pageKey = pageUrl === undefined ? undefined : toPageKey(pageUrl);
+    if (pageKey === undefined || pageUrl === undefined) return refuse('invalid', { type: msg.type });
+    const siteLevel = frameSiteLevel(topUrl, s.url, settings.sites);
+    const anchor = siteLevel === 'noRead' ? undefined : pages.anchorFor(s.tabId, msg.selectionRevision);
+    const r = await favorites.addFromSelection({ pageKey, url: pageUrl, text: msg.text, anchor });
+    if (!r.ok) return refuse('storageFailed', { type: msg.type });
+    return { ok: true, favoriteId: r.favoriteId };
+  }
+
   async function handle(msg: ContentToBackground, s: ContentSender): Promise<IntentResponse> {
     switch (msg.type) {
       case 'selection/ready': {
@@ -138,8 +166,9 @@ export function createIntents(
         return { ok: true };
       }
       case 'action/click': {
-        // 内置「存」类动作本版本不发请求：提前拒绝，不触发任何路由副作用（工具栏本应已经本地拦截，这里是兜底）
+        // 「存」本版本已接：落库后才回 ok，不走下面的去向/起任务流程（它不是问，不发请求）
         const builtin = BUILTIN_ACTIONS.find((a) => a.id === msg.actionId);
+        if (builtin?.kind === 'save') return handleSave(msg, s);
         if (builtin && builtin.kind !== 'model') return refuse('notAllowed', { type: msg.type });
         // 去向（5.2、5.4）：小窗失败过就打开侧边栏——必须在这条点击消息的同步段里发出（规则 10），先于一切
         // await；本窗口侧边栏已经开着就在侧边栏回答，不用 open，可以之后再判断（见 route.ts）

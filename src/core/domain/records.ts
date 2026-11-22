@@ -109,15 +109,30 @@ export interface SnapshotRecord {
   expiresAt: number;
 }
 
+/**
+ * 收藏（G1–G3、核心功能开发第二批）。两种来源：
+ * - 工具栏「存」：只有 selection / sourceText / anchor / url，没有 answer / source（不经对话）。
+ * - 回答上的「存」：另外带 answer 与 source（消息归属，引用的快照 / blob 的 refCount 加一，见 background/favorites.ts）。
+ * title / note 是收藏管理里的编辑（G2），不写就用来源摘要当标题。这些字段都是在原有结构上新增的可选字段，
+ * 没有新增索引，DB_VERSION 不必升级（object store 与索引在 v1 已齐全，见 DB_STORES.favorites）。
+ */
 export interface FavoriteRecord {
   id: FavoriteId;
   pageKey: PageKey;
+  /** 收藏时的页面地址（导出时的「来源链接」，G6） */
+  url: string;
+  /** 用户编辑的标题；不填用选中文字/问题的开头 */
+  title?: string;
+  /** 用户加的笔记 */
+  note?: string;
   selection: string;
-  /** 原文快照 */
+  /** 原文快照：选区所在块的文字，或选区前后一段（没有锚点时就是选中文字本身） */
   sourceText: string;
   anchor?: Anchor;
-  answer: string;
-  source: { conversationId: ConversationId; messageId: MessageId };
+  /** 仅「回答上的存」：这条回答的正文 */
+  answer?: string;
+  /** 仅「回答上的存」：来源的对话与消息 */
+  source?: { conversationId: ConversationId; messageId: MessageId };
   blobIds: readonly BlobId[];
   createdAt: number;
 }

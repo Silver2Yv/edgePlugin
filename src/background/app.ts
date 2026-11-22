@@ -2,6 +2,7 @@
 import { type CommandTab, createCommands, type MenuInfo } from './commands';
 import { createConv } from './conv';
 import type { BackgroundDeps, SenderLike } from './deps';
+import { createFavorites } from './favorites';
 import { createFloatHost } from './float-host';
 import { createHistory } from './history';
 import { createHub } from './hub';
@@ -24,7 +25,8 @@ export function createBackground(deps: BackgroundDeps) {
   const pages = createPages(deps);
   const jobs = createJobs(deps, store, hub, pages);
   const route = createRoute(deps, store, hub, host);
-  const intents = createIntents(deps, store, hub, host, pages, route, jobs);
+  const favorites = createFavorites(deps);
+  const intents = createIntents(deps, store, hub, host, pages, route, jobs, favorites);
   const commands = createCommands(deps, store, hub, host, jobs, route);
   const options = createOptions(deps);
   const history = createHistory(deps, jobs);
@@ -40,7 +42,7 @@ export function createBackground(deps: BackgroundDeps) {
     onMessage(raw: unknown, sender: SenderLike) {
       return senderRole(sender, deps.self) === 'options' ? options(raw, sender) : intents(raw, sender);
     },
-    onConnect: createConv(deps, store, hub, host, jobs, history),
+    onConnect: createConv(deps, store, hub, host, jobs, history, favorites),
     /** 快捷键（commands.onCommand）：在监听器的同步段里调用，要开侧边栏的当场 open（规则 10） */
     onCommand: (command: string, tab: CommandTab | undefined) => commands.onCommand(command, tab),
     /** 右键菜单（contextMenus.onClicked）：同上 */

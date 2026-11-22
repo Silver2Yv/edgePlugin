@@ -6,11 +6,13 @@ import {
   buildAskMessage,
   type FloatAction,
   type FloatState,
+  favoriteAddMessage,
   floatReducer,
   initialFloatState,
   initialPanelState,
   panelSubscribeMessage,
   shouldCloseOnToggle,
+  switchConversationMessage,
 } from '@/ui/float/state';
 
 const server = (msg: BackgroundToClient): FloatAction => ({ kind: 'server', msg });
@@ -241,5 +243,92 @@ describe('侧边栏顶部说明', () => {
     expect(s.notice).toBe('floatTransient');
     s = run(s, { kind: 'retarget', tabId: 2 });
     expect(s.notice).toBeNull();
+  });
+});
+
+describe('本页对话列表（C2）', () => {
+  const snapshot = (conversationId: string, pageKey?: string): BackgroundToClient => ({
+    type: 'conv/snapshot',
+    conversation: {
+      id: conversationId,
+      ...(pageKey === undefined ? {} : { pageKey }),
+      title: '对话标题',
+      model: { connectionId: 'conn-1', model: 'm' },
+      turns: 1,
+      revision: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+    messages: [
+      {
+        id: `${conversationId}-m1`,
+        conversationId,
+        ordinal: 0,
+        role: 'user',
+        segments: [{ kind: 'text', text: '问题' }],
+        status: 'completed',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ],
+    done: true,
+    conversationRevision: 1,
+  });
+
+  it('切换到同一页的另一个对话：清空显示，等新订阅的快照补上', () => {
+    let s = run(readyPanel(), { kind: 'retarget', tabId: 1 }, server(subscribed(1, undefined, 'c1')));
+    expect(switchConversationMessage(s, 'c2')).toEqual({
+      type: 'conv/subscribe',
+      tabId: 1,
+      conversationId: 'c2',
+    });
+    s = run(s, { kind: 'switchConversation', conversationId: 'c2' });
+    expect(s.conversationId).toBe('c2');
+    expect(s.job).toBeNull();
+    expect(s.messages).toEqual([]);
+    // 还没订阅过（target 为 null）时不发消息
+    expect(switchConversationMessage(initialPanelState(), 'c2')).toBeNull();
+  });
+
+  it('conv/snapshot 带的 ConversationRecord.pageKey 记下来；换页、点新对话都清空', () => {
+    let s = run(readyPanel(), { kind: 'retarget', tabId: 1 }, server(subscribed(1)));
+    s = run(s, server(snapshot('c1', 'https://a.test/')));
+    expect(s.conversationPageKey).toBe('https://a.test/');
+    s = run(s, { kind: 'newConversation' });
+    expect(s.conversationPageKey).toBeNull();
+
+    let t = run(readyPanel(), { kind: 'retarget', tabId: 1 }, server(subscribed(1)));
+    t = run(t, server(snapshot('c1', 'https://a.test/')));
+    expect(t.conversationPageKey).toBe('https://a.test/');
+    t = run(t, { kind: 'retarget', tabId: 2 });
+    expect(t.conversationPageKey).toBeNull();
+  });
+});
+
+describe('回答上的「存」（G3）', () => {
+  it('favorite/saved 标记这条消息已收藏；重复到达不重复触发更新', () => {
+    const s = run(
+      initialFloatState(true),
+      server({ type: 'favorite/saved', favoriteId: 'f1', messageId: 'm1' }),
+    );
+    expect(s.savedMessageIds.has('m1')).toBe(true);
+    const again = floatReducer(s, server({ type: 'favorite/saved', favoriteId: 'f1', messageId: 'm1' }));
+    expect(again).toBe(s);
+  });
+
+  it('favorite/add 被拒：顶部一次性提示', () => {
+    const s = run(
+      initialFloatState(true),
+      server({ type: 'conv/rejected', reason: 'storageFailed', refType: 'favorite/add' }),
+    );
+    expect(s.actionError).toContain('操作失败');
+  });
+
+  it('favoriteAddMessage 构造正确', () => {
+    expect(favoriteAddMessage('c1', 'm1')).toEqual({
+      type: 'favorite/add',
+      conversationId: 'c1',
+      messageId: 'm1',
+    });
   });
 });

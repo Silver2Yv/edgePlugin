@@ -45,6 +45,8 @@ const zh = {
     openSettings: '打开设置',
     handoffSlow: '侧边栏还没有接上，小窗先留着；可以稍后再点一次',
     newConversationStarted: '已开启新对话，旧的仍可在历史里找回',
+    /** C2：订阅到的对话不属于当前标签页的页面（历史里点开的别页对话） */
+    crossPageConversation: '这是别的页面的对话，只能查看；要接着问请回到那一页',
   },
 
   reject: {
@@ -124,6 +126,9 @@ const zh = {
     usageInput: (n: number) => `输入 ${fmt(n)} token`,
     usageOutput: (n: number) => `输出 ${fmt(n)} token`,
     usageReasoning: (n: number) => `其中思考 ${fmt(n)} token`,
+    save: '存',
+    saveTitle: '收藏这条回答，连同提问与引用',
+    saved: '已存',
   },
 
   /** 「实际发送说明」（B8），从发送计划派生 */
@@ -153,6 +158,66 @@ const zh = {
     truncated: '全文超出预算，发送时有截断',
     complete: '全文完整发送',
     lastSummary: (time: string) => `上次总结 ${time}`,
+  },
+
+  /** 侧边栏三个视图（对话 / 历史 / 收藏，核心功能开发第二批）与它们各自的文案 */
+  panel: {
+    tabChat: '对话',
+    tabHistory: '历史',
+    tabFavorites: '收藏',
+    /** 本页对话列表（C2）的切换按钮；下拉里列出该页面的历史对话 */
+    pageConversations: '本页对话',
+    pageConversationsTitle: '切换到这个页面的其他对话',
+    newest: '最新的对话',
+    /** 整页快捷动作（C4） */
+    pageActions: '整页',
+  },
+
+  history: {
+    searchPlaceholder: '搜索标题或正文',
+    empty: '还没有历史对话',
+    noMatch: '没有找到匹配的对话',
+    loadMore: '加载更多',
+    loading: '加载中…',
+    delete: '删除',
+    deleteConfirm: '删除这个对话？连同它的消息一起删除，不能恢复',
+    deleteConfirmBtn: '确认删除',
+    deleted: '已删除',
+    deleteFailed: (reason: string) => `删除失败：${reason}`,
+    open: '查看',
+    continue: '继续问',
+    turns: (n: number) => `${fmt(n)} 轮`,
+    group: {
+      byPage: '按页面',
+      byHost: '按网站',
+    },
+  },
+
+  favorites: {
+    searchPlaceholder: '搜索原文、回答或笔记',
+    empty: '还没有收藏',
+    noMatch: '没有找到匹配的收藏',
+    loadMore: '加载更多',
+    loading: '加载中…',
+    edit: '编辑',
+    save: '保存',
+    cancel: '取消',
+    titleLabel: '标题',
+    titlePlaceholder: '不填用原文开头',
+    noteLabel: '笔记',
+    notePlaceholder: '写点笔记…',
+    delete: '删除',
+    deleteConfirm: '删除这条收藏？',
+    deleteConfirmBtn: '确认删除',
+    source: '来源',
+    exportOne: '导出',
+    exportAll: '导出全部',
+    exportPage: '导出本页',
+    exportFailed: '导出失败，请再试一次',
+    updateFailed: (reason: string) => `保存失败：${reason}`,
+    deleteFailed: (reason: string) => `删除失败：${reason}`,
+    answerLabel: '回答',
+    viewOriginal: '查看原文',
   },
 };
 

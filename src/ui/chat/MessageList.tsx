@@ -34,9 +34,25 @@ export interface MessageListProps {
   onRetry: () => void;
   /** 点「展开讲讲」（I3） */
   onExpand: () => void;
+  /**
+   * 「存」（G3，核心功能开发第二批）：当前对话编号，没有（还没落库）时不显示存按钮；favorited 是已经
+   * 收到 favorite/saved 确认的消息编号集合；onSave 由父组件发 favorite/add
+   */
+  conversationId?: string | null;
+  favorited?: ReadonlySet<string>;
+  onSave?: (conversationId: string, messageId: string) => void;
 }
 
-export function MessageList({ items, emptyText, generating, onRetry, onExpand }: MessageListProps) {
+export function MessageList({
+  items,
+  emptyText,
+  generating,
+  onRetry,
+  onExpand,
+  conversationId,
+  favorited,
+  onSave,
+}: MessageListProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const lastTurnRef = useRef<HTMLDivElement | null>(null);
   const turns = groupTurns(items);
@@ -81,6 +97,12 @@ export function MessageList({ items, emptyText, generating, onRetry, onExpand }:
                   }
                   onRetry={onRetry}
                   onExpand={onExpand}
+                  {...(conversationId && onSave
+                    ? {
+                        onSave: () => onSave(conversationId, item.id),
+                        saved: favorited?.has(item.id) ?? false,
+                      }
+                    : {})}
                 />
               ),
             )}
