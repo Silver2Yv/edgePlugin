@@ -265,7 +265,7 @@ const zh = {
 
   reply: {
     heading: '回答与上下文',
-    summary: '回答语言、长文门槛、总结读取比例',
+    summary: '回答语言、长文门槛、总结读取比例、网页图片',
     language: '回答语言',
     languageLabel: '回答语言',
     languageOption: { zh: '中文', auto: '跟随网页语言' },
@@ -279,6 +279,10 @@ const zh = {
     summaryRatioLabel: '总结读取比例（20%–40%）',
     summaryRatioHelp: '超长页面做总结时读取多少。读得越多越完整，但首字更慢；超长页面建议保持 30%。',
     percent: (n: number) => `${n}%`,
+    pageImages: '把上下文中的图片一起发给模型',
+    pageImagesLabel: '把上下文中的图片一起发给模型',
+    pageImagesHelp:
+      '默认关闭。打开后，提问时若选中的文字所在段落里有网页已加载出的图片（最多 3 张），会一并发给模型。代价：图片由扩展直接去图片所在的网站取（不带登录信息、不带模型 Key，网站会看到这次访问），请求体变大、费用更高，需要模型支持看图；图片里有隐私内容时请保持关闭。发送说明里会列出每张图的地址。',
   },
 
   float: {

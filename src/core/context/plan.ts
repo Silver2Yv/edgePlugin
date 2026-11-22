@@ -77,6 +77,11 @@ export interface RequestContextPlan {
   entityBlockIds?: readonly BlockId[];
   /** 识别出但全页只在选区处出现过一次的实体原文；界面据此提示「答案可能在别处，可切换全文」 */
   entitySingleMentions?: readonly string[];
+  /**
+   * 页面图片（E2、5.14「页面图片（可选）」，contract-v1.5 增量）：这次附带的页面图片地址，按发送顺序；
+   * 只在设置开着、且确实取到了图片时才有。发送说明据此展开后列出地址（规则 8：URL 在发送说明中可见）
+   */
+  pageImageUrls?: readonly string[];
 }
 
 /**

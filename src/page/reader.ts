@@ -188,6 +188,14 @@ export function startReader(): void {
       case 'capture/end':
         sendResponse(capture.end(r.value.captureId));
         break;
+      // 页面图片（E2，contract-v1.5 增量）：块号与内容版本原样带回，后台据此核对没有套到新内容上
+      case 'page/images':
+        sendResponse({
+          requestId: r.value.requestId,
+          contentVersion: r.value.contentVersion,
+          urls: pageReader.imagesIn(r.value.blockIds, r.value.contentVersion),
+        });
+        break;
       default:
         break;
     }

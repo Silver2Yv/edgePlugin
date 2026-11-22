@@ -45,6 +45,7 @@ function withCapture(h: Harness): Fakes {
   h.deps.captureImages = {
     process: (...a) => f.process(...a),
     thumbnail: async () => THUMB,
+    encodeImage: async () => ({ dataUrl: FULL, mime: 'image/png', width: 200, height: 100 }),
   };
   return f;
 }

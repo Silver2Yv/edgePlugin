@@ -148,7 +148,9 @@ describe('动作提示词（I1、A3、I6、A6）', () => {
     expect(summary.userText.endsWith('总结本页')).toBe(true);
     expect(textOf(summary.messages[0] as (typeof summary.messages)[number])).toContain('一句话结论');
     // 验收第 8 条：章节脉络带可点击的章节锚点（每节标注标题所在的资料编号）
-    expect(textOf(summary.messages[0] as (typeof summary.messages)[number])).toContain('该节标题所在的资料编号');
+    expect(textOf(summary.messages[0] as (typeof summary.messages)[number])).toContain(
+      '该节标题所在的资料编号',
+    );
     const key = run('keyPoints');
     expect(key.userText.endsWith('提取要点')).toBe(true);
     expect(textOf(key.messages[0] as (typeof key.messages)[number])).toContain('只输出要点列表');

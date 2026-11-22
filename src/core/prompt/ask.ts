@@ -80,6 +80,12 @@ export interface AskInput {
    * 之后的追问不重发（历史里留一句「本轮附有截图」的说明）
    */
   image?: { dataUrl: string };
+  /**
+   * 页面图片（E2、5.14「页面图片（可选）」，contract-v1.5 增量）：设置开着且这次请求带了选区所在块时，
+   * 后台已经从图片所在主机取到、按与截图同样的上限缩放编码的图（background/page-images.ts）。
+   * 同样单列预算，不计入文本预算；只随这一轮发送，之后的追问不重发
+   */
+  pageImages?: readonly { url: string; dataUrl: string }[];
 }
 
 export interface AskAssembly {
@@ -282,6 +288,11 @@ export const SUMMARIZE_PAGE_QUESTION = '总结本页';
 export const IMAGE_QUESTION = '请看这张截图，说明其中的内容。';
 /** 附了截图的那一轮，用户消息文字开头的说明：模型知道有图，之后的追问在历史里也看得出那一轮带过图 */
 export const IMAGE_LEAD = '（本轮附有一张用户在网页上框选的截图。）';
+/**
+ * 附了页面图片的那一轮，用户消息文字开头的说明（E2）：模型知道这些图是网页正文里、选区所在位置的配图，
+ * 不是用户自己截的；之后的追问在历史里也看得出那一轮带过图。图的地址不写进正文（规则 8：地址在发送说明里可见）
+ */
+export const pageImageLead = (n: number) => `（本轮附有网页正文里与选中文字同一位置的 ${n} 张配图。）`;
 
 export interface SystemPromptInput {
   lengthTier: LengthTier;
@@ -403,6 +414,8 @@ export function assembleAsk(input: AskInput): AskAssembly {
   const notes: string[] = [];
   const bareParts: string[] = [];
   if (input.image) bareParts.push(IMAGE_LEAD);
+  const pageImages = input.pageImages ?? [];
+  if (pageImages.length > 0) bareParts.push(pageImageLead(pageImages.length));
   // 页面级动作（总结 / 提取要点 / 这页在讲什么 / scope 为 page 的自定义动作）不带选区，只带页面内容
   const includeSelection = selection !== undefined && scope !== 'page';
   if (includeSelection) {
@@ -544,12 +557,14 @@ export function assembleAsk(input: AskInput): AskAssembly {
   for (const t of history) {
     messages.push({ role: 'user', content: text(t.user) }, { role: 'assistant', content: text(t.assistant) });
   }
+  // 图片放在文字前面（图在前、问题在后，视觉模型的常见用法）：截图在前，页面图片在后；图片不计入上面的文本预算（5.9 单列）
+  const imageParts = [
+    ...(input.image ? [{ kind: 'image' as const, dataUrl: input.image.dataUrl }] : []),
+    ...pageImages.map((p) => ({ kind: 'image' as const, dataUrl: p.dataUrl })),
+  ];
   messages.push({
     role: 'user',
-    // 截图放在文字前面（图在前、问题在后，视觉模型的常见用法）；图片不计入上面的文本预算（5.9 单列）
-    content: input.image
-      ? [{ kind: 'image', dataUrl: input.image.dataUrl }, ...text(userText)]
-      : text(userText),
+    content: imageParts.length > 0 ? [...imageParts, ...text(userText)] : text(userText),
   });
 
   const pageUsed = sent.length > 0 && page !== undefined;
@@ -572,12 +587,13 @@ export function assembleAsk(input: AskInput): AskAssembly {
     droppedHistoryTurns: dropped,
     historyHasPageText: history.some((t) => t.hasPageText),
     removedEarlierPageText: stripped || (input.previousFullPage === true && fullPageMsg === undefined),
-    imageCount: input.image ? 1 : 0,
+    imageCount: (input.image ? 1 : 0) + pageImages.length,
     budget,
     estimatedInputTokens: total,
     notes,
     ...(entityBlockIds.length > 0 ? { entityBlockIds } : {}),
     ...(entitySingleMentions.length > 0 ? { entitySingleMentions } : {}),
+    ...(pageImages.length > 0 ? { pageImageUrls: pageImages.map((p) => p.url) } : {}),
   };
   return { messages, userText, plan, sentFullPage: fullPageMsg !== undefined };
 }

@@ -228,6 +228,8 @@ const zh = {
     imageLabel: '附带的截图',
     imageUnavailable: '截图',
     sent: (n: number) => `附图 ${fmt(n)} 张`,
+    /** E2：发送说明展开后列出网页图片的地址（规则 8，地址可见）；过长的地址由 send-summary 截断 */
+    pageImagesHeading: (n: number) => `其中网页图片 ${fmt(n)} 张，从图片所在网站取得：`,
   },
 
   /** 侧边栏三个视图（对话 / 历史 / 收藏，核心功能开发第二批）与它们各自的文案 */

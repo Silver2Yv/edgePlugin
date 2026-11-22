@@ -43,6 +43,12 @@ export interface Settings {
      * 出厂 nearby：选区所在块前后若干段，比只发选区多了上下文，又比全文快、省
      */
     defaultTier: ContextTier;
+    /**
+     * 把选区所在块里引用的网页图片一起发给模型（E2、5.14「页面图片（可选）」，contract-v1.5 增量）。出厂关：
+     * 开了之后后台会去图片所在的网站取这些图（不带任何登录信息、不带模型 Key），图片地址会写进发送说明，
+     * 请求体变大、费用更高。已有设置里没有这一项，由 migrateSettings 按默认值补齐（不需要升版本）
+     */
+    includePageImages: boolean;
   };
   float: {
     placement: 'nearSelection' | 'remembered';
@@ -67,7 +73,12 @@ export const DEFAULT_SETTINGS: Settings = {
   promptOverrides: {},
   // 默认长度「简短」（决策 040）；默认语言「中文」（I5），'auto' 改义为「跟随网页语言」
   reply: { lengthTier: 'brief', language: 'zh', thinking: 'off' },
-  context: { speedSoftBudgetRatio: 0.5, summaryReadRatio: 0.3, defaultTier: 'nearby' },
+  context: {
+    speedSoftBudgetRatio: 0.5,
+    summaryReadRatio: 0.3,
+    defaultTier: 'nearby',
+    includePageImages: false,
+  },
   float: { placement: 'nearSelection', closeMode: 'auto' },
   suggestions: { model: true, rules: true },
   updates: { autoCheck: false },
@@ -136,6 +147,7 @@ const settingsSchema = obj({
     speedSoftBudgetRatio: num({ min: 0.1, max: 1 }),
     summaryReadRatio: num({ min: 0.2, max: 0.4 }),
     defaultTier: oneOf(['selection', 'nearby', 'fullPage']),
+    includePageImages: bool,
   }),
   float: obj({
     placement: oneOf(['nearSelection', 'remembered']),

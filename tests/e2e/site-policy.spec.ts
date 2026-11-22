@@ -73,7 +73,12 @@ test('输入样本：只有只读代码 textarea 例外；整页读取的请求�
   const logs = collectLogs(context, serviceWorker);
   await writeSettings(serviceWorker, {
     ...settingsWith(r),
-    context: { speedSoftBudgetRatio: 0.5, summaryReadRatio: 0.3, defaultTier: 'fullPage' },
+    context: {
+      speedSoftBudgetRatio: 0.5,
+      summaryReadRatio: 0.3,
+      defaultTier: 'fullPage',
+      includePageImages: false,
+    },
   });
   await serve(page, INPUTS_PAGE);
   await waitSentinelRegistered(serviceWorker);

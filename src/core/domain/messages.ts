@@ -255,6 +255,18 @@ export const backgroundToContent = tagged({
    * 后台用它核对截图期间视口没有变（截图前后各核对一次）
    */
   'capture/end': obj({ type: lit('capture/end'), captureId: id }),
+  /**
+   * contract-v1.5 增量（E2，页面图片）：要选区所在块里已经加载出来的图片地址。阅读器只回「页面自己已经加载过」
+   * 的图（img.complete && naturalWidth > 0，取 currentSrc，只收 http/https，去重，太小的装饰图跳过，最多
+   * MAX_PAGE_IMAGES 张），不凭空构造或猜测地址——内容脚本本就不能携带请求地址（规则 6）指的是「替后台决定发去哪」，
+   * 这里只是如实转述页面上已经在渲染的图，后台再按 contentVersion 核对块号没有套到新内容上才采信应答
+   */
+  'page/images': obj({
+    type: lit('page/images'),
+    requestId: id,
+    blockIds: arr(blockId, { max: 200 }),
+    contentVersion: str({ max: 128 }),
+  }),
 });
 /** capture/hideOverlay、capture/end 的应答（阅读器自己产出）：当前视口修订号与视口尺寸 */
 export interface CaptureFrameReply {
@@ -263,6 +275,18 @@ export interface CaptureFrameReply {
   viewport: { w: number; h: number };
 }
 export type BackgroundToContent = Infer<typeof backgroundToContent>;
+
+/** page/images 的应答（阅读器自己产出，contract-v1.5 增量）：后台按这份 schema 做运行时校验 */
+export const MAX_PAGE_IMAGES = 3;
+const pageImagesReplySchema = obj({
+  requestId: id,
+  contentVersion: str({ max: 128 }),
+  urls: arr(str({ max: 2000, pattern: /^https?:\/\// }), { max: MAX_PAGE_IMAGES }),
+});
+export type PageImagesReply = Infer<typeof pageImagesReplySchema>;
+export function parsePageImagesReply(v: unknown): Result<PageImagesReply> {
+  return pageImagesReplySchema.parse(v);
+}
 
 // ───────────── 对话流：小窗 / 侧边栏 → 后台（端口 CONV_PORT） ─────────────
 
