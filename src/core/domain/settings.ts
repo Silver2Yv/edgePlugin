@@ -28,7 +28,7 @@ export interface Settings {
   promptOverrides: Readonly<Record<string, string>>;
   reply: {
     lengthTier: LengthTier;
-    /** 回答语言（BCP 47）；'auto' 跟随问题 */
+    /** 回答语言（I5）：'zh' 默认中文；'auto' 跟随网页语言（没有页面语言信息退回中文）；否则是 BCP 47 语言标签 */
     language: string;
     /** 思考强度默认值（H6） */
     thinking: ThinkingLevel;
@@ -60,7 +60,8 @@ export const DEFAULT_SETTINGS: Settings = {
   toolbarActions: DEFAULT_TOOLBAR,
   hiddenActions: [],
   promptOverrides: {},
-  reply: { lengthTier: 'normal', language: 'auto', thinking: 'off' },
+  // 默认长度「简短」（决策 040）；默认语言「中文」（I5），'auto' 改义为「跟随网页语言」
+  reply: { lengthTier: 'brief', language: 'zh', thinking: 'off' },
   context: { speedSoftBudgetRatio: 0.5, summaryReadRatio: 0.3, defaultTier: 'nearby' },
   float: { placement: 'nearSelection' },
   suggestions: { model: true, rules: true },

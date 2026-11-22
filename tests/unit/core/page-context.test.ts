@@ -48,13 +48,15 @@ const base = (page: AskPage | undefined, extra: Partial<AskInput> = {}): AskInpu
   model: { connectionId: 'conn-test-0001', model: 'mock-flash' },
   contextSnapshotId: 'snap-00000001',
   budget: defaultBudget(),
+  actionId: 'ask',
   ...(page ? { page } : {}),
   ...extra,
 });
 
 const textOf = (m: { content: readonly { kind: string; text?: string }[] }) =>
   m.content.map((p) => p.text ?? '').join('');
-const idsIn = (s: string) => [...s.matchAll(/^\[(b\d+)\]$/gm)].map((m) => m[1]);
+/** 发送消息里的块编号：[12] 这类纯数字标签，换算回 bN 以便和 plan.sentBlockIds、Block.id 直接比较 */
+const idsIn = (s: string) => [...s.matchAll(/^\[(\d+)\]$/gm)].map((m) => `b${m[1]}`);
 
 describe('内容指纹（V-06：不用长度判内容）', () => {
   it('同样的内容同样的指纹；只换一个字、长度不变也会变', () => {

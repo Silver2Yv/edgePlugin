@@ -241,13 +241,13 @@ export interface SentBody {
 
 export const parseBody = (s: string | undefined) => JSON.parse(s ?? '{}') as SentBody;
 
-/** 页面正文片段里的块：[bN] 起头，到下一个块或 </page_content> 为止 */
+/** 页面正文片段里的块：[N] 起头（N 为纯数字引用编号，换算回 bN），到下一个块或 </page_content> 为止 */
 export function pageBlocksIn(text: string): { id: string; text: string }[] {
   const out: { id: string; text: string }[] = [];
   const sections = text.match(/<page_content>[\s\S]*?<\/page_content>/g) ?? [];
   for (const sec of sections) {
-    const re = /^\[(b\d+)\]\n([\s\S]*?)(?=\n\n\[b\d+\]\n|\n<\/page_content>)/gm;
-    for (const m of sec.matchAll(re)) out.push({ id: m[1] as string, text: m[2] as string });
+    const re = /^\[(\d+)\]\n([\s\S]*?)(?=\n\n\[\d+\]\n|\n<\/page_content>)/gm;
+    for (const m of sec.matchAll(re)) out.push({ id: `b${m[1]}`, text: m[2] as string });
   }
   return out;
 }

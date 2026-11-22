@@ -233,6 +233,7 @@ export function createPages(deps: BackgroundDeps) {
       blocks: doc.blocks,
       textLength: doc.textLength,
       notes: doc.notes,
+      ...(doc.lang === undefined ? {} : { lang: doc.lang }),
     };
     if (selection) ctx.selectionBlockIds = selectionBlocks(tabId, doc, selection, ctx.notes);
   }
