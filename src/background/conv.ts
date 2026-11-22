@@ -2,6 +2,8 @@
 // 握手前只收 helloFloat / resumeFloat / helloSidepanel。拒绝时只回 conv/rejected，不写入、不发请求。
 // 同一端口的消息按到达顺序串行处理（握手写完绑定后才处理订阅）。
 //
+// 对话属于页面（pageKey，contract-v1.4）：小窗只能订阅、续接所在标签页当前页面的对话；侧边栏可以查看任意历史对话
+// （conv/subscribe 指定对话），但续接发问时页面上下文来自所订阅的标签页，对话不属于它当前的页面就拒绝。
 // 侧边栏（5.4、5.12）：只能订阅、发问、停止、重试本窗口标签页的对话。窗口在握手时定下（见 helloSidepanel），
 // 订阅与每次发问、停止、重试都按 tabs.get 核对目标标签页仍在这个窗口里。选区引用取所订阅标签页存下的那份。
 // 转到侧边栏（6.4、AR-19）：小窗 handoff/start → 后台记下 windowId + tabId + conversationId（storage.session，
@@ -20,8 +22,10 @@ import {
   type RejectReason,
   type SenderRole,
 } from '@/core/domain/messages';
+import type { ConversationRecord } from '@/core/domain/records';
 import type { BackgroundDeps, ConvPort } from './deps';
 import type { FloatHost } from './float-host';
+import type { History } from './history';
 import type { Hub } from './hub';
 import type { Jobs } from './jobs';
 import { quoteOf } from './quote';
@@ -64,7 +68,14 @@ const pendingMsg = (h: Handoff): BackgroundToClient => ({
   ...(h.conversationId === undefined ? {} : { conversationId: h.conversationId }),
 });
 
-export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: FloatHost, jobs: Jobs) {
+export function createConv(
+  deps: BackgroundDeps,
+  store: Store,
+  hub: Hub,
+  host: FloatHost,
+  jobs: Jobs,
+  history: History,
+) {
   return function onConnect(port: ConvPort): void {
     if (port.name !== CONV_PORT) return;
     const sender = port.sender ?? {};
@@ -167,25 +178,35 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
 
     /**
      * 订阅的初始推送：conv/subscribed → 顶部说明 → 引用 → 接上的任务（发送计划、seq 之后的增量、状态）→ 快照。
-     * 先做完所有 await，再在一个同步段里换订阅、发标记、补发、登记订阅者：补发与之后的实时推送不交错、不漏。
-     * 快照最后发：它是「这次订阅的初始推送已经发完」的标志
+     * 先做完选对话等 await，再在一个同步段里换订阅、发标记、补发、登记订阅者：补发与之后的实时推送不交错、不漏。
+     * 快照（对话与消息，从库里读）最后发：它是「这次订阅的初始推送已经发完」的标志。
+     * 要显示的对话见 jobs.viewFor：小窗只能看所在标签页当前页面的对话，侧边栏指定了对话可以看任意历史对话（5.12）
      */
     async function pushSubscription(tabId: number, msg: SubscribeMsg): Promise<void> {
       await jobs.ready;
       const sel = await store.getSelection(tabId);
-      const url =
-        msg.conversationId === undefined ? await deps.getTabUrl?.(tabId).catch(() => undefined) : undefined;
+      const url = await deps.getTabUrl?.(tabId).catch(() => undefined);
+      const pageKey = url === undefined ? undefined : toPageKey(url);
+      const view = await jobs
+        .viewFor(tabId, msg.conversationId, pageKey, st.role === 'sidepanel' ? 'any' : 'page')
+        .catch((e: unknown): { conversation?: ConversationRecord } => {
+          // 读库失败：照常订阅这个标签页，显示空对话
+          deps.log('db/viewFailed', { error: e instanceof Error ? e.name : 'unknown' });
+          return {};
+        });
+      if (view === 'notOwner') return reject('notOwner', msg);
+      const conversationId = view.conversation?.id;
       const notice = st.role === 'sidepanel' ? store.takeNotice(tabId) : undefined;
       // —— 同步段开始
       hub.unsubscribe(port);
       st.tabId = tabId;
-      const cur = jobs.current(tabId, msg.conversationId, url === undefined ? undefined : toPageKey(url));
+      const live = conversationId === undefined ? undefined : jobs.liveJob(conversationId, tabId);
       const resumed = msg.resume ? jobs.jobOf(tabId, msg.resume.jobId) : undefined;
-      const job = resumed ?? cur?.job;
+      const job = resumed ?? live;
       post({
         type: 'conv/subscribed',
         tabId,
-        ...(cur ? { conversationId: cur.conversationId } : {}),
+        ...(conversationId !== undefined ? { conversationId } : {}),
         ...(job ? { job } : {}),
       });
       if (notice) post({ type: 'conv/notice', kind: notice });
@@ -194,15 +215,20 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
       hub.subscribe(tabId, port);
       // —— 同步段结束。续播的任务不在内存（后台重启过）：只能报热副本里的状态
       if (msg.resume && !resumed) await jobs.replay(tabId, msg.resume, post);
-      post({ type: 'conv/snapshot', messages: [], done: true, conversationRevision: 0 });
+      const batches = await jobs.snapshot(conversationId).catch((e: unknown) => {
+        deps.log('db/snapshotFailed', { error: e instanceof Error ? e.name : 'unknown' });
+        return undefined;
+      });
+      for (const b of batches ?? [
+        { type: 'conv/snapshot' as const, messages: [], done: true, conversationRevision: 0 },
+      ])
+        post(b);
     }
 
     async function subscribeSidepanel(msg: SubscribeMsg): Promise<void> {
       const tabId = msg.tabId;
       if (tabId === undefined) return reject('invalid', msg);
       if (!(await inPanelWindow(tabId))) return reject('notOwner', msg);
-      const owner = msg.conversationId === undefined ? undefined : jobs.ownerOf(msg.conversationId);
-      if (owner !== undefined && owner !== tabId) return reject('notOwner', msg);
       const h = msg.handoffId === undefined ? undefined : await store.getHandoff(msg.handoffId);
       const handoff =
         st.windowId !== undefined &&
@@ -228,10 +254,16 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
       msg: Extract<ClientToBackground, { type: 'handoff/start' }>,
     ): Promise<void> {
       const { conversationId } = msg;
-      const owner = conversationId === undefined ? undefined : jobs.ownerOf(conversationId);
-      if (owner !== undefined && owner !== tabId) return reject('notOwner', msg);
-      // 对话不在了（后台重启过，本版本对话只在内存）：转过去侧边栏也显示不出来，不转，小窗留着这份回答
-      if (conversationId !== undefined && owner === undefined) return reject('gone', msg);
+      if (conversationId !== undefined) {
+        // 小窗只能转它所在标签页当前页面的对话；对话在库里就能转（后台重启过也行），库里没有（已删除）才回 gone
+        const url = await deps.getTabUrl?.(tabId).catch(() => undefined);
+        const v = await jobs
+          .viewFor(tabId, conversationId, url === undefined ? undefined : toPageKey(url), 'page')
+          .catch(() => 'failed' as const);
+        if (v === 'notOwner') return reject('notOwner', msg);
+        if (v === 'failed') return reject('storageFailed', msg);
+        if (!v.conversation) return reject('gone', msg);
+      }
       const windowId = sender.tab?.windowId ?? (await deps.tabWindow(tabId));
       if (windowId === undefined) return reject('notOwner', msg);
       const h: Handoff = {
@@ -265,6 +297,9 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
           break;
       }
       if (st.role === 'sidepanel' && msg.type === 'conv/subscribe') return subscribeSidepanel(msg);
+      // 历史（仅侧边栏，授权表已限定）：不针对某个标签页
+      if (msg.type === 'history/query') return history.query(msg, post, reject);
+      if (msg.type === 'history/delete') return history.remove(msg, post, reject);
       // 以下需要目标标签页：小窗是令牌绑定的那个，侧边栏是当前订阅的那个（须仍在本窗口）
       const tabId = st.tabId;
       if (tabId === undefined) return reject('notAllowed', msg);
@@ -272,14 +307,13 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
       switch (msg.type) {
         case 'conv/subscribe': {
           if (msg.tabId !== undefined && msg.tabId !== tabId) return reject('notOwner', msg);
-          const owner = msg.conversationId === undefined ? undefined : jobs.ownerOf(msg.conversationId);
-          if (owner !== undefined && owner !== tabId) return reject('notOwner', msg);
           return pushSubscription(tabId, msg);
         }
         case 'conv/ask':
-          // 发问的端口也收这次任务的推送
+          // 发问的端口也收这次任务的推送。小窗带的对话不属于当前页面（单页应用换了地址、后台重启过）时按续接规则；
+          // 侧边栏是用户明确选的对话，对不上就拒绝（5.12）
           hub.subscribe(tabId, port);
-          return jobs.ask(tabId, msg, post);
+          return jobs.ask(tabId, msg, post, { otherPage: st.role === 'float' ? 'fallback' : 'reject' });
         case 'conv/stop': {
           const reason = jobs.stop(tabId, msg.jobId);
           if (reason) reject(reason, msg);
@@ -293,7 +327,7 @@ export function createConv(deps: BackgroundDeps, store: Store, hub: Hub, host: F
         case 'handoff/start':
           return startHandoff(tabId, msg);
         default:
-          // 切换档位与模型、历史、收藏、引用跳回本版本不做
+          // 切换档位与模型、收藏、引用跳回本版本不做
           return reject('notAllowed', msg);
       }
     }

@@ -42,6 +42,11 @@ export interface ConversationRecord {
   revision: number;
   createdAt: number;
   updatedAt: number;
+  /**
+   * 最近一次在这个对话里发问的时间（续接规则 D13 按它算「距上次提问」）。persist 块新增，可选：
+   * 没有时按 updatedAt
+   */
+  lastAskedAt?: number;
 }
 
 export type MessageRole = 'user' | 'assistant';
@@ -84,6 +89,12 @@ export interface MessageRecord {
   selection?: { text: string; truncated: boolean; originalLength: number; anchor?: Anchor };
   createdAt: number;
   updatedAt: number;
+  /**
+   * 仅用户消息：当时实际发送的用户消息全文（选区、nearby 带的页面片段、问题，见 core/prompt/ask.ts 的 AskTurn）。
+   * 后台重启后装配历史用它重建；不发给界面（快照里去掉）。站点改为「不读取页面内容」后，库里这一字段的页面片段被去掉
+   * （background/history.ts 的 purgeNoRead），装配时也用 stripPageContent 再去一次。persist 块新增，可选：装配前就结束的发问没有
+   */
+  sentText?: string;
 }
 
 /** 实际发送的页面块文本（引用回查用）。计划在消息里，这里只放大块文本，可被清理 */

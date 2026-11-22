@@ -271,8 +271,9 @@ export interface ConvResult {
 
 /**
  * 在小窗页面里另开一条对话端口（conv/resumeFloat 按 sender 恢复握手），发一次 conv/ask 并等到终态。
- * 现在的小窗界面每次发问都是新对话（不带 conversationId），多轮历史、降档、历史去正文这些装配行为
- * 只能这样从协议层验证；返回这次任务的发送计划（conv/plan）
+ * 多轮历史、降档、历史去正文这些装配行为从协议层验证；返回这次任务的发送计划（conv/plan）。
+ * 不带 conversationId 时默认带 fresh（明确新建对话）：续接规则（D13）下同一页 30 分钟内的发问会接上近期的对话，
+ * 这里的用例按「每次一个新对话」写的；要验证续接就显式传 fresh: false 或 conversationId
  */
 export function convAsk(
   frame: Frame,
@@ -304,6 +305,7 @@ export function convAsk(
               contextTier: 'nearby',
               lengthTier: 'normal',
               thinking: 'off',
+              ...(ask.conversationId === undefined && ask.fresh === undefined ? { fresh: true } : {}),
               ...ask,
             });
           } else if (m.type === 'conv/rejected') {

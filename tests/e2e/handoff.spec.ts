@@ -136,7 +136,7 @@ test('转接时小窗被网页移除：侧边栏照样接手对话，回答完�
   await panel.detach();
 });
 
-test('后台被回收、侧边栏断线闲着：小窗转接叫醒它、接手对话后小窗收起；对话随旧后台没了时不转，小窗留着回答', async ({
+test('后台被回收、侧边栏断线闲着：小窗转接叫醒它、接手对话后小窗收起；再被回收一次，对话在库里照样能转', async ({
   context,
   page,
 }) => {
@@ -155,7 +155,7 @@ test('后台被回收、侧边栏断线闲着：小窗转接叫醒它、接手�
   await page.bringToFront();
   const panel = await attachPanel(context);
   await expect.poll(() => panelText(panel, 'job-state')).toBe('completed');
-  // 两边都断线（没有在跑的任务，都闲着不重连）。小窗还开着，在里面接着问：小窗重连，新后台里有了新对话
+  // 两边都断线（没有在跑的任务，都闲着不重连）。小窗还开着，在里面接着问：小窗重连，新后台从库里接上同一个对话
   await stopWorkers();
   await expect.poll(() => floatOpen(page)).toBe(true);
   await askInFloat(frame, r, '第二问', { fill: true });
@@ -164,8 +164,10 @@ test('后台被回收、侧边栏断线闲着：小窗转接叫醒它、接手�
   await expect.poll(() => panelText(panel, 'job-state')).toBe('completed');
   expect(await panelText(panel, 'answer')).toContain('第 1 段。');
   expect(r.bodies).toHaveLength(2);
+  // 续接规则（D13）：同一页 30 分钟内接着问接上同一个对话，后台重启过也带着上一轮
+  expect(r.bodies[1]).toContain('第一问');
 
-  // 再停一次后台：内存里的对话没了，转不过去（gone）；小窗不收起，回答还在。
+  // 再停一次后台：对话在库里（contract-v1.4 起不再随后台丢失），照样转过去，小窗收起。
   // 侧边栏开着时点「问」会去侧边栏，这里用「打开小窗」快捷键把收起的小窗叫回来（先划词唤醒后台）
   await stopWorkers();
   await page.locator('#target').click({ clickCount: 3 });
@@ -174,9 +176,11 @@ test('后台被回收、侧边栏断线闲着：小窗转接叫醒它、接手�
   await dispatchCommand(sw, 'open-float', await tabOf(sw, page));
   await expect.poll(() => floatOpen(page)).toBe(true);
   await frame.getByRole('button', { name: '转到侧边栏' }).click();
-  await expect(frame.getByText('后台重启过，这段对话没法转过去')).toBeVisible({ timeout: 10_000 });
-  expect(await floatOpen(page)).toBe(true);
-  await expect(frame.getByTestId('answer')).toContainText('第 1 段。');
+  await expect
+    .poll(() => floatOpen(page), { message: '对话在库里，转接成功后小窗收起', timeout: 10_000 })
+    .toBe(false);
+  await expect(frame.getByText('后台重启过，这段对话没法转过去')).toHaveCount(0);
+  expect(r.bodies).toHaveLength(2);
   await panel.detach();
 });
 

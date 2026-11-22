@@ -5,6 +5,7 @@ import type { BackgroundDeps, ConvPort, SenderLike, SessionArea } from '@/backgr
 import { CONV_PORT } from '@/core/domain/messages';
 import { DEFAULT_SETTINGS, type Settings } from '@/core/domain/settings';
 import type { Connection, ModelAdapter, StreamEvent } from '@/core/llm/adapter';
+import { type MemoryConvDb, memoryConvDb } from './memory-db';
 
 export const EXT_ID = 'pkahgpgifechjgdpecaebajnocgcnnnd';
 export const TAB = 7;
@@ -121,6 +122,8 @@ let instances = 0;
 export function makeHarness(
   opts: {
     session?: ReturnType<typeof fakeSession>;
+    /** 对话数据库；模拟后台重启时与 session 一起传给新实例 */
+    db?: MemoryConvDb;
     status?: number;
     /** 让 lockStorage（收紧 storage.local）每次调用都失败，用于测 settings/ensureLocked 的失败分支 */
     lockStorageFails?: boolean;
@@ -134,6 +137,7 @@ export function makeHarness(
 ) {
   const instance = ++instances;
   const session = opts.session ?? fakeSession();
+  const db = opts.db ?? memoryConvDb();
   let clock = 1_000_000;
   let ids = 0;
   let tokens = 0;
@@ -147,6 +151,8 @@ export function makeHarness(
   const logs: { event: string; detail?: Record<string, unknown> }[] = [];
   let topDoc = TOP_DOC;
   let tabUrl: string | undefined = 'https://example.test/article';
+  /** 个别标签页的地址（setTabUrl 带 tabId 时）；其余标签页都是 tabUrl */
+  const tabUrls = new Map<number, string | undefined>();
   let settings: Settings = structuredClone(SETTINGS);
   const marked = new Set<string>();
   const injected: string[] = [];
@@ -171,7 +177,7 @@ export function makeHarness(
       }
       return topDoc;
     }),
-    getTabUrl: vi.fn(async () => tabUrl),
+    getTabUrl: vi.fn(async (tabId: number) => (tabUrls.has(tabId) ? tabUrls.get(tabId) : tabUrl)),
     sendToFrame: vi.fn(async (tabId, frameId, documentId, msg) => {
       if (documentId !== topDoc) throw new Error('No document');
       sent.push({ tabId, frameId, documentId, msg });
@@ -236,6 +242,7 @@ export function makeHarness(
     notifyPages: vi.fn(async (msg: unknown) => {
       pageMessages.push(msg);
     }),
+    db,
     ...(opts.askConnectTimeoutMs !== undefined ? { askConnectTimeoutMs: opts.askConnectTimeoutMs } : {}),
     ...(opts.panelWakeMs !== undefined ? { panelWakeMs: opts.panelWakeMs } : {}),
   };
@@ -306,6 +313,7 @@ export function makeHarness(
     app,
     deps,
     session,
+    db,
     fetches,
     sent,
     logs,
@@ -330,7 +338,11 @@ export function makeHarness(
     navigate: (doc: string) => {
       topDoc = doc;
     },
-    setTabUrl: (url: string | undefined) => {
+    setTabUrl: (url: string | undefined, tabId?: number) => {
+      if (tabId !== undefined) {
+        tabUrls.set(tabId, url);
+        return;
+      }
       tabUrl = url;
     },
     setSettings: (next: Settings) => {

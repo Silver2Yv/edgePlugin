@@ -8,6 +8,7 @@ import type { Connection } from '@/core/llm/adapter';
 import { chatCompletionsAdapter } from '@/core/llm/chat-completions';
 import { type MockRelay, startMockRelay } from '../../mock-relay/server';
 import { EXT_ID, fakeSession, makeHarness } from './harness';
+import { memoryConvDb } from './memory-db';
 
 const CONN_ID = 'conn-test-0001';
 const MODEL = 'mock-flash';
@@ -46,6 +47,7 @@ function makeDeps(overrides: Partial<BackgroundDeps> = {}): BackgroundDeps {
     panelWindowOf: async () => undefined,
     sidePanelOpen: async () => false,
     notifyPages: async () => undefined,
+    db: memoryConvDb(),
     ...overrides,
   };
 }

@@ -294,11 +294,12 @@ describe('转到侧边栏（6.4、AR-19）', () => {
     expect(h.logs.filter((l) => l.event === 'handoff/invalid')).toHaveLength(2);
   });
 
-  it('别的标签页的对话不能转', async () => {
+  it('别的页面的对话不能转', async () => {
     const h = makeHarness();
     const float = await readyFloat(h);
-    // 另一个标签页上的对话
+    // 另一个标签页上、另一个页面的对话
     h.moveTab(8, WIN);
+    h.setTabUrl('https://other.test/page', 8);
     const panel = await readyPanel(h, { tabId: 8 });
     panel.send(askMsg({ clientRequestId: 'req-tab8-0001', selectionRevision: undefined }));
     await until(() => panel.ofType('conv/accepted').length === 1);
@@ -309,18 +310,34 @@ describe('转到侧边栏（6.4、AR-19）', () => {
     expect([...h.session.data.keys()].some((k) => k.startsWith('handoff:'))).toBe(false);
   });
 
-  it('后台重启后对话已不在内存：不转（gone），小窗留着回答', async () => {
+  it('后台重启后对话在库里：照常转，侧边栏的快照带上这段对话；对话被删了才不转（gone）', async () => {
     const h = makeHarness();
     const float = await readyFloat(h);
     const conversationId = await floatAnswered(h, float);
-    const h2 = makeHarness({ session: h.session });
+    const h2 = makeHarness({ session: h.session, db: h.db });
     const again = h2.connect(h2.floatSender());
     again.send({ type: 'conv/resumeFloat' });
     await until(() => again.ofType('conv/ready').length === 1);
+    again.send({ type: 'conv/subscribe' });
+    await until(() => again.ofType('conv/snapshot').length === 1, '小窗重新订阅');
+    // 不指定对话的订阅按续接规则接上该页近期的对话（从库里来）
+    expect(again.ofType('conv/subscribed')[0]).toMatchObject({ conversationId });
+    again.send({ type: 'handoff/start', conversationId });
+    await until(() => again.ofType('handoff/created').length === 1);
+    const handoffId = again.ofType('handoff/created')[0]?.handoffId;
+    const panel = await readyPanel(h2);
+    await subscribe(panel, TAB, { handoffId, conversationId });
+    await until(() => again.ofType('handoff/done').length === 1, '转接完成');
+    const snap = panel.ofType('conv/snapshot').at(-1);
+    expect(snap).toMatchObject({ done: true, conversation: { id: conversationId } });
+    expect(((snap?.messages ?? []) as { role: string }[]).map((m) => m.role)).toEqual(['user', 'assistant']);
+
+    // 侧边栏删掉这个对话后，小窗再转：gone，小窗留着回答
+    panel.send({ type: 'history/delete', requestId: 'del-00000001', conversationId });
+    await until(() => panel.ofType('history/deleted').length === 1, '删除');
     again.send({ type: 'handoff/start', conversationId });
     await until(() => again.ofType('conv/rejected').length === 1);
     expect(again.ofType('conv/rejected')[0]).toMatchObject({ reason: 'gone', refType: 'handoff/start' });
-    expect([...h2.session.data.keys()].some((k) => k.startsWith('handoff:'))).toBe(false);
   });
 });
 

@@ -1,6 +1,7 @@
 // 后台依赖的真实实现：扩展接口、网络、随机数都在这里，其余模块只依赖 BackgroundDeps（单测换成假的）。
 import { browser } from 'wxt/browser';
 import { chatCompletionsAdapter } from '@/core/llm/chat-completions';
+import { createIdbConvDb } from '@/platform/conv-db';
 import { loadSettings } from '@/platform/settings-store';
 import type { BackgroundDeps } from './deps';
 
@@ -89,5 +90,9 @@ export function browserDeps(): BackgroundDeps {
     newToken: () => hex(crypto.getRandomValues(new Uint8Array(16))),
     log: (event, detail) => console.info(`[后台] ${event}${detail ? ` ${JSON.stringify(detail)}` : ''}`),
     lockStorage: () => browser.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }),
+    // 打开或升级失败只记错误名，不记内容；之后每次读写会重试打开
+    db: createIdbConvDb({
+      onError: (what, e) => console.warn(`[后台] db/${what}Failed`, e instanceof Error ? e.name : 'unknown'),
+    }),
   };
 }
