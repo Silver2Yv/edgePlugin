@@ -117,6 +117,8 @@ export async function attachPanel(
 
   const center = (selector: string) =>
     evaluate<{ x: number; y: number } | null>(`(() => {
+      // 侧边栏刚打开时先按 0 宽排版（innerWidth 为 0），这时量出的位置等真正排好后就不对了，点下去会落空
+      if (innerWidth === 0) return null;
       const el = document.querySelector(${JSON.stringify(selector)});
       if (!el) return null;
       const r = el.getBoundingClientRect();
