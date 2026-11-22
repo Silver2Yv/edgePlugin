@@ -3,6 +3,7 @@ import { browser } from 'wxt/browser';
 import { chatCompletionsAdapter } from '@/core/llm/chat-completions';
 import { createIdbConvDb } from '@/platform/conv-db';
 import { loadSettings } from '@/platform/settings-store';
+import { offscreenCaptureImages } from './capture-image';
 import type { BackgroundDeps } from './deps';
 import { createNetDiagnostics } from './net-diagnostics';
 
@@ -99,5 +100,14 @@ export function browserDeps(): BackgroundDeps {
       onError: (what, e) => console.warn(`[后台] db/${what}Failed`, e instanceof Error ? e.name : 'unknown'),
     }),
     netDiagnostics,
+    requestFrame: (tabId, frameId, documentId, msg) =>
+      browser.tabs.sendMessage(tabId, msg, { frameId, documentId }) as Promise<unknown>,
+    tabState: (tabId) =>
+      browser.tabs.get(tabId).then(
+        (t) => ({ active: t.active, windowId: t.windowId }),
+        () => undefined,
+      ),
+    captureVisibleTab: (windowId) => browser.tabs.captureVisibleTab(windowId, { format: 'png' }),
+    captureImages: offscreenCaptureImages,
   };
 }

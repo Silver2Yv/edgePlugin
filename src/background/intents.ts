@@ -13,6 +13,7 @@ import {
 import { DEFAULT_SETTINGS } from '@/core/domain/settings';
 import { frameSiteLevel } from '@/core/domain/site-policy';
 import { SUMMARIZE_PAGE_QUESTION } from '@/core/prompt/ask';
+import type { Capture } from './capture';
 import type { BackgroundDeps, SenderLike } from './deps';
 import type { FloatHost } from './float-host';
 import type { Hub } from './hub';
@@ -45,6 +46,7 @@ export function createIntents(
   pages: Pages,
   route: Route,
   jobs: Jobs,
+  capture?: Capture,
 ) {
   const refuse = (reason: RejectReason, detail?: Record<string, unknown>): IntentResponse => {
     deps.log('intent/rejected', { reason, ...detail });
@@ -204,6 +206,15 @@ export function createIntents(
       }
       case 'selection/anchored':
         return pages.onAnchored(msg, s) ? { ok: true } : refuse('notOwner', { type: msg.type });
+      // 框选截图（5.13）：身份取自 sender，对不上这次框选的标签页、顶层框架、文档就拒绝（规则 7）
+      case 'capture/rect':
+      case 'capture/cancel': {
+        if (!capture) return refuse('notAllowed', { type: msg.type });
+        const who = { tabId: s.tabId, frameId: s.frameId, documentId: s.documentId };
+        const reason =
+          msg.type === 'capture/rect' ? await capture.onRect(msg, who) : await capture.onCancel(msg, who);
+        return reason ? refuse(reason, { type: msg.type }) : { ok: true };
+      }
       default:
         // 定位、截图本版本不做
         return refuse('notAllowed', { type: msg.type });

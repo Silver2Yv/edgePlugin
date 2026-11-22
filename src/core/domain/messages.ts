@@ -129,17 +129,24 @@ export const contentToBackground = tagged({
     requestId: id,
     level: oneOf(['exact', 'fuzzy', 'scroll', 'none']),
   }),
-  /** 框选完成：视口坐标（CSS 像素）与视口修订号 */
+  /**
+   * 框选完成：视口坐标（CSS 像素）与视口修订号。contract-v1.5 增量 viewport：框选时的视口尺寸（CSS 像素），
+   * 后台按「图片尺寸 ÷ 视口尺寸」换算坐标（5.13，不假定 devicePixelRatio）。viewportRevision 是按下鼠标那一刻的；
+   * 之后滚动、缩放、窗口尺寸变化都会让阅读器的修订号加一，后台在截图前后各核对一次，对不上就丢弃（绝不发错图）
+   */
   'capture/rect': obj({
     type: lit('capture/rect'),
     captureId: id,
     viewportRevision: int({ min: 0 }),
     rect: obj({ x: num(), y: num(), w: num({ min: 1 }), h: num({ min: 1 }) }),
+    viewport: obj({ w: num({ min: 1 }), h: num({ min: 1 }) }),
   }),
   'float/loadResult': obj({
     type: lit('float/loadResult'),
     result: oneOf(['ready', 'failedUnsupported', 'failedTransient']),
   }),
+  /** contract-v1.5 增量：用户取消了框选（Esc、右键、遮罩上的「取消」）。必须来自 isTrusted 事件 */
+  'capture/cancel': obj({ type: lit('capture/cancel'), captureId: id }),
 });
 export type ContentToBackground = Infer<typeof contentToBackground>;
 
@@ -190,10 +197,27 @@ export const backgroundToContent = tagged({
    * 在网页上显示一行不挡输入的提示（M4，contract-v1.3 增量）：小窗用不了、本该改用侧边栏，
    * 但浏览器没让后台打开侧边栏时，告诉用户用快捷键或工具栏图标在侧边栏继续。只带原因，不带任何对话内容（规则 4）
    */
-  'page/notice': obj({ type: lit('page/notice'), kind: oneOf(['floatFailed', 'floatUnsupported']) }),
+  'page/notice': obj({
+    type: lit('page/notice'),
+    // contract-v1.5 增量：captureChanged 截图前页面变了（滚动、缩放、切页）已丢弃，请重选；captureFailed 截图没成功
+    kind: oneOf(['floatFailed', 'floatUnsupported', 'captureChanged', 'captureFailed']),
+  }),
+  /** 框选截图（5.13）：显示遮罩，等用户拖出矩形（回 capture/rect）或取消（回 capture/cancel） */
   'capture/start': obj({ type: lit('capture/start'), captureId: id }),
+  /** 隐藏遮罩与小窗、等两帧后应答 CaptureFrameReply（contract-v1.5 起有应答）：后台据此核对视口没变，再截图 */
   'capture/hideOverlay': obj({ type: lit('capture/hideOverlay'), captureId: id }),
+  /**
+   * contract-v1.5 增量：截图结束（成功、丢弃或失败）。阅读器移除遮罩、恢复小窗，应答 CaptureFrameReply——
+   * 后台用它核对截图期间视口没有变（截图前后各核对一次）
+   */
+  'capture/end': obj({ type: lit('capture/end'), captureId: id }),
 });
+/** capture/hideOverlay、capture/end 的应答（阅读器自己产出）：当前视口修订号与视口尺寸 */
+export interface CaptureFrameReply {
+  captureId: string;
+  viewportRevision: number;
+  viewport: { w: number; h: number };
+}
 export type BackgroundToContent = Infer<typeof backgroundToContent>;
 
 // ───────────── 对话流：小窗 / 侧边栏 → 后台（端口 CONV_PORT） ─────────────
@@ -225,6 +249,11 @@ const askBody = {
    * 不带 conversationId、也不带 fresh 时按续接规则：该页最近的对话距上次提问不超过 30 分钟、且轮数少于 20 才续接
    */
   fresh: opt(bool),
+  /**
+   * contract-v1.5 增量：附上这个标签页待确认的截图（conv/capture 给的编号）。发问即确认（AR-16）；
+   * 后台按发问的标签页取，编号对不上、已被取走或过期回 gone；所选模型能力表里 vision 为 no 时回 noVision
+   */
+  captureId: opt(id),
 } as const;
 
 export const clientToBackground = tagged({
@@ -299,6 +328,23 @@ export const clientToBackground = tagged({
    * 成功回 history/deleted；对话正有回答在生成时拒绝（busy），写库失败拒绝（storageFailed）
    */
   'history/delete': obj({ type: lit('history/delete'), requestId: id, conversationId: id }),
+  /**
+   * contract-v1.5 增量：输入区的「截图」按钮。小窗是令牌绑定的标签页，侧边栏是订阅的标签页（须仍在本窗口）。
+   * 后台注入阅读器、显示遮罩；截好后推 conv/capture，失败推 conv/captureFailed
+   */
+  'capture/begin': obj({ type: lit('capture/begin') }),
+  /** contract-v1.5 增量：去掉待确认的截图（预览上的 ×）。后台删掉这份截图，并推 conv/captureCleared */
+  'capture/discard': obj({ type: lit('capture/discard'), captureId: id }),
+  /**
+   * contract-v1.5 增量：取历史消息里第 index 张图的缩略图（应答 image/thumb）。授权同订阅：
+   * 小窗只能看所在标签页当前页面的对话，侧边栏任意历史对话
+   */
+  'image/get': obj({
+    type: lit('image/get'),
+    requestId: id,
+    messageId: id,
+    index: int({ min: 0, max: 15 }),
+  }),
 });
 export type ClientToBackground = Infer<typeof clientToBackground>;
 
@@ -428,7 +474,29 @@ export type BackgroundToClient =
       refType?: string;
       /** 被拒消息里的关联编号（clientRequestId、jobId、queryId 等），界面据此把对应操作标为失败 */
       refId?: string;
-    };
+    }
+  | {
+      /**
+       * contract-v1.5 增量：这个标签页有一张待确认的截图（5.13 预览）。推给该标签页的所有订阅者，订阅时也补发。
+       * 原图只在后台（发问时才进请求），这里只给缩略图：JPEG data URL，后台保证不超过 CAPTURE_THUMB_MAX_CHARS，
+       * 整条消息远小于 64 KB。width / height 是发给模型的那张图的尺寸
+       */
+      type: 'conv/capture';
+      captureId: string;
+      thumb: string;
+      width: number;
+      height: number;
+    }
+  /** contract-v1.5 增量：待确认的截图没了（已随发问取走、被 × 去掉、被新截图替换、过期） */
+  | { type: 'conv/captureCleared'; captureId: string }
+  /** contract-v1.5 增量：截图没成功。changed：截图前页面变了已丢弃，请重选；unsupported：这一页截不了；failed：其他 */
+  | { type: 'conv/captureFailed'; reason: CaptureFailReason }
+  /** contract-v1.5 增量：image/get 的应答。thumb 同 conv/capture */
+  | { type: 'image/thumb'; requestId: string; messageId: string; index: number; thumb: string };
+
+export type CaptureFailReason = 'changed' | 'unsupported' | 'failed';
+/** 缩略图 data URL 的长度上限（字符）：conv/capture、image/thumb 单条都远小于 64 KB */
+export const CAPTURE_THUMB_MAX_CHARS = 44 * 1024;
 
 /**
  * 侧边栏顶部说明的原因（contract-v1.3 增量）。「加载失败」与「网站不支持」分开，不把前者说成后者（V-02）
@@ -436,8 +504,14 @@ export type BackgroundToClient =
  * | floatUnsupported | 网站结构性不能放小窗（按站点记住） |
  * | noConnection | 后台替侧边栏发起的请求（右键「总结本页」）没有可用的连接 |
  * | requestRefused | 后台替侧边栏发起的请求被拒（其余原因） |
+ * | captureUnsupported | contract-v1.5 增量：快捷键截图，这一页截不了（浏览器内部页面等，阅读器注入不了） |
  */
-export type PanelNoticeKind = 'floatTransient' | 'floatUnsupported' | 'noConnection' | 'requestRefused';
+export type PanelNoticeKind =
+  | 'floatTransient'
+  | 'floatUnsupported'
+  | 'noConnection'
+  | 'requestRefused'
+  | 'captureUnsupported';
 
 /**
  * 后台 → 扩展页面的广播（runtime.sendMessage，contract-v1.3 增量）。后台自己产出，只用类型约束；
@@ -552,7 +626,15 @@ const CONV_COMMON: readonly ClientType[] = [
 
 const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
   content: new Set(Object.keys(contentToBackground.variants)),
-  float: new Set<ClientType>([...CONV_COMMON, 'conv/helloFloat', 'conv/resumeFloat', 'handoff/start']),
+  float: new Set<ClientType>([
+    ...CONV_COMMON,
+    'conv/helloFloat',
+    'conv/resumeFloat',
+    'handoff/start',
+    'capture/begin',
+    'capture/discard',
+    'image/get',
+  ]),
   sidepanel: new Set<ClientType>([
     ...CONV_COMMON,
     'conv/helloSidepanel',
@@ -560,6 +642,9 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
     'favorite/add',
     'citation/locate',
     'history/delete',
+    'capture/begin',
+    'capture/discard',
+    'image/get',
   ]),
   options: new Set(Object.keys(optionsToBackground.variants)),
   unknown: new Set(),
@@ -571,6 +656,7 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
  * gone（contract-v1.3 增量）：要转到侧边栏的对话后台已经没有了。contract-v1.4 起对话在数据库里，
  *   后台重启不再丢对话；只有对话已被删除（库里没有）时才回它。
  * storageFailed（contract-v1.4 增量）：数据库写入或读取失败（接单要先落库，落不了就不发请求）
+ * noVision（contract-v1.5 增量）：发问附了截图，但所选模型能力表里 vision 为 no（E3），界面提示换能看图的模型
  */
 export type RejectReason =
   | 'tooLarge'
@@ -581,7 +667,8 @@ export type RejectReason =
   | 'notOwner'
   | 'busy'
   | 'gone'
-  | 'storageFailed';
+  | 'storageFailed'
+  | 'noVision';
 
 /** JSON 序列化后的 UTF-8 字节数；序列化失败（循环引用、BigInt）返回 Infinity */
 export function messageBytes(msg: unknown): number {

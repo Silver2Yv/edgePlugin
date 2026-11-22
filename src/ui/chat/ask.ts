@@ -31,7 +31,8 @@ export async function submitAsk(
   opts: { lengthTier?: LengthTier } = {},
 ): Promise<boolean> {
   const text = rawText.trim();
-  if (!text) return false;
+  // 附了截图时可以不打字（装配补默认问题，E1）
+  if (!text && !deps.getState().capture) return false;
   if (isGenerating(deps.getState().job)) {
     deps.dispatch({ kind: 'localError', message: T.error.generating });
     return false;
@@ -58,9 +59,10 @@ export async function submitAsk(
         conversationId: s.conversationId,
         fresh: s.freshConversation,
         ...params,
+        ...(s.capture ? { captureId: s.capture.captureId } : {}),
       }),
     );
-    deps.dispatch({ kind: 'askSent', clientRequestId, text, quote: s.quote });
+    deps.dispatch({ kind: 'askSent', clientRequestId, text, quote: s.quote, capture: s.capture });
   } else {
     // 没就绪：先存成待发，等重连、订阅、收到这次 conv/snapshot 后再用当时最新的引用发出
     deps.dispatch({ kind: 'queueAsk', ask: { clientRequestId, text, ...params } });
@@ -84,6 +86,7 @@ export function flushQueuedAsk(state: FloatState, deps: Pick<AskDeps, 'post' | '
       thinking: ask.thinking,
       model: ask.model,
       ...(ask.contextTier ? { contextTier: ask.contextTier } : {}),
+      ...(state.capture ? { captureId: state.capture.captureId } : {}),
     }),
   );
   deps.dispatch({
@@ -91,6 +94,7 @@ export function flushQueuedAsk(state: FloatState, deps: Pick<AskDeps, 'post' | '
     clientRequestId: ask.clientRequestId,
     text: ask.text,
     quote: state.quote,
+    capture: state.capture,
   });
 }
 

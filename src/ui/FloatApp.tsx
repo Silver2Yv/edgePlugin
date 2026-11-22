@@ -31,6 +31,7 @@ import { EXPAND_QUESTION, NO_CONNECTION } from './ask-defaults';
 import { type AskDeps, flushQueuedAsk, submitAsk, useComposerDefaults } from './chat/ask';
 import { Composer } from './chat/Composer';
 import { IconClose, IconPanel, IconPin, IconPlus } from './chat/Icons';
+import { onImageMessage, setImageRequester } from './chat/image-thumbs';
 import { MessageList } from './chat/MessageList';
 import { displayItems } from './float/messages';
 import {
@@ -90,6 +91,7 @@ export function FloatApp() {
     const port = browser.runtime.connect({ name: CONV_PORT });
     portRef.current = port;
     port.onMessage.addListener((raw: BackgroundToClient) => dispatch({ kind: 'server', msg: raw }));
+    port.onMessage.addListener(onImageMessage);
     port.onDisconnect.addListener(() => dispatch({ kind: 'disconnected' }));
     port.postMessage(hello);
   };
@@ -109,6 +111,31 @@ export function FloatApp() {
     if (token !== null) connect({ type: 'conv/helloFloat', token });
     // 只在挂载时建立首次连接；重连由下面按 connPhase 变化触发
   }, []);
+
+  // 历史消息里的截图缩略图经对话端口向后台要（capture 块）
+  useEffect(() => {
+    setImageRequester((m) =>
+      portRef.current?.postMessage({ type: 'image/get', ...m } satisfies ClientToBackground),
+    );
+    return () => setImageRequester(null);
+  }, []);
+
+  /** 输入区「截图」（5.13）：后台在网页上显示遮罩；连接没就绪先唤醒，请用户再点一次 */
+  const handleCapture = () => {
+    if (stateRef.current.connPhase !== 'ready') {
+      dispatch({ kind: 'localError', message: T.error.notReady });
+      wake();
+      return;
+    }
+    portRef.current?.postMessage({ type: 'capture/begin' } satisfies ClientToBackground);
+  };
+
+  const handleDismissCapture = () => {
+    const id = stateRef.current.capture?.captureId;
+    dispatch({ kind: 'dismissCapture' });
+    if (id)
+      portRef.current?.postMessage({ type: 'capture/discard', captureId: id } satisfies ClientToBackground);
+  };
 
   // tabs.getCurrent() 在扩展页面的 iframe 里拿到宿主所在的标签页（按帧树判定），从它取窗口
   useEffect(() => {
@@ -386,6 +413,9 @@ export function FloatApp() {
           onTier={(contextTier) => dispatch({ kind: 'setTier', contextTier })}
           onThinking={(thinking) => dispatch({ kind: 'setThinking', thinking })}
           model={defaults.model}
+          capture={state.capture}
+          onDismissCapture={handleDismissCapture}
+          onCapture={handleCapture}
         />
       )}
     </main>

@@ -29,6 +29,17 @@ export interface UserMessageView extends MessageBase {
   quote?: QuoteSummary;
   /** 本地暂存的发问对应哪条助手消息；快照里出现那条助手消息后，暂存的让位给快照里的用户消息 */
   pairedMessageId?: string;
+  /**
+   * 附带的截图（capture 块）：本地暂存的发问带着缩略图（thumb）；快照来的只有位置（messageId + index），
+   * 缩略图按需向后台取（image/get）
+   */
+  images?: readonly UserImageView[];
+}
+
+export interface UserImageView {
+  thumb?: string;
+  messageId?: string;
+  index: number;
 }
 
 /** 助手消息；正在生成的任务（JobView）字段是它的超集，回答区组件两种都收 */
@@ -107,6 +118,7 @@ export function recordToView(r: MessageRecord): MessageView {
       ...(sel
         ? { quote: { text: sel.text, truncated: sel.truncated, originalLength: sel.originalLength } }
         : {}),
+      ...(r.images?.length ? { images: r.images.map((_, index) => ({ messageId: r.id, index })) } : {}),
     };
   }
   return {
@@ -197,7 +209,7 @@ export function archiveJob(
 
 /** 界面自己发的问：接单后先在本地暂存一条用户消息（问题与引用界面都知道），不等快照 */
 export function localUserMessage(
-  ask: { text: string; quote: QuoteSummary | null },
+  ask: { text: string; quote: QuoteSummary | null; capture?: { thumb: string } },
   accepted: { messageId: string; conversationId: string },
 ): UserMessageView {
   return {
@@ -208,6 +220,7 @@ export function localUserMessage(
     text: ask.text,
     pairedMessageId: accepted.messageId,
     ...(ask.quote ? { quote: ask.quote } : {}),
+    ...(ask.capture ? { images: [{ thumb: ask.capture.thumb, index: 0 }] } : {}),
   };
 }
 

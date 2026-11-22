@@ -21,6 +21,7 @@ import { EXPAND_QUESTION, NO_CONNECTION } from './ask-defaults';
 import { type AskDeps, flushQueuedAsk, submitAsk, useComposerDefaults } from './chat/ask';
 import { Composer } from './chat/Composer';
 import { IconPlus } from './chat/Icons';
+import { onImageMessage, setImageRequester } from './chat/image-thumbs';
 import { MessageList } from './chat/MessageList';
 import { displayItems, latestPlan } from './float/messages';
 import { pageInfo } from './float/send-summary';
@@ -104,8 +105,35 @@ export function SidePanelApp() {
     const port = browser.runtime.connect({ name: CONV_PORT });
     portRef.current = port;
     port.onMessage.addListener((raw: BackgroundToClient) => dispatch({ kind: 'server', msg: raw }));
+    port.onMessage.addListener(onImageMessage);
     port.onDisconnect.addListener(() => dispatch({ kind: 'disconnected' }));
     port.postMessage({ type: 'conv/helloSidepanel', windowId: w } satisfies ClientToBackground);
+  };
+
+  // 历史消息里的截图缩略图经对话端口向后台要（capture 块）
+  useEffect(() => {
+    setImageRequester((m) =>
+      portRef.current?.postMessage({ type: 'image/get', ...m } satisfies ClientToBackground),
+    );
+    return () => setImageRequester(null);
+  }, []);
+
+  /** 输入区「截图」（5.13）：截本窗口当前订阅的标签页；连接没就绪先唤醒，请用户再点一次 */
+  const handleCapture = () => {
+    const s = stateRef.current;
+    if (s.connPhase !== 'ready' || !s.targetConfirmed) {
+      dispatch({ kind: 'localError', message: T.error.notReady });
+      wake();
+      return;
+    }
+    portRef.current?.postMessage({ type: 'capture/begin' } satisfies ClientToBackground);
+  };
+
+  const handleDismissCapture = () => {
+    const id = stateRef.current.capture?.captureId;
+    dispatch({ kind: 'dismissCapture' });
+    if (id)
+      portRef.current?.postMessage({ type: 'capture/discard', captureId: id } satisfies ClientToBackground);
   };
 
   useEffect(() => {
@@ -297,6 +325,9 @@ export function SidePanelApp() {
           onTier={(contextTier) => dispatch({ kind: 'setTier', contextTier })}
           onThinking={(thinking) => dispatch({ kind: 'setThinking', thinking })}
           model={defaults.model}
+          capture={state.capture}
+          onDismissCapture={handleDismissCapture}
+          onCapture={handleCapture}
         />
       )}
     </main>

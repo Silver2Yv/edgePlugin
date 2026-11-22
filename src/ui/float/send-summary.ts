@@ -40,6 +40,8 @@ export function sendSummary(plan: RequestContextPlan, selectedChars: number | nu
     parts.push(T.sent.pageTotal(extractableChars));
     parts.push(...plan.notes);
   }
+  // 框选截图（E1、5.9 图片单列）：附了几张图照实写
+  if (plan.imageCount > 0) parts.push(T.capture.sent(plan.imageCount));
   if (plan.droppedHistoryTurns > 0) extra.push(T.sent.droppedHistory(plan.droppedHistoryTurns));
   if (plan.historyHasPageText) extra.push(T.sent.historyHasPageText);
   if (plan.removedEarlierPageText) extra.push(T.sent.removedEarlierPageText);

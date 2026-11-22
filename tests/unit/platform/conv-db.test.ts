@@ -145,6 +145,32 @@ describe.each(impls)('对话数据库（%s）', (_name, make) => {
     expect((await db.getMessages('c-00000002')).length).toBe(1);
   });
 
+  it('删除对话：消息引用的图片解引用（capture 块），减到 0 的删除，别的对话还在用的留着', async () => {
+    const db = make();
+    const image = (blobId: string) => ({ blobId, mime: 'image/png', width: 2, height: 1 });
+    const blob = (id: string, refCount: number) => ({
+      id,
+      mime: 'image/png',
+      data: new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }),
+      refCount,
+      createdAt: 1,
+    });
+    await db.write({
+      conversations: [conv('c-00000001', 'https://a.test/x', 1), conv('c-00000002', 'https://a.test/x', 2)],
+      messages: [
+        msg('m-00000001', 'c-00000001', 0, 'completed', { images: [image('blob-0001'), image('blob-0002')] }),
+        msg('m-00000002', 'c-00000002', 0, 'completed', { images: [image('blob-0002')] }),
+      ],
+      blobs: [blob('blob-0001', 1), blob('blob-0002', 2)],
+    });
+    expect((await db.getBlob('blob-0001'))?.mime).toBe('image/png');
+    await db.deleteConversation('c-00000001');
+    expect(await db.getBlob('blob-0001')).toBeUndefined();
+    expect((await db.getBlob('blob-0002'))?.refCount).toBe(1);
+    await db.deleteConversation('c-00000002');
+    expect(await db.getBlob('blob-0002')).toBeUndefined();
+  });
+
   it('快照清理：到期且无人引用的删掉；按条件删（不论引用）', async () => {
     const db = make();
     await db.write({

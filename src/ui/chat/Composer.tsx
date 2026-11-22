@@ -4,8 +4,9 @@
 import type { Ref } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import type { ContextTier, ThinkingLevel } from '@/core/context/plan';
-import { type QuoteView, shouldSendOnEnter } from '../float/state';
+import { type CaptureView, type QuoteView, shouldSendOnEnter } from '../float/state';
 import { T } from '../strings';
+import { CaptureButton, CapturePreview } from './CaptureParts';
 import { IconClose } from './Icons';
 
 const TIERS: readonly ContextTier[] = ['selection', 'nearby', 'fullPage'];
@@ -32,6 +33,10 @@ export interface ComposerProps {
   onThinking: (thinking: ThinkingLevel) => void;
   /** 实际发送用的模型名（J10）；没有连接时为 null。这一轮只显示，不能切换 */
   model: string | null;
+  /** 框选截图（capture 块）：待确认的截图、去掉它、「截图」按钮。不给 onCapture 就不显示按钮 */
+  capture?: CaptureView | null;
+  onDismissCapture?: () => void;
+  onCapture?: () => void;
 }
 
 export function Composer(p: ComposerProps) {
@@ -83,6 +88,7 @@ export function Composer(p: ComposerProps) {
             </button>
           </div>
         )}
+        {p.capture && <CapturePreview capture={p.capture} onDismiss={p.onDismissCapture} />}
         <textarea
           ref={setRef}
           className="ra-input"
@@ -142,6 +148,7 @@ export function Composer(p: ComposerProps) {
               {p.model}
             </span>
           )}
+          {p.onCapture && <CaptureButton onClick={p.onCapture} disabled={p.generating} />}
         </div>
       </div>
     </div>

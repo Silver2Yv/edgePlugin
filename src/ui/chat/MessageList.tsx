@@ -5,6 +5,7 @@ import { useLayoutEffect, useRef } from 'preact/hooks';
 import { AnswerView } from '../AnswerView';
 import { type DisplayItem, groupTurns, type UserMessageView } from '../float/messages';
 import { T } from '../strings';
+import { MessageImages } from './CaptureParts';
 
 /** 用户消息气泡里引用摘要最多显示的字数（完整引用发问时在引用条里看过，这里只是提示问的是哪一段） */
 const QUOTE_PREVIEW_CHARS = 60;
@@ -21,7 +22,14 @@ function UserMessage({ message, showQuote }: { message: UserMessageView; showQuo
           {preview.length < full.length || q.truncated ? '…' : ''}
         </div>
       )}
-      {message.text ? message.text : <span className="ra-user__empty">{T.list.userNoText}</span>}
+      <MessageImages images={message.images} />
+      {message.text ? (
+        message.text
+      ) : (
+        <span className="ra-user__empty">
+          {message.images?.length && !message.quote ? T.capture.userNoText : T.list.userNoText}
+        </span>
+      )}
     </div>
   );
 }

@@ -47,11 +47,15 @@ export interface ConvDb {
   messagesWithStatus(statuses: readonly MessageRecord['status'][]): Promise<MessageRecord[]>;
   getPage(pageKey: string): Promise<DbRecords['pages'] | undefined>;
   getSnapshot(id: string): Promise<DbRecords['snapshots'] | undefined>;
+  /** 图片（截图，5.13）；没有返回 undefined */
+  getBlob(id: string): Promise<DbRecords['blobs'] | undefined>;
   /** 一个事务写入；事务提交后才 resolve（5.11 写入确认） */
   write(w: DbWrites): Promise<void>;
   /** 一个事务删除 */
   remove(d: DbDeletes): Promise<void>;
-  /** 删对话：它的消息、无人引用（refCount 为 0）的快照一并删除，一个事务（5.11 级联） */
+  /**
+   * 删对话：它的消息、无人引用（refCount 为 0）的快照一并删除；消息引用的图片解引用，减到 0 的删除。一个事务（5.11 级联）
+   */
   deleteConversation(id: string): Promise<void>;
   /** 删到期（expiresAt ≤ now）且无人引用的快照，返回删了几条 */
   purgeExpiredSnapshots(now: number): Promise<number>;
@@ -202,6 +206,10 @@ export function createIdbConvDb(opts: IdbConvDbOptions = {}): ConvDb {
       return (await (await db()).get('snapshots', id)) as DbRecords['snapshots'] | undefined;
     },
 
+    async getBlob(id) {
+      return (await (await db()).get('blobs', id)) as DbRecords['blobs'] | undefined;
+    },
+
     async write(w) {
       const names = (Object.keys(w) as StoreName[]).filter((k) => (w[k]?.length ?? 0) > 0);
       if (names.length === 0) return;
@@ -221,12 +229,14 @@ export function createIdbConvDb(opts: IdbConvDbOptions = {}): ConvDb {
     },
 
     async deleteConversation(id) {
-      const tx = (await db()).transaction(['conversations', 'messages', 'snapshots'], 'readwrite');
+      const tx = (await db()).transaction(['conversations', 'messages', 'snapshots', 'blobs'], 'readwrite');
       const work = (async () => {
         await tx.objectStore('conversations').delete(id);
         const range = IDBKeyRange.bound([id, LOW], [id, HIGH]);
+        const blobRefs: string[] = [];
         let m = await tx.objectStore('messages').index('byConversationOrdinal').openCursor(range);
         while (m) {
+          for (const img of (m.value as MessageRecord).images ?? []) blobRefs.push(img.blobId);
           await m.delete();
           m = await m.continue();
         }
@@ -234,6 +244,14 @@ export function createIdbConvDb(opts: IdbConvDbOptions = {}): ConvDb {
         while (s) {
           if ((s.value as DbRecords['snapshots']).refCount === 0) await s.delete();
           s = await s.continue();
+        }
+        // 图片解引用（截图，5.13）：同一张图被引用几次就减几次，减到 0 删除
+        const blobs = tx.objectStore('blobs');
+        for (const blobId of blobRefs) {
+          const b = (await blobs.get(blobId)) as DbRecords['blobs'] | undefined;
+          if (!b) continue;
+          if (b.refCount <= 1) await blobs.delete(blobId);
+          else await blobs.put({ ...b, refCount: b.refCount - 1 });
         }
       })();
       await Promise.all([work, tx.done]);

@@ -3,13 +3,17 @@
 // 显示一段时间后自动消失，按 Esc 或点网页也消失。只放固定文案，不放任何对话内容（规则 4）。
 // 「加载失败」与「网站不支持」分开说，不把前者说成后者（V-02）。
 
-export type PageNoticeKind = 'floatFailed' | 'floatUnsupported';
+export type PageNoticeKind = 'floatFailed' | 'floatUnsupported' | 'captureChanged' | 'captureFailed';
 
 const HOW = '请点浏览器工具栏里的「阅读助手」图标，或按 Alt+Shift+D，在侧边栏继续；刚才选中的文字会带过去。';
 
 export const PAGE_NOTICE_TEXT: Readonly<Record<PageNoticeKind, string>> = {
   floatFailed: `小窗这次没能加载出来。${HOW}`,
   floatUnsupported: `这个网站放不了小窗。${HOW}`,
+  // 框选截图（5.13）：截图前页面变了就丢弃，绝不发错图
+  captureChanged:
+    '截图前页面发生了变化（滚动、缩放、窗口大小或切换了页面），这张没有保留。请按 Alt+Shift+X 或点「截图」重新框选。',
+  captureFailed: '这次没能截图，请再试一次。',
 };
 
 /** 自动消失前停留的时间 */

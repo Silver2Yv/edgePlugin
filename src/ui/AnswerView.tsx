@@ -4,6 +4,7 @@
 // 引用编号只在这条消息自己的发送计划（plan.sentBlockIds）内有效（规则 9）。
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { canRetry, isTerminal } from '@/core/domain/job';
+import { ImageAnswerNote } from './chat/CaptureParts';
 import { ERROR_LABEL } from './error-labels';
 import { type AnswerLike, citationIds } from './float/messages';
 import { sendSummary } from './float/send-summary';
@@ -159,6 +160,7 @@ export function AnswerView({ view, live, selectedChars, canExpand, onRetry, onEx
       )}
       {view.state === 'interrupted' && <p className="ra-status">{T.answer.interrupted}</p>}
       {view.state === 'stopped' && <p className="ra-status">{T.answer.stopped}</p>}
+      <ImageAnswerNote view={view} />
       <div className="ra-actions">
         {live && canRetry(view.state) && (
           <button type="button" className="ra-btn ra-btn--small" onClick={onRetry}>

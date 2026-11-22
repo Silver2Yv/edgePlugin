@@ -48,6 +48,7 @@ function fakeHost(rect: FloatRect | null = { left: 0, top: 0, width: 380, height
     onRectSettled: vi.fn(),
     setKeepOpen: vi.fn(),
     keepsOpen: vi.fn(() => false),
+    setCaptureHidden: vi.fn(),
   };
 }
 

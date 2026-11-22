@@ -5,6 +5,7 @@ import type { BackgroundToContent, BackgroundToPages } from '@/core/domain/messa
 import type { MigrateResult } from '@/core/domain/settings';
 import type { InterfaceType, ModelAdapter } from '@/core/llm/adapter';
 import type { ConvDb } from '@/platform/conv-db';
+import type { CaptureImages } from './capture-image';
 import type { NetDiagnostics } from './net-diagnostics';
 
 /** 只用到的 sender 字段；与 runtime.MessageSender 兼容 */
@@ -97,4 +98,21 @@ export interface BackgroundDeps {
   db: ConvDb;
   /** 只读网络诊断（H9）：webRequest 能力不可用（如单测）时不提供，调用方按 undefined 处理 */
   netDiagnostics?: NetDiagnostics;
+  // ── 框选截图（5.13，capture 块新增）。可选只是为了不打扰只测别的模块的单测，真实实现一定提供 ──
+  /** 指令发给指定框架的指定文档，并取回应答（tabs.sendMessage 的返回值）；文档已不在时失败 */
+  requestFrame?(
+    tabId: number,
+    frameId: number,
+    documentId: string,
+    msg: BackgroundToContent,
+  ): Promise<unknown>;
+  /**
+   * 标签页此刻是不是所在窗口的活动标签页、在哪个窗口（tabs.get）；标签页不在了返回 undefined。
+   * 切到别的窗口由阅读器发现（窗口失焦、页面隐藏都让视口修订号加一），这里只看切页与挪窗
+   */
+  tabState?(tabId: number): Promise<{ active: boolean; windowId: number } | undefined>;
+  /** tabs.captureVisibleTab（PNG data URL）：截指定窗口当前活动标签页的可见区域；靠 <all_urls> 主机权限 */
+  captureVisibleTab?(windowId: number): Promise<string>;
+  /** 截图的裁剪、缩放、编码与缩略图（OffscreenCanvas，capture-image.ts） */
+  captureImages?: CaptureImages;
 }

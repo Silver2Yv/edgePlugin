@@ -176,6 +176,8 @@ export function rejectReasonText(reason: RejectReason): string {
       return T.reject.gone;
     case 'storageFailed':
       return T.reject.storageFailed;
+    case 'noVision':
+      return T.capture.noVisionReject;
     default:
       return T.reject.unknown;
   }
@@ -214,7 +216,18 @@ export const PANEL_NOTICE_TEXT: Readonly<Record<PanelNoticeKind, string>> = {
   floatUnsupported: T.notice.floatUnsupported,
   noConnection: T.notice.noConnection,
   requestRefused: T.notice.requestRefused,
+  captureUnsupported: T.capture.noticeUnsupported,
 };
+
+// ───────────── 待确认的截图（5.13 预览，capture 块） ─────────────
+
+/** 输入区里待确认的截图：缩略图（后台给的 JPEG data URL，用画布显示）与发给模型的尺寸 */
+export interface CaptureView {
+  captureId: string;
+  thumb: string;
+  width: number;
+  height: number;
+}
 
 // ───────────── 转接（6.4） ─────────────
 
@@ -282,7 +295,7 @@ export interface FloatState {
    */
   messages: readonly MessageView[];
   /** 已发出、还没接单的发问内容（问题与当时的引用）：接单后变成对话里的一条用户消息 */
-  pendingAsk: { text: string; quote: QuoteSummary | null } | null;
+  pendingAsk: { text: string; quote: QuoteSummary | null; capture?: CaptureView } | null;
   /**
    * 用户点 × 取消的那次引用（D11）：重连后后台会把存着的选区再推一遍，同一次选区不再显示；
    * 新的选区（修订号或文字不同）照常显示。修订号每个网页文档从头数，所以连文字一起比
@@ -295,6 +308,10 @@ export interface FloatState {
   freshConversation: boolean;
   /** 一行提示：这次发问被后台接到了新对话（D13「已开启新对话，旧的仍可在历史里找回」） */
   convHint: 'newConversation' | null;
+  /** 待确认的截图（conv/capture）；发问即确认，随 conv/ask 的 captureId 带上（capture 块） */
+  capture: CaptureView | null;
+  /** 用户点 × 去掉的那张（重连后后台补发时不再显示） */
+  dismissedCaptureId: string | null;
 }
 
 export function initialFloatState(hasToken: boolean): FloatState {
@@ -321,6 +338,8 @@ export function initialFloatState(hasToken: boolean): FloatState {
     thinkingOverride: null,
     freshConversation: false,
     convHint: null,
+    capture: null,
+    dismissedCaptureId: null,
   };
 }
 
@@ -334,7 +353,14 @@ export type FloatAction =
   | { kind: 'disconnected' }
   | { kind: 'wake' }
   /** text / quote：这次发问的问题与引用，接单后显示成对话里的用户消息（不给则不显示这条用户消息） */
-  | { kind: 'askSent'; clientRequestId: string; text?: string; quote?: QuoteSummary | null }
+  | {
+      kind: 'askSent';
+      clientRequestId: string;
+      text?: string;
+      quote?: QuoteSummary | null;
+      /** 这一问附带的截图（本地暂存的用户消息里显示缩略图） */
+      capture?: CaptureView | null;
+    }
   | { kind: 'queueAsk'; ask: QueuedAsk }
   | { kind: 'localError'; message: string }
   /** 侧边栏换订阅：跟随切换标签页、地址变化，或接手转接 */
@@ -351,7 +377,9 @@ export type FloatAction =
   | { kind: 'setTier'; contextTier: ContextTier | null }
   | { kind: 'setThinking'; thinking: ThinkingLevel | null }
   /** 点「新对话」：清空显示，下一次发问开新对话（回答生成中不动） */
-  | { kind: 'newConversation' };
+  | { kind: 'newConversation' }
+  /** 点截图预览上的 ×：之后的发问不带这张图（capture 块） */
+  | { kind: 'dismissCapture' };
 
 export function floatReducer(state: FloatState, action: FloatAction): FloatState {
   switch (action.kind) {
@@ -369,7 +397,14 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
         pendingClientRequestId: action.clientRequestId,
         queuedAsk: null,
         actionError: null,
-        pendingAsk: action.text === undefined ? null : { text: action.text, quote: action.quote ?? null },
+        pendingAsk:
+          action.text === undefined
+            ? null
+            : {
+                text: action.text,
+                quote: action.quote ?? null,
+                ...(action.capture ? { capture: action.capture } : {}),
+              },
       };
     case 'queueAsk':
       return { ...state, queuedAsk: action.ask, actionError: null };
@@ -402,6 +437,8 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
             thinkingOverride: null,
             freshConversation: false,
             convHint: null,
+            capture: null,
+            dismissedCaptureId: null,
           };
     }
     case 'handoffStarted':
@@ -446,6 +483,8 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
       };
     case 'server':
       return applyServerMessage(state, action.msg);
+    case 'dismissCapture':
+      return state.capture ? { ...state, capture: null, dismissedCaptureId: state.capture.captureId } : state;
     default:
       return state;
   }
@@ -534,6 +573,10 @@ function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatSt
         // 想接着问、后台却另开了对话（D13 的续接规则）：提示一行。用户自己点的「新对话」、第一次发问不提示
         convHint:
           !continuing && state.conversationId !== null && !state.freshConversation ? 'newConversation' : null,
+        // 附带的截图已随这一问取走（后台也会推 conv/captureCleared）
+        ...(state.pendingAsk?.capture && state.capture?.captureId === state.pendingAsk.capture.captureId
+          ? { capture: null }
+          : {}),
       };
     }
     case 'conv/delta':
@@ -553,6 +596,17 @@ function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatSt
     case 'conv/saveFailed':
       // 写入确认（5.11）：终态没写进库，不能让人以为已经存进历史
       return state.job?.jobId === msg.jobId ? { ...state, actionError: T.reject.saveFailed } : state;
+    // 框选截图（5.13）：预览、被取走 / 去掉、没截成
+    case 'conv/capture':
+      if (msg.captureId === state.dismissedCaptureId) return state;
+      return {
+        ...state,
+        capture: { captureId: msg.captureId, thumb: msg.thumb, width: msg.width, height: msg.height },
+      };
+    case 'conv/captureCleared':
+      return state.capture?.captureId === msg.captureId ? { ...state, capture: null } : state;
+    case 'conv/captureFailed':
+      return { ...state, actionError: T.capture.failed[msg.reason] };
     // history/* favorite/* citation/*：本版本不处理
     default:
       return state;
@@ -693,6 +747,8 @@ export interface AskParams {
   model: ModelRef;
   /** 页面上下文档位：输入区临时切换的，没切换过取设置里的默认档位（settings.context.defaultTier）；不填按只发选区 */
   contextTier?: ContextTier;
+  /** 附带的待确认截图（capture 块）；发问即确认 */
+  captureId?: string;
 }
 
 export function buildAskMessage(p: AskParams): ClientToBackground {
@@ -707,6 +763,7 @@ export function buildAskMessage(p: AskParams): ClientToBackground {
     lengthTier: p.lengthTier,
     thinking: p.thinking,
     model: p.model,
+    ...(p.captureId ? { captureId: p.captureId } : {}),
   };
 }
 

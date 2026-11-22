@@ -1,4 +1,5 @@
 // 后台装配：各模块共用一份运行时状态。监听器的注册在 main.ts（顶层同步）。
+import { createCapture } from './capture';
 import { type CommandTab, createCommands, type MenuInfo } from './commands';
 import { createConv } from './conv';
 import type { BackgroundDeps, SenderLike } from './deps';
@@ -22,10 +23,12 @@ export function createBackground(deps: BackgroundDeps) {
   const hub = createHub();
   const host = createFloatHost(deps, store);
   const pages = createPages(deps);
-  const jobs = createJobs(deps, store, hub, pages);
   const route = createRoute(deps, store, hub, host);
-  const intents = createIntents(deps, store, hub, host, pages, route, jobs);
-  const commands = createCommands(deps, store, hub, host, jobs, route);
+  // 框选截图（5.13）：发问时 jobs 从它取待确认的截图
+  const capture = createCapture(deps, store, hub, host, route);
+  const jobs = createJobs(deps, store, hub, pages, capture);
+  const intents = createIntents(deps, store, hub, host, pages, route, jobs, capture);
+  const commands = createCommands(deps, store, hub, host, jobs, route, capture);
   const options = createOptions(deps);
   const history = createHistory(deps, jobs);
   // 每次启动都收紧一次（5.11）：顶层同步路径里发起，不 await，不阻塞监听器注册；
@@ -40,7 +43,7 @@ export function createBackground(deps: BackgroundDeps) {
     onMessage(raw: unknown, sender: SenderLike) {
       return senderRole(sender, deps.self) === 'options' ? options(raw, sender) : intents(raw, sender);
     },
-    onConnect: createConv(deps, store, hub, host, jobs, history),
+    onConnect: createConv(deps, store, hub, host, jobs, history, capture),
     /** 快捷键（commands.onCommand）：在监听器的同步段里调用，要开侧边栏的当场 open（规则 10） */
     onCommand: (command: string, tab: CommandTab | undefined) => commands.onCommand(command, tab),
     /** 右键菜单（contextMenus.onClicked）：同上 */
@@ -74,6 +77,7 @@ export function createBackground(deps: BackgroundDeps) {
       hub.forgetTab(tabId);
       jobs.forgetTab(tabId);
       await store.forgetTab(tabId);
+      await capture.forgetTab(tabId);
     },
   };
 }

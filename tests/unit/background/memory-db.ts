@@ -87,6 +87,10 @@ export function memoryConvDb(): MemoryConvDb {
       read();
       return clone(tables.snapshots.get(id));
     },
+    async getBlob(id) {
+      read();
+      return clone(tables.blobs.get(id));
+    },
     async write(w) {
       if (self.failWrites) throw new Error('写入失败（测试）');
       self.writes.push(clone(w));
@@ -109,9 +113,20 @@ export function memoryConvDb(): MemoryConvDb {
     async deleteConversation(id) {
       if (self.failWrites) throw new Error('写入失败（测试）');
       tables.conversations.delete(id);
-      for (const [k, m] of tables.messages) if (m.conversationId === id) tables.messages.delete(k);
+      const blobRefs: string[] = [];
+      for (const [k, m] of tables.messages)
+        if (m.conversationId === id) {
+          for (const img of m.images ?? []) blobRefs.push(img.blobId);
+          tables.messages.delete(k);
+        }
       for (const [k, s] of tables.snapshots)
         if (s.conversationId === id && s.refCount === 0) tables.snapshots.delete(k);
+      for (const blobId of blobRefs) {
+        const b = tables.blobs.get(blobId);
+        if (!b) continue;
+        if (b.refCount <= 1) tables.blobs.delete(blobId);
+        else tables.blobs.set(blobId, { ...b, refCount: b.refCount - 1 });
+      }
     },
     async purgeExpiredSnapshots(now) {
       if (self.failWrites) throw new Error('写入失败（测试）');

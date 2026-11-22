@@ -154,6 +154,34 @@ const zh = {
     complete: '全文完整发送',
     lastSummary: (time: string) => `上次总结 ${time}`,
   },
+
+  /** 框选截图（E1–E4、5.13，capture 块新增） */
+  capture: {
+    button: '截图',
+    buttonTitle: '框选网页上的一块区域截图，随下一次发问一起发给模型（Alt+Shift+X）',
+    previewLabel: '本次附图',
+    size: (w: number, h: number) => `截图 ${w}×${h}`,
+    dismiss: '去掉截图',
+    dismissTitle: '去掉这张截图：之后的发问不带它',
+    /** 5.13：不读输入值不等于图里没有敏感内容，预览时提示用户自己确认 */
+    sensitive: '发问时会把这张图发给模型，请先确认图里没有密码、证件号等敏感内容',
+    noVision: '当前模型不支持看图，这张图发不出去；请在设置里换一个能看图的模型',
+    noVisionReject: '当前模型不支持看图，请换一个能看图的模型',
+    /** E3：能力表里是「未知」的模型照发，失败时提示可能的原因 */
+    maybeNoVision: '这一问附了截图；如果一直失败，可能是当前模型不支持看图，可以换一个能看图的模型再试',
+    /** E4 */
+    accuracy: '图表解析可能不完全准确，建议核对原图',
+    failed: {
+      changed: '截图前页面发生了变化（滚动、缩放或切换了页面），这张没有保留，请重新框选',
+      unsupported: '这个页面截不了图（浏览器内部页面等），请在普通网页上框选',
+      failed: '这次没能截图，请再试一次',
+    },
+    noticeUnsupported: '这个页面截不了图（浏览器内部页面等），请在普通网页上按 Alt+Shift+X 框选',
+    userNoText: '（没有输入问题，只发送了截图）',
+    imageLabel: '附带的截图',
+    imageUnavailable: '截图',
+    sent: (n: number) => `附图 ${fmt(n)} 张`,
+  },
 };
 
 export type Strings = typeof zh;
