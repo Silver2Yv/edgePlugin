@@ -20,17 +20,19 @@ interface Size {
   height: number;
 }
 
-/** 纯计算：放在选区最后一行矩形下方，放不下翻到上方；选区本身（上下都）不在视口内时夹回视口底部（A5）；
- * 水平方向夹在视口内 */
+/** 纯计算：放在选区最后一行矩形下方，放不下翻到上方——翻上去时贴着整个选区的上沿（`selectionTop`，
+ * 默认取 `rect.top`），不按最后一行算，免得盖住多行选区前面几行（A5）；选区本身（上下都）不在视口内时
+ * 夹回视口底部；水平方向夹在视口内 */
 export function computeToolbarPosition(
   rect: Rect,
   size: Size,
   viewport: Size,
+  selectionTop: number = rect.top,
 ): { left: number; top: number } {
   const maxTop = Math.max(MARGIN, viewport.height - size.height - MARGIN);
   let top = rect.bottom + MARGIN;
   if (top + size.height > viewport.height) {
-    const above = rect.top - size.height - MARGIN;
+    const above = selectionTop - size.height - MARGIN;
     // 上方也放不下（选区本身在视口外，如超长选区的最后一行远在屏幕下方）：夹到视口内，不跟着超出
     top = above >= 0 && above <= maxTop ? above : maxTop;
   }
@@ -70,8 +72,9 @@ export function needsLongConfirm(action: ActionSummary, originalLength: number):
 
 export interface ToolbarHost {
   readonly el: HTMLElement;
-  /** 显示按钮（或代码/更多的变体），`actions` 是后台下发、按用户设置排好序的完整列表 */
-  show(rect: Rect, actions: readonly ActionSummary[], inCode: boolean): void;
+  /** 显示按钮（或代码/更多的变体），`actions` 是后台下发、按用户设置排好序的完整列表；
+   * `selectionTop` 是整个选区上沿（翻到上方时用，A5），不传就退回 `rect.top` */
+  show(rect: Rect, actions: readonly ActionSummary[], inCode: boolean, selectionTop?: number): void;
   hide(): void;
   /** 一行小字提示，几秒后自动恢复成按钮（如「存」的占位提示） */
   tip(message: string): void;
@@ -194,15 +197,18 @@ export function createToolbar(onAction: (action: ActionSummary) => void): Toolba
 
   let shown = false;
   let lastRect: Rect | undefined;
+  let lastSelectionTop: number | undefined;
   let tipTimer: ReturnType<typeof setTimeout> | undefined;
 
-  function reposition(rect: Rect): void {
+  function reposition(rect: Rect, selectionTop?: number): void {
     const target = bar.hidden ? msg : bar;
     const size = { width: target.offsetWidth, height: target.offsetHeight };
-    const pos = computeToolbarPosition(rect, size, {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
+    const pos = computeToolbarPosition(
+      rect,
+      size,
+      { width: window.innerWidth, height: window.innerHeight },
+      selectionTop,
+    );
     host.style.left = `${pos.left}px`;
     host.style.top = `${pos.top}px`;
   }
@@ -215,12 +221,13 @@ export function createToolbar(onAction: (action: ActionSummary) => void): Toolba
 
   return {
     el: host,
-    show(rect, actions, inCode) {
+    show(rect, actions, inCode, selectionTop) {
       if (tipTimer !== undefined) {
         clearTimeout(tipTimer);
         tipTimer = undefined;
       }
       lastRect = rect;
+      lastSelectionTop = selectionTop;
       // 选区没变时后台会重复收到 selection/ready（比如点工具栏自己的按钮也会触发一次 mouseup），
       // 这时按钮列表和上次一样：跳过重建 DOM，只重新定位。按钮点到一半被替换成新节点，
       // 原生的 click 合成（要求 mousedown 与 mouseup 落在同一个节点上）就会丢（这里曾经复现过）
@@ -232,7 +239,7 @@ export function createToolbar(onAction: (action: ActionSummary) => void): Toolba
         shown = true;
       }
       if (needsRebuild) renderButtons();
-      reposition(rect);
+      reposition(rect, selectionTop);
     },
     hide() {
       if (tipTimer !== undefined) {
@@ -248,19 +255,19 @@ export function createToolbar(onAction: (action: ActionSummary) => void): Toolba
     tip(message) {
       if (!shown || !lastRect) return;
       showMessage(message);
-      reposition(lastRect);
+      reposition(lastRect, lastSelectionTop);
       if (tipTimer !== undefined) clearTimeout(tipTimer);
       tipTimer = setTimeout(() => {
         tipTimer = undefined;
         if (!shown || !lastRect) return;
         renderButtons();
-        reposition(lastRect);
+        reposition(lastRect, lastSelectionTop);
       }, TIP_MS);
     },
     confirm(message, onConfirm) {
       if (!shown || !lastRect) return;
       showMessage(message, '确认', onConfirm);
-      reposition(lastRect);
+      reposition(lastRect, lastSelectionTop);
     },
   };
 }

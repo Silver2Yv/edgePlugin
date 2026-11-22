@@ -16,6 +16,7 @@ vi.mock('@/page/selection-policy', () => ({
   evaluateSelection: () => decision,
   lastLineRect: () => new DOMRect(0, 0, 10, 10),
   readonlyInputRect: () => new DOMRect(0, 0, 10, 10),
+  selectionTop: () => 0,
 }));
 
 vi.mock('@/page/toolbar', () => ({

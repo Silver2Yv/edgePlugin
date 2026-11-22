@@ -33,4 +33,19 @@ describe('computeToolbarPosition', () => {
       top: VIEWPORT.height - SIZE.height - 8,
     });
   });
+
+  it('多行选区最后一行贴近视口底部翻到上方时：贴着整个选区的上沿，不盖住选区前面几行（A5）', () => {
+    // 选区从 y=200 一路往下选到最后一行 top=770/bottom=790：按最后一行翻上去会落在 730，
+    // 正好盖住选区本身（从 200 开始）；传入选区上沿 200 后应该贴在选区上方 152
+    const rect = { left: 100, right: 200, top: 770, bottom: 790 };
+    const selectionTop = 200;
+    expect(computeToolbarPosition(rect, SIZE, VIEWPORT, selectionTop)).toEqual({ left: 100, top: 152 });
+  });
+
+  it('不传选区上沿时退回按最后一行矩形（向后兼容）', () => {
+    const rect = { left: 100, right: 200, top: 760, bottom: 780 };
+    expect(computeToolbarPosition(rect, SIZE, VIEWPORT)).toEqual(
+      computeToolbarPosition(rect, SIZE, VIEWPORT, rect.top),
+    );
+  });
 });
