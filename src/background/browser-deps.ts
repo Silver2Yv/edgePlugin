@@ -3,6 +3,7 @@ import { browser } from 'wxt/browser';
 import { chatCompletionsAdapter } from '@/core/llm/chat-completions';
 import { loadSettings } from '@/platform/settings-store';
 import type { BackgroundDeps } from './deps';
+import { createNetDiagnostics } from './net-diagnostics';
 
 const READER_FILE = '/content-scripts/reader.js';
 
@@ -40,6 +41,9 @@ const hex = (bytes: Uint8Array) => Array.from(bytes, (b) => b.toString(16).padSt
 
 export function browserDeps(): BackgroundDeps {
   const session = browser.storage.session;
+  // webRequest 监听必须在这里同步注册（browserDeps() 由 main.ts 在顶层同步调用一次）才能观察到
+  // Service Worker 自己发出的请求（prototypes/net-probe 实测，V-01/T6c）
+  const netDiagnostics = createNetDiagnostics(browser.webRequest);
   return {
     self: { runtimeId: browser.runtime.id, protocol: new URL(browser.runtime.getURL('/')).protocol },
     session: {
@@ -89,5 +93,6 @@ export function browserDeps(): BackgroundDeps {
     newToken: () => hex(crypto.getRandomValues(new Uint8Array(16))),
     log: (event, detail) => console.info(`[后台] ${event}${detail ? ` ${JSON.stringify(detail)}` : ''}`),
     lockStorage: () => browser.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' }),
+    netDiagnostics,
   };
 }

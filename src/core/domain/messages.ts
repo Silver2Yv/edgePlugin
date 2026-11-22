@@ -16,7 +16,7 @@
 // 每条消息的字段上限之和都小于 64 KB，所以「字段合法」就一定「不超限」（单测逐条核对）。
 import { BLOCK_KINDS, PAGE_NOTE_KINDS } from '../context/page-doc';
 import type { RequestContextPlan } from '../context/plan';
-import type { ModelError, ModelErrorKind } from '../llm/adapter';
+import type { ModelError, ModelErrorKind, Usage } from '../llm/adapter';
 import { BUILTIN_ACTION_IDS } from './actions';
 import type { AskRoute } from './float';
 import { FLOAT_LIMITS, TOKEN_PATTERN } from './float';
@@ -359,6 +359,10 @@ export type BackgroundToClient =
       attemptId: string;
       /** message 已脱敏、限长 */
       error?: { kind: ModelErrorKind; message: string };
+      /** contract-v1.4 增量：终态时带上用量（J9）；中转站没给就没有，不编造 */
+      usage?: Usage;
+      /** contract-v1.4 增量：参数自动重试去掉的参数（H7）；semantic 为真时是语义敏感参数，界面必须提示 */
+      droppedParam?: { param: string; semantic: boolean };
     }
   | { type: 'handoff/created'; handoffId: string }
   | { type: 'handoff/done'; handoffId: string }

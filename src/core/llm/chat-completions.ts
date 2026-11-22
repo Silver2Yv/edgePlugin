@@ -18,6 +18,7 @@ import {
   type Usage,
 } from './adapter';
 import { createSseLineParser } from './sse';
+import { buildThinkingBody, thinkingLevelOf } from './thinking';
 
 // ───────────── 地址与请求头 ─────────────
 
@@ -59,16 +60,14 @@ function toOpenAiMessage(m: ChatMessage): {
   return { role: m.role, content };
 }
 
-/** 思考字段的初版映射：undefined 不发；off/on 走 thinking.type；{effort} 先映射到 reasoning_effort。
- * 这是第一版粗映射，不同家族字段名不同，能学到具体连接的怪癖后再按 AR-09 细分 */
-function thinkingFields(thinking: ChatRequest['thinking']): Record<string, unknown> {
-  if (thinking === undefined) return {};
-  if (thinking === 'off') return { thinking: { type: 'disabled' } };
-  if (thinking === 'on') return { thinking: { type: 'enabled' } };
-  return { reasoning_effort: thinking.effort };
-}
+/** 思考字段的厂商映射见 thinking.ts（H6）：DeepSeek/Qwen/OpenAI/Claude/Gemini 各自的参数名与取值，
+ * 认不出的连接预设默认按「关」处理（不发任何思考相关字段） */
 
-function buildChatBody(conn: Connection, req: ChatRequest): Record<string, unknown> {
+function buildChatBody(
+  conn: Connection,
+  req: ChatRequest,
+  excludeParams: readonly string[] = [],
+): Record<string, unknown> {
   const body: Record<string, unknown> = {};
   const protectedFields = new Set<string>(PROTECTED_PARAMS.chatCompletions);
   // 先放额外参数里未受保护的字段，后面的赋值可以覆盖同名的语义字段（如 thinking）
@@ -81,7 +80,8 @@ function buildChatBody(conn: Connection, req: ChatRequest): Record<string, unkno
   if (req.stream) body.stream_options = { include_usage: true };
   // max_tokens 属可覆盖的采样参数（5.8）：额外参数里填了就以用户的为准
   if (req.maxTokens !== undefined && !('max_tokens' in body)) body.max_tokens = req.maxTokens;
-  Object.assign(body, thinkingFields(req.thinking));
+  Object.assign(body, buildThinkingBody(conn.preset, thinkingLevelOf(req.thinking)));
+  for (const p of excludeParams) delete body[p];
   return body;
 }
 
@@ -274,12 +274,12 @@ function parseModelList(body: string): string[] {
 export const chatCompletionsAdapter: ModelAdapter = {
   interfaceType: 'chatCompletions',
 
-  buildChat(conn, req): HttpRequest {
+  buildChat(conn, req, opts): HttpRequest {
     return {
       url: chatUrl(conn.baseUrl),
       method: 'POST',
       headers: buildHeaders(conn),
-      body: JSON.stringify(buildChatBody(conn, req)),
+      body: JSON.stringify(buildChatBody(conn, req, opts?.excludeParams)),
       redirect: MODEL_FETCH_REDIRECT,
     };
   },

@@ -438,21 +438,46 @@ describe('buildChat：正文', () => {
     expect(JSON.parse(user.body ?? '{}').max_tokens).toBe(100);
   });
 
-  it('思考映射：undefined 不发；off/on 走 thinking.type；{effort} 走 reasoning_effort', () => {
-    const none = JSON.parse(chatCompletionsAdapter.buildChat(conn(), req()).body ?? '{}');
-    expect(none.thinking).toBeUndefined();
-    expect(none.reasoning_effort).toBeUndefined();
+  it('思考映射按连接预设走厂商参数（分厂商细节见 thinking.test.ts）；custom 预设默认按关处理', () => {
+    const custom = JSON.parse(
+      chatCompletionsAdapter.buildChat(conn(), req({ thinking: 'off' })).body ?? '{}',
+    );
+    expect(custom.thinking).toBeUndefined();
+    expect(custom.reasoning_effort).toBeUndefined();
 
-    const off = JSON.parse(chatCompletionsAdapter.buildChat(conn(), req({ thinking: 'off' })).body ?? '{}');
+    const deepseekConn = conn({ preset: 'deepseek' });
+    const off = JSON.parse(
+      chatCompletionsAdapter.buildChat(deepseekConn, req({ thinking: 'off' })).body ?? '{}',
+    );
     expect(off.thinking).toEqual({ type: 'disabled' });
 
-    const on = JSON.parse(chatCompletionsAdapter.buildChat(conn(), req({ thinking: 'on' })).body ?? '{}');
+    const on = JSON.parse(
+      chatCompletionsAdapter.buildChat(deepseekConn, req({ thinking: 'on' })).body ?? '{}',
+    );
     expect(on.thinking).toEqual({ type: 'enabled' });
+    expect(on.reasoning_effort).toBe('high'); // 'on' 按中档，DeepSeek medium 映射到 high
 
     const effort = JSON.parse(
-      chatCompletionsAdapter.buildChat(conn(), req({ thinking: { effort: 'high' } })).body ?? '{}',
+      chatCompletionsAdapter.buildChat(deepseekConn, req({ thinking: { effort: 'high' } })).body ?? '{}',
     );
     expect(effort.reasoning_effort).toBe('high');
-    expect(effort.thinking).toBeUndefined();
+    expect(effort.thinking).toEqual({ type: 'enabled' });
+
+    const none = JSON.parse(chatCompletionsAdapter.buildChat(deepseekConn, req()).body ?? '{}');
+    expect(none.thinking).toBeUndefined();
+    expect(none.reasoning_effort).toBeUndefined();
+  });
+
+  it('excludeParams：去掉指定的顶层字段（H7 参数自动重试、AR-09 怪癖学习用）', () => {
+    const body = JSON.parse(
+      chatCompletionsAdapter.buildChat(
+        conn({ preset: 'deepseek', extraParams: { temperature: 0.5 } }),
+        req({ thinking: 'off' }),
+        { excludeParams: ['thinking', 'temperature'] },
+      ).body ?? '{}',
+    );
+    expect(body.thinking).toBeUndefined();
+    expect(body.temperature).toBeUndefined();
+    expect(body.model).toBe('real-model'); // 其他字段不受影响
   });
 });

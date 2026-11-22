@@ -88,6 +88,17 @@ const connectionSchema = obj({
   stream: bool,
   extraParams: rec(jsonValue),
   configVersion: int({ min: 0 }),
+  // contract-v1.4 增量：按模型手动覆盖能力表（H11）；用户勾选的常用模型（H5 下拉框下一轮接）
+  capabilityOverrides: opt(
+    rec(
+      obj({
+        thinking: opt(oneOf(['none', 'toggle', 'effort', 'unknown'])),
+        vision: opt(oneOf(['yes', 'no', 'unknown'])),
+        contextWindow: opt(int({ min: 1 })),
+      }),
+    ),
+  ),
+  models: opt(arr(str({ min: 1, max: 200 }), { max: 50 })),
 });
 
 const settingsSchema = obj({
