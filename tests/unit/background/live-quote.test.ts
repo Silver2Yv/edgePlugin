@@ -74,6 +74,8 @@ describe('live：后台发起的任务补上提问', () => {
     const c = await readyFloat(h);
     await h.message(click(1, 'explain'));
     await until(() => c.ofType('conv/current').length > 0, 'conv/current');
-    expect(c.ofType('conv/current')[0]).toMatchObject({ userMessage: { text: '解释' } });
+    expect(c.ofType('conv/current')[0]).toMatchObject({
+      userMessage: { text: '解释', request: { actionId: 'explain' } },
+    });
   });
 });

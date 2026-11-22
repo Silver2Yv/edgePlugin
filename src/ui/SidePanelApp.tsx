@@ -17,6 +17,7 @@ import {
   CONV_PORT,
 } from '@/core/domain/messages';
 import { SESSION_KEYS } from '@/core/domain/session-keys';
+import type { ModelRef } from '@/core/llm/adapter';
 import { isReadCoverageNote } from '@/core/prompt/ask';
 import { EXPAND_QUESTION, NO_CONNECTION } from './ask-defaults';
 import { type AskDeps, flushQueuedAsk, submitAsk, useComposerDefaults } from './chat/ask';
@@ -31,7 +32,7 @@ import {
   useLastSummary,
 } from './cite/SummaryCard';
 import { CiteNote, useCite } from './cite/useCite';
-import { displayItems, latestPlan } from './float/messages';
+import { displayItems, latestPlan, questionForJob } from './float/messages';
 import { pageInfo } from './float/send-summary';
 import {
   type FloatState,
@@ -42,6 +43,7 @@ import {
   panelSubscribeMessage,
   shouldCloseOnToggle,
 } from './float/state';
+import { capabilitiesFor, clampThinking, thinkingControlMode } from './model/options';
 import { T } from './strings';
 import './theme.css';
 
@@ -208,6 +210,8 @@ export function SidePanelApp() {
     if (pageSummaryDone) lastSummary.request();
   }, [pageSummaryDone, state.job?.jobId]);
   const summaryVisible = summaryCardVisible(lastSummary.shown, lastSummary.forced, state);
+  const effectiveModel = state.modelOverride ?? defaults.model;
+  const thinkingMode = thinkingControlMode(capabilitiesFor(defaults.connections, effectiveModel));
 
   const handleSend = async () => {
     if (await submitAsk(askDeps, question)) setQuestion('');
@@ -215,6 +219,14 @@ export function SidePanelApp() {
 
   /** 「展开讲讲」（I3）：在同一个对话里追问一句，长度档用详细 */
   const handleExpand = () => void submitAsk(askDeps, EXPAND_QUESTION, { lengthTier: 'detailed' });
+
+  /** 换个模型再问一遍这次的问题（H12）：取这一轮的问题文字，带当前引用新发一问；不是 conv/retry */
+  const handleSwitchModel = (model: ModelRef) => {
+    const q = state.job && questionForJob(state.messages, state.job.messageId);
+    if (!q) return;
+    dispatch({ kind: 'setModel', model });
+    void submitAsk(askDeps, q.text, { model, ...(q.request ? { request: q.request } : {}) });
+  };
 
   const handleStop = () => {
     if (!state.job) return;
@@ -314,6 +326,8 @@ export function SidePanelApp() {
             />
           ) : null
         }
+        connections={defaults.connections}
+        onSwitchModel={handleSwitchModel}
       />
       {state.actionError && (
         <p data-testid="action-error" className="ra-note ra-note--error">
@@ -340,12 +354,16 @@ export function SidePanelApp() {
           quote={state.quote}
           onDismissQuote={() => dispatch({ kind: 'dismissQuote' })}
           tier={state.tierOverride ?? defaults.contextTier}
-          thinking={state.thinkingOverride ?? defaults.thinking}
+          thinking={clampThinking(thinkingMode, state.thinkingOverride ?? defaults.thinking)}
           tierChanged={state.tierOverride !== null && state.tierOverride !== defaults.contextTier}
           thinkingChanged={state.thinkingOverride !== null && state.thinkingOverride !== defaults.thinking}
           onTier={(contextTier) => dispatch({ kind: 'setTier', contextTier })}
           onThinking={(thinking) => dispatch({ kind: 'setThinking', thinking })}
-          model={defaults.model}
+          thinkingMode={thinkingMode}
+          model={effectiveModel}
+          defaultModel={defaults.model}
+          connections={defaults.connections}
+          onModel={(model) => dispatch({ kind: 'setModel', model })}
         />
       )}
     </main>

@@ -527,6 +527,20 @@ describe('buildAskMessage', () => {
     });
     expect(m).toMatchObject({ selectionRevision: 3, actionId: 'ask', contextTier: 'selection' });
   });
+
+  it('换个模型重问一个直接发送的动作：带上动作，问题文字留空（默认问法由装配补，H12）', () => {
+    const m = buildAskMessage({
+      clientRequestId: 'req-1',
+      text: '总结本页',
+      quote: null,
+      lengthTier: 'brief',
+      thinking: 'off',
+      model: { connectionId: 'conn-1', model: 'deepseek-flash' },
+      contextTier: 'fullPage',
+      actionId: 'summarizePage',
+    });
+    expect(m).toMatchObject({ actionId: 'summarizePage', text: '', contextTier: 'fullPage' });
+  });
 });
 
 describe('shouldSendOnEnter', () => {

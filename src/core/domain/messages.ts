@@ -15,7 +15,7 @@
 // 大小（5.12）：整条消息 JSON 序列化后不超过 64 KB。大字段按 JSON 字节设上限（maxBytes，见 bytes.ts），
 // 每条消息的字段上限之和都小于 64 KB，所以「字段合法」就一定「不超限」（单测逐条核对）。
 import { BLOCK_KINDS, PAGE_NOTE_KINDS } from '../context/page-doc';
-import type { RequestContextPlan } from '../context/plan';
+import type { ContextTier, RequestContextPlan } from '../context/plan';
 import type { ModelError, ModelErrorKind, Usage } from '../llm/adapter';
 import { type ActionSummary, BUILTIN_ACTION_IDS } from './actions';
 import type { AskRoute } from './float';
@@ -395,6 +395,11 @@ export type BackgroundToClient =
         /** 直接发送的动作可能是空串；界面按动作名兜底显示 */
         text: string;
         quote?: { text: string; truncated: boolean; originalLength: number };
+        /**
+         * contract-v1.5 增量（model）：这一轮的动作与页面档位。「换个模型再试」（H12）按它原样重问，
+         * 直接发送的动作（解释、总结本页……）不会变成一句普通提问
+         */
+        request?: { actionId: string; contextTier: ContextTier };
       };
     }
   | {
@@ -707,6 +712,8 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
  * gone（contract-v1.3 增量）：要转到侧边栏的对话后台已经没有了。contract-v1.4 起对话在数据库里，
  *   后台重启不再丢对话；只有对话已被删除（库里没有）时才回它。
  * storageFailed（contract-v1.4 增量）：数据库写入或读取失败（接单要先落库，落不了就不发请求）
+ * modelGone（contract-v1.5 增量）：conv/ask 里 model 指向的连接已不存在（被删了）。后台不再静默
+ *   退回默认模型（V-07）；界面据此提示并自己切回设置里的默认模型
  */
 export type RejectReason =
   | 'tooLarge'
@@ -717,7 +724,8 @@ export type RejectReason =
   | 'notOwner'
   | 'busy'
   | 'gone'
-  | 'storageFailed';
+  | 'storageFailed'
+  | 'modelGone';
 
 /** JSON 序列化后的 UTF-8 字节数；序列化失败（循环引用、BigInt）返回 Infinity */
 export function messageBytes(msg: unknown): number {

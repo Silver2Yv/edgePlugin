@@ -58,6 +58,7 @@ const zh = {
     busy: '回答进行中，请等这一轮答完或先停止',
     gone: '后台重启过，这段对话没法转过去，回答仍留在这里',
     storageFailed: '没能保存到本机，这次没有发出，请再试一次',
+    modelGone: '这个模型所在的连接已不存在，已改回默认模型',
     saveFailed: '这一轮没能保存到历史；回答仍在这里，但之后接着问可能不会带上它',
     unknown: '未知原因',
     retryNotOwner: '后台已重启，这次没法重试，请重新提问',
@@ -101,9 +102,18 @@ const zh = {
     },
     thinkingLabel: '思考强度',
     thinking: { off: '思考 关', low: '思考 低', medium: '思考 中', high: '思考 高' },
+    /** H6：所选模型只支持思考开关时，思考控件只显示这两档 */
+    thinkingToggle: { off: '思考 关', on: '思考 开' },
     thinkingHelp: '思考：开启后更适合复杂问题，但等待更久、费用更高；只是解释一句话时建议关闭。',
+    /** H6：所选模型不支持思考时，控件禁用并说明 */
+    thinkingDisabled: '当前模型不支持思考',
     scopeHelp: '临时切换，只影响这个对话之后的发问；默认值在设置里改。',
-    modelTitle: (model: string) => `当前模型：${model}（在设置里改）`,
+    modelTitle: (model: string) => `当前模型：${model}（点击切换；默认值在设置里改）`,
+    modelLabel: '切换模型',
+    modelSearchLabel: '搜索模型',
+    modelSearchPlaceholder: '搜索模型或连接名',
+    /** 没有任何连接勾选过常用模型时，下拉里只有这一句提示（H5） */
+    modelNoCommon: '还没有勾选常用模型，请先在设置里勾选',
   },
 
   list: {
@@ -125,6 +135,8 @@ const zh = {
     usageInput: (n: number) => `输入 ${fmt(n)} token`,
     usageOutput: (n: number) => `输出 ${fmt(n)} token`,
     usageReasoning: (n: number) => `其中思考 ${fmt(n)} token`,
+    /** H12：默认模型连不上（或鉴权失败等）时，错误下方提示换个模型再试一遍这次的问题 */
+    switchModel: '换个模型再试：',
   },
 
   /** 「实际发送说明」（B8），从发送计划派生 */

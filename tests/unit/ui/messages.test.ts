@@ -14,6 +14,7 @@ import {
   localUserMessage,
   type MessageView,
   mergeSnapshot,
+  questionForJob,
   recordToView,
   segmentsToText,
 } from '@/ui/float/messages';
@@ -358,5 +359,33 @@ describe('侧边栏当前页信息（C3）', () => {
     const p = plan({ pageRead: false, notes: ['未读取页面正文，只发送了选中文字'] });
     expect(pageInfo(p)).toEqual({ readableChars: null, truncated: null, notRead: true });
     expect(pageInfo(plan({ pageRead: false }))).toMatchObject({ notRead: false });
+  });
+});
+
+describe('换个模型再试要重问的内容（H12）', () => {
+  it('直接发送的动作：带上原来的动作与档位，不会变成一句普通提问', () => {
+    const user = recordToView(
+      record({
+        id: 'm0',
+        ordinal: 0,
+        role: 'user',
+        segments: [{ kind: 'text', text: '总结本页' }],
+        request: { actionId: 'summarizePage', contextTier: 'fullPage', lengthTier: 'brief', thinking: 'off' },
+      }),
+    );
+    const failed = recordToView(record({ id: 'm1', ordinal: 1, role: 'assistant', status: 'failed' }));
+    expect(questionForJob([user, failed], 'm1')).toEqual({
+      text: '总结本页',
+      quote: null,
+      request: { actionId: 'summarizePage', contextTier: 'fullPage' },
+    });
+  });
+
+  it('界面自己发的普通提问：本地暂存的消息没有动作，按「问」处理', () => {
+    const local = localUserMessage(
+      { text: '这是什么', quote: null },
+      { messageId: 'm1', conversationId: 'conv-0001' },
+    );
+    expect(questionForJob([local], 'm1')).toEqual({ text: '这是什么', quote: null });
   });
 });

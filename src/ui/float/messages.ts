@@ -4,7 +4,7 @@
 // 来源有两个，按消息编号合并：
 // - 快照：后台从数据库读出的整段对话（持久化接入后才有内容，之前一直是空数组）。
 // - 本地：这个界面亲手发的问（知道问题与引用）和它看着答完的任务。快照里出现同一条消息后，以快照的顺序为准。
-import type { RequestContextPlan } from '@/core/context/plan';
+import type { ContextTier, RequestContextPlan } from '@/core/context/plan';
 import type { JobState } from '@/core/domain/job';
 import type { ContentSegment, MessageRecord } from '@/core/domain/records';
 import type { ModelErrorKind, Usage } from '@/core/llm/adapter';
@@ -29,6 +29,14 @@ export interface UserMessageView extends MessageBase {
   quote?: QuoteSummary;
   /** 本地暂存的发问对应哪条助手消息；快照里出现那条助手消息后，暂存的让位给快照里的用户消息 */
   pairedMessageId?: string;
+  /** 这一轮的动作与页面档位（「换个模型再试」按原样重问）；界面自己发的普通提问没有，按「问」处理 */
+  request?: AskRequest;
+}
+
+/** 一轮发问的动作与页面档位 */
+export interface AskRequest {
+  actionId: string;
+  contextTier: ContextTier;
 }
 
 /** 助手消息；正在生成的任务（JobView）字段是它的超集，回答区组件两种都收 */
@@ -107,6 +115,7 @@ export function recordToView(r: MessageRecord): MessageView {
       ...(sel
         ? { quote: { text: sel.text, truncated: sel.truncated, originalLength: sel.originalLength } }
         : {}),
+      ...(r.request ? { request: { actionId: r.request.actionId, contextTier: r.request.contextTier } } : {}),
     };
   }
   return {
@@ -197,7 +206,7 @@ export function archiveJob(
 
 /** 界面自己发的问：接单后先在本地暂存一条用户消息（问题与引用界面都知道），不等快照 */
 export function localUserMessage(
-  ask: { text: string; quote: QuoteSummary | null },
+  ask: { text: string; quote: QuoteSummary | null; request?: AskRequest },
   accepted: { messageId: string; conversationId: string },
 ): UserMessageView {
   return {
@@ -208,6 +217,7 @@ export function localUserMessage(
     text: ask.text,
     pairedMessageId: accepted.messageId,
     ...(ask.quote ? { quote: ask.quote } : {}),
+    ...(ask.request ? { request: ask.request } : {}),
   };
 }
 
@@ -216,7 +226,7 @@ export function localUserMessage(
  * 用真实的消息编号与序号（不加 local: 前缀）——之后真正的快照带着同一个 id 到达会直接替换掉它（mergeSnapshot）
  */
 export function remoteUserMessage(
-  um: { id: string; ordinal: number; text: string; quote?: QuoteSummary },
+  um: { id: string; ordinal: number; text: string; quote?: QuoteSummary; request?: AskRequest },
   conversationId: string,
 ): UserMessageView {
   return {
@@ -226,6 +236,7 @@ export function remoteUserMessage(
     role: 'user',
     text: um.text,
     ...(um.quote ? { quote: um.quote } : {}),
+    ...(um.request ? { request: um.request } : {}),
   };
 }
 
@@ -296,4 +307,26 @@ export function latestPlan(
     if (m?.role === 'assistant' && m.plan) return m.plan;
   }
   return undefined;
+}
+
+/**
+ * 「换个模型再试」（H12）：找出某条助手消息对应的发问（问题文字与引用），换个模型重新问一遍要用同样的内容。
+ * 本地暂存的用户消息靠 pairedMessageId 对上；快照来的消息靠「紧挨在它前面那条用户消息」对上
+ * （一问一答按顺序落库，见 jobs.ts 的落库时机）。两边都对不上（消息还没来得及出现在列表里）时返回 null
+ */
+export function questionForJob(
+  messages: readonly MessageView[],
+  jobMessageId: string,
+): { text: string; quote: QuoteSummary | null; request?: AskRequest } | null {
+  const of = (m: UserMessageView) => ({
+    text: m.text,
+    quote: m.quote ?? null,
+    ...(m.request ? { request: m.request } : {}),
+  });
+  for (const m of messages) {
+    if (m.role === 'user' && m.pairedMessageId === jobMessageId) return of(m);
+  }
+  const idx = messages.findIndex((m) => m.id === jobMessageId);
+  const prev = idx > 0 ? messages[idx - 1] : undefined;
+  return prev && prev.role === 'user' ? of(prev) : null;
 }
