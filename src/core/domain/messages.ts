@@ -571,6 +571,8 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
  * gone（contract-v1.3 增量）：要转到侧边栏的对话后台已经没有了。contract-v1.4 起对话在数据库里，
  *   后台重启不再丢对话；只有对话已被删除（库里没有）时才回它。
  * storageFailed（contract-v1.4 增量）：数据库写入或读取失败（接单要先落库，落不了就不发请求）
+ * modelGone（contract-v1.5 增量）：conv/ask 里 model 指向的连接已不存在（被删了）。后台不再静默
+ *   退回默认模型（V-07）；界面据此提示并自己切回设置里的默认模型
  */
 export type RejectReason =
   | 'tooLarge'
@@ -581,7 +583,8 @@ export type RejectReason =
   | 'notOwner'
   | 'busy'
   | 'gone'
-  | 'storageFailed';
+  | 'storageFailed'
+  | 'modelGone';
 
 /** JSON 序列化后的 UTF-8 字节数；序列化失败（循环引用、BigInt）返回 Infinity */
 export function messageBytes(msg: unknown): number {

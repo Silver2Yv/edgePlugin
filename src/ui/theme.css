@@ -411,6 +411,13 @@ body {
 .ra-status--error {
   color: var(--ra-danger);
 }
+/* 换个模型再试（H12）：错误下面一行，按钮跟着文字走 */
+.ra-switch-model {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
 
 .ra-actions {
   display: flex;
@@ -459,6 +466,7 @@ body {
   padding: 10px 12px 12px;
 }
 .ra-composer__box {
+  position: relative;
   background: var(--ra-surface);
   border: 1px solid var(--ra-border-strong);
   border-radius: var(--ra-radius);
@@ -587,12 +595,75 @@ body {
   background: var(--ra-accent-soft);
 }
 
-.ra-model {
-  flex: 0 1 auto;
+/* 模型下拉（H4、H5）：窗内面板，不用原生下拉——面板自己定宽定位，不会超出小窗所在的 iframe（5.3） */
+.ra-model-picker {
+  display: inline-flex;
   min-width: 0;
+  max-width: 45%;
+}
+.ra-model-btn {
   overflow: hidden;
-  white-space: nowrap;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ra-model-panel {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: calc(100% + 6px);
+  z-index: 30;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--ra-surface);
+  border: 1px solid var(--ra-border-strong);
+  border-radius: var(--ra-radius);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  padding: 6px;
+}
+.ra-model-search {
+  box-sizing: border-box;
+  width: 100%;
+  height: 26px;
+  margin-bottom: 4px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ra-text);
+  background: var(--ra-surface-2);
+  border: 1px solid var(--ra-border);
+  border-radius: var(--ra-radius-sm);
+}
+.ra-model-group__name {
+  margin: 6px 4px 2px;
   font-size: 11px;
+  color: var(--ra-muted);
+}
+.ra-model-group:first-child .ra-model-group__name {
+  margin-top: 2px;
+}
+.ra-model-option {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ra-text-2);
+  background: none;
+  border: none;
+  border-radius: var(--ra-radius-sm);
+  cursor: pointer;
+}
+.ra-model-option:hover {
+  color: var(--ra-text);
+  background: var(--ra-hover);
+}
+.ra-model-option--selected {
+  color: var(--ra-accent);
+  background: var(--ra-accent-soft);
+}
+.ra-model-hint {
+  margin: 4px;
+  font-size: 12px;
   color: var(--ra-muted);
 }

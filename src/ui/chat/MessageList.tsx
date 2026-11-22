@@ -2,6 +2,7 @@
 // 滚动（5.10）：流式增量到达时不跟着滚、不抢焦点；只在出现新一轮问答时把这一轮顶到列表上沿
 // （最后一轮至少占满列表高度，见 theme.css 的 .ra-turn--last），回答从上往下长，读的人自己往下看。
 import { useLayoutEffect, useRef } from 'preact/hooks';
+import type { Connection, ModelRef } from '@/core/llm/adapter';
 import { AnswerView } from '../AnswerView';
 import { type DisplayItem, groupTurns, type UserMessageView } from '../float/messages';
 import { T } from '../strings';
@@ -34,9 +35,20 @@ export interface MessageListProps {
   onRetry: () => void;
   /** 点「展开讲讲」（I3） */
   onExpand: () => void;
+  /** 「换个模型再试」（H12）要列的连接；不传就不显示这个功能 */
+  connections?: readonly Connection[];
+  onSwitchModel?: (model: ModelRef) => void;
 }
 
-export function MessageList({ items, emptyText, generating, onRetry, onExpand }: MessageListProps) {
+export function MessageList({
+  items,
+  emptyText,
+  generating,
+  onRetry,
+  onExpand,
+  connections = [],
+  onSwitchModel,
+}: MessageListProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const lastTurnRef = useRef<HTMLDivElement | null>(null);
   const turns = groupTurns(items);
@@ -81,6 +93,8 @@ export function MessageList({ items, emptyText, generating, onRetry, onExpand }:
                   }
                   onRetry={onRetry}
                   onExpand={onExpand}
+                  connections={connections}
+                  onSwitchModel={onSwitchModel}
                 />
               ),
             )}

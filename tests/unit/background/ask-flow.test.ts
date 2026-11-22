@@ -42,6 +42,21 @@ describe('conv/ask', () => {
     expect([...h.session.data.keys()].some((k) => k.startsWith('job:'))).toBe(false);
   });
 
+  it('model 指向的连接已不存在（被删了）：拒绝 modelGone，不再静默退回默认模型（J10、V-07）', async () => {
+    const h = makeHarness();
+    const c = await readyFloat(h);
+    await h.message(click());
+    c.send(askMsg({ model: { connectionId: 'conn-deleted', model: 'ghost-model' } }));
+    await until(() => c.ofType('conv/rejected').length === 1);
+    expect(c.ofType('conv/rejected')[0]).toEqual({
+      type: 'conv/rejected',
+      reason: 'modelGone',
+      refType: 'conv/ask',
+      refId: 'req-00000001',
+    });
+    expect(h.fetches).toHaveLength(0);
+  });
+
   it('没有选区也没有问题：「问」拒绝；不需要输入的动作（总结本页）照常接单', async () => {
     const h = makeHarness();
     const c = await readyFloat(h);

@@ -4,11 +4,13 @@
 // 引用编号只在这条消息自己的发送计划（plan.sentBlockIds）内有效（规则 9）。
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { canRetry, isTerminal } from '@/core/domain/job';
+import type { Connection, ModelRef } from '@/core/llm/adapter';
 import { ERROR_LABEL } from './error-labels';
 import { type AnswerLike, citationIds } from './float/messages';
 import { sendSummary } from './float/send-summary';
 import { waitHintText } from './float/state';
 import './float/wait-hint.css';
+import { MODEL_SWITCH_ERROR_KINDS, switchCandidates } from './model/options';
 import { type AnswerRenderer, createAnswerRenderer } from './render';
 import { T } from './strings';
 
@@ -40,9 +42,21 @@ export interface AnswerViewProps {
   canExpand: boolean;
   onRetry: () => void;
   onExpand: () => void;
+  /** 「换个模型再试」（H12）要用到的连接（列候选）；不是正在显示的任务不需要传 */
+  connections?: readonly Connection[] | undefined;
+  onSwitchModel?: ((model: ModelRef) => void) | undefined;
 }
 
-export function AnswerView({ view, live, selectedChars, canExpand, onRetry, onExpand }: AnswerViewProps) {
+export function AnswerView({
+  view,
+  live,
+  selectedChars,
+  canExpand,
+  onRetry,
+  onExpand,
+  connections,
+  onSwitchModel,
+}: AnswerViewProps) {
   const answerRef = useRef<HTMLDivElement | null>(null);
   const answerRendererRef = useRef<AnswerRenderer | null>(null);
 
@@ -126,6 +140,18 @@ export function AnswerView({ view, live, selectedChars, canExpand, onRetry, onEx
       ].filter((p): p is string => p !== null)
     : [];
 
+  // 换个模型再试（H12）：默认模型连不上/鉴权失败这类错误才建议；没有发送计划（没知道用的哪个模型）不建议
+  const switchOptions =
+    live &&
+    connections &&
+    onSwitchModel &&
+    view.state === 'failed' &&
+    view.error &&
+    MODEL_SWITCH_ERROR_KINDS.has(view.error.kind) &&
+    view.plan
+      ? switchCandidates(connections, view.plan.model)
+      : [];
+
   return (
     <div className="ra-assistant">
       {/* 给端到端测试与读屏之外的排查用的原始状态；界面上的状态由下面的提示文字表达 */}
@@ -157,6 +183,22 @@ export function AnswerView({ view, live, selectedChars, canExpand, onRetry, onEx
           {view.error.message && `：${view.error.message}`}
         </p>
       )}
+      {switchOptions.length > 0 && (
+        <p className="ra-status ra-switch-model" data-testid="switch-model">
+          {T.answer.switchModel}
+          {switchOptions.map((c) => (
+            <button
+              type="button"
+              key={`${c.ref.connectionId}:${c.ref.model}`}
+              className="ra-btn ra-btn--small"
+              data-testid="switch-model-option"
+              onClick={() => onSwitchModel?.(c.ref)}
+            >
+              {c.label}
+            </button>
+          ))}
+        </p>
+      )}
       {view.state === 'interrupted' && <p className="ra-status">{T.answer.interrupted}</p>}
       {view.state === 'stopped' && <p className="ra-status">{T.answer.stopped}</p>}
       <div className="ra-actions">
@@ -176,6 +218,13 @@ export function AnswerView({ view, live, selectedChars, canExpand, onRetry, onEx
           </button>
         )}
       </div>
+      {/* 实际使用的模型（J10）：一直显示，不用展开；和输入区下拉选中的不一致时（H12 换过模型、或
+          modelGone 被迫换回默认）一眼能看出 */}
+      {view.plan && (
+        <p className="ra-status" data-testid="answer-model">
+          {T.sent.model(view.plan.model.model)}
+        </p>
+      )}
       {(summary || usageParts.length > 0) && (
         <div className="ra-meta">
           {summary && (

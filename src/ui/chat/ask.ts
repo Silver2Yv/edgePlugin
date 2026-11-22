@@ -1,13 +1,15 @@
 // 小窗与侧边栏共用的发问动作（副作用在这里，纯逻辑在 float/state.ts）：
-// 读默认参数、套上输入区临时切换的档位与思考强度、接着正在显示的对话发 conv/ask；连接没就绪时先存成待发。
+// 读默认参数、套上输入区临时切换的档位、思考强度与模型（H4），接着正在显示的对话发 conv/ask；连接没就绪时先存成待发。
 import { useEffect, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
 import type { ContextTier, LengthTier, ThinkingLevel } from '@/core/context/plan';
 import type { ClientToBackground } from '@/core/domain/messages';
 import { DEFAULT_SETTINGS } from '@/core/domain/settings';
+import type { Connection, ModelRef } from '@/core/llm/adapter';
 import { loadSettings, SETTINGS_KEY } from '@/platform/settings-store';
 import { loadAskDefaults } from '../ask-defaults';
 import { buildAskMessage, type FloatAction, type FloatState, isGenerating } from '../float/state';
+import { capabilitiesFor, clampThinking, thinkingControlMode } from '../model/options';
 import { T } from '../strings';
 
 export interface AskDeps {
@@ -22,13 +24,14 @@ export interface AskDeps {
 }
 
 /**
- * 发问。lengthTier 不给用设置里的默认档（「展开讲讲」给 detailed）。
+ * 发问。lengthTier 不给用设置里的默认档（「展开讲讲」给 detailed）；model 不给用临时切换的或设置里的默认模型
+ * （「换个模型再试」H12 直接指定，不看 modelOverride——调用方那边 dispatch 的 setModel 还没来得及生效）。
  * 返回是否已发出或已存成待发（调用方据此清空输入框）；回答进行中、没有连接时提示一行并返回 false
  */
 export async function submitAsk(
   deps: AskDeps,
   rawText: string,
-  opts: { lengthTier?: LengthTier } = {},
+  opts: { lengthTier?: LengthTier; model?: ModelRef } = {},
 ): Promise<boolean> {
   const text = rawText.trim();
   if (!text) return false;
@@ -42,11 +45,15 @@ export async function submitAsk(
     return false;
   }
   const s = deps.getState();
+  const model = opts.model ?? s.modelOverride ?? defaults.model;
+  // 思考强度随模型能力变（H6）：开关类模型各档都按「开」，不支持思考的模型强制关闭，
+  // 和 Composer 里显示的控件形态保持一致，不会出现界面显示「关」实际却发了思考参数
+  const mode = thinkingControlMode(capabilitiesFor(defaults.connections, model));
   const params = {
     lengthTier: opts.lengthTier ?? defaults.lengthTier,
-    thinking: s.thinkingOverride ?? defaults.thinking,
+    thinking: clampThinking(mode, s.thinkingOverride ?? defaults.thinking),
     contextTier: s.tierOverride ?? defaults.contextTier,
-    model: defaults.model,
+    model,
   };
   const clientRequestId = crypto.randomUUID();
   if (deps.canSendNow(s)) {
@@ -94,17 +101,19 @@ export function flushQueuedAsk(state: FloatState, deps: Pick<AskDeps, 'post' | '
   });
 }
 
-/** 输入区要显示的默认值：档位、思考强度、模型名（界面显示的就是实际发送的，J10） */
+/** 输入区要显示的默认值：档位、思考强度、模型（界面显示的就是实际发送的，J10）、所有连接（模型下拉用） */
 export interface ComposerDefaults {
   contextTier: ContextTier;
   thinking: ThinkingLevel;
-  model: string | null;
+  model: ModelRef | null;
+  connections: readonly Connection[];
 }
 
 const FALLBACK: ComposerDefaults = {
   contextTier: DEFAULT_SETTINGS.context.defaultTier,
   thinking: DEFAULT_SETTINGS.reply.thinking,
   model: null,
+  connections: [],
 };
 
 /** 读设置里的默认值，设置变了跟着更新（设置页改了默认档位，开着的小窗与侧边栏立即反映） */
@@ -120,7 +129,8 @@ export function useComposerDefaults(): ComposerDefaults {
             ? {
                 contextTier: r.settings.context.defaultTier,
                 thinking: r.settings.reply.thinking,
-                model: r.settings.defaultModel?.model ?? null,
+                model: r.settings.defaultModel ?? null,
+                connections: r.settings.connections,
               }
             : FALLBACK,
         );

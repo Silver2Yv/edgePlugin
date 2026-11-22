@@ -1,15 +1,20 @@
-// 输入区（B2、D3、D11、H4、K4），小窗与侧边栏共用：引用条（可取消）、输入框、上下文档位与思考强度的临时切换、发送 / 停止。
+// 输入区（B2、D3、D11、H4、K4），小窗与侧边栏共用：引用条（可取消）、输入框、上下文档位/思考强度/模型的临时切换、发送 / 停止。
 // 档位与思考强度用原生下拉：下拉列表由浏览器画，不受小窗边界限制（5.3 已知约束），键盘与读屏都现成。
+// 模型改用窗内面板（ModelPicker）：常用模型分组较多、要能搜索，原生 <select> 装不下这些（H4、H5）。
 // 发送键在结构上紧跟输入框（按一下 Tab 就到），视觉上用样式排到这一行最右。
 import type { Ref } from 'preact';
 import { useLayoutEffect, useRef } from 'preact/hooks';
 import type { ContextTier, ThinkingLevel } from '@/core/context/plan';
+import type { Connection, ModelRef } from '@/core/llm/adapter';
 import { type QuoteView, shouldSendOnEnter } from '../float/state';
+import type { ThinkingControlMode } from '../model/options';
 import { T } from '../strings';
 import { IconClose } from './Icons';
+import { ModelPicker } from './ModelPicker';
 
 const TIERS: readonly ContextTier[] = ['selection', 'nearby', 'fullPage'];
 const THINKING: readonly ThinkingLevel[] = ['off', 'low', 'medium', 'high'];
+const THINKING_TOGGLE: readonly ThinkingLevel[] = ['off', 'medium'];
 
 export interface ComposerProps {
   inputRef?: Ref<HTMLTextAreaElement>;
@@ -30,8 +35,15 @@ export interface ComposerProps {
   thinkingChanged: boolean;
   onTier: (tier: ContextTier) => void;
   onThinking: (thinking: ThinkingLevel) => void;
-  /** 实际发送用的模型名（J10）；没有连接时为 null。这一轮只显示，不能切换 */
-  model: string | null;
+  /** 所选模型支持的思考控件形态（H6）：开关类只显示关/开，不支持的禁用，其余照常四档 */
+  thinkingMode: ThinkingControlMode;
+  /** 实际发送用的模型（J10：界面显示的就是实际发送的）；没有连接时为 null */
+  model: ModelRef | null;
+  /** 设置里的默认模型，用于判断是否临时切换过 */
+  defaultModel: ModelRef | null;
+  /** 所有连接（模型下拉按连接分组列出用户勾选的常用模型） */
+  connections: readonly Connection[];
+  onModel: (model: ModelRef | null) => void;
 }
 
 export function Composer(p: ComposerProps) {
@@ -122,26 +134,41 @@ export function Composer(p: ComposerProps) {
             </select>
           </span>
           <span className="ra-pick">
-            <select
-              className="ra-select"
-              aria-label={T.composer.thinkingLabel}
-              title={`${T.composer.thinkingHelp}\n${T.composer.scopeHelp}`}
-              data-changed={p.thinkingChanged}
-              value={p.thinking}
-              onChange={(e) => p.onThinking((e.target as HTMLSelectElement).value as ThinkingLevel)}
-            >
-              {THINKING.map((t) => (
-                <option key={t} value={t}>
-                  {T.composer.thinking[t]}
-                </option>
-              ))}
-            </select>
+            {p.thinkingMode === 'disabled' ? (
+              <select
+                className="ra-select"
+                aria-label={T.composer.thinkingLabel}
+                title={T.composer.thinkingDisabled}
+                disabled
+                value="off"
+              >
+                <option value="off">{T.composer.thinking.off}</option>
+              </select>
+            ) : (
+              <select
+                className="ra-select"
+                aria-label={T.composer.thinkingLabel}
+                title={`${T.composer.thinkingHelp}\n${T.composer.scopeHelp}`}
+                data-changed={p.thinkingChanged}
+                value={p.thinking}
+                onChange={(e) => p.onThinking((e.target as HTMLSelectElement).value as ThinkingLevel)}
+              >
+                {(p.thinkingMode === 'toggle' ? THINKING_TOGGLE : THINKING).map((t) => (
+                  <option key={t} value={t}>
+                    {p.thinkingMode === 'toggle'
+                      ? T.composer.thinkingToggle[t === 'off' ? 'off' : 'on']
+                      : T.composer.thinking[t]}
+                  </option>
+                ))}
+              </select>
+            )}
           </span>
-          {p.model && (
-            <span className="ra-model" title={T.composer.modelTitle(p.model)}>
-              {p.model}
-            </span>
-          )}
+          <ModelPicker
+            connections={p.connections}
+            value={p.model}
+            defaultModel={p.defaultModel}
+            onChange={p.onModel}
+          />
         </div>
       </div>
     </div>

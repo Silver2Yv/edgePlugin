@@ -188,13 +188,14 @@ export function toClientError(err: ModelError, secrets: readonly string[]): Clie
   return { kind: err.kind, message: [...message].slice(0, ERROR_MESSAGE_MAX).join('') };
 }
 
-/** 优先用界面发来的模型（界面显示的就是实际发送的，J10）；它指向的连接不存在时退回默认模型 */
+/**
+ * 界面发来的模型就是要用的那个（界面显示的就是实际发送的，J10）。contract-v1.5 起：它指向的连接
+ * 不存在（被删了）不再静默退回默认模型——界面以为用的是 A，实际却用了 B，会造成困惑（V-07）。
+ * 找不到就返回 undefined，调用方据此回 modelGone，界面提示后自己切回默认模型再问一次
+ */
 function resolveModel(s: Settings, wanted: ModelRef): { conn: Connection; model: ModelRef } | undefined {
-  const pick = (ref: ModelRef | undefined) => {
-    const conn = ref && s.connections.find((c) => c.id === ref.connectionId);
-    return conn && ref ? { conn, model: { connectionId: ref.connectionId, model: ref.model } } : undefined;
-  };
-  return pick(wanted) ?? pick(s.defaultModel);
+  const conn = s.connections.find((c) => c.id === wanted.connectionId);
+  return conn ? { conn, model: { connectionId: wanted.connectionId, model: wanted.model } } : undefined;
 }
 
 const thinkingParam = (t: AskMsg['thinking']): NonNullable<ChatRequest['thinking']> =>
@@ -706,8 +707,9 @@ export function createJobs(deps: BackgroundDeps, store: Store, hub: Hub, pages: 
     const pageKey = tabUrl === undefined ? undefined : toPageKey(tabUrl);
     const settings = loaded.settings;
     const target = resolveModel(settings, msg.model);
-    const adapter = target && deps.adapters[target.conn.interfaceType];
-    if (!target || !adapter) return { reason: 'invalid' };
+    if (!target) return { reason: 'modelGone' };
+    const adapter = deps.adapters[target.conn.interfaceType];
+    if (!adapter) return { reason: 'invalid' };
 
     // 选对话：指定了且这个标签页能接着问就直接续接；不指定（或小窗指定了别的页面的）按续接规则
     const now = deps.now();

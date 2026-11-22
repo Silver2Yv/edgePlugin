@@ -176,6 +176,8 @@ export function rejectReasonText(reason: RejectReason): string {
       return T.reject.gone;
     case 'storageFailed':
       return T.reject.storageFailed;
+    case 'modelGone':
+      return T.reject.modelGone;
     default:
       return T.reject.unknown;
   }
@@ -291,6 +293,12 @@ export interface FloatState {
   /** 输入区临时切换的上下文档位与思考强度（D3、H4）：只影响当前对话之后的发问；null 用设置里的默认值 */
   tierOverride: ContextTier | null;
   thinkingOverride: ThinkingLevel | null;
+  /**
+   * 输入区临时切换的模型（H4、contract-v1.5 增量，这次发问才带，不走 conv/setModel——那个消息类型
+   * 本版本后台不处理）；null 用设置里的默认模型。模型所在连接被删（modelGone）时后台拒绝，
+   * 界面收到后把它清回 null（见 applyRejected）
+   */
+  modelOverride: ModelRef | null;
   /** 用户点了「新对话」：下一次发问不带 conversationId；在那之前订阅补发的旧对话不再显示 */
   freshConversation: boolean;
   /** 一行提示：这次发问被后台接到了新对话（D13「已开启新对话，旧的仍可在历史里找回」） */
@@ -319,6 +327,7 @@ export function initialFloatState(hasToken: boolean): FloatState {
     dismissedQuote: null,
     tierOverride: null,
     thinkingOverride: null,
+    modelOverride: null,
     freshConversation: false,
     convHint: null,
   };
@@ -350,6 +359,8 @@ export type FloatAction =
   /** 输入区临时切换档位 / 思考强度；null 回到设置里的默认值 */
   | { kind: 'setTier'; contextTier: ContextTier | null }
   | { kind: 'setThinking'; thinking: ThinkingLevel | null }
+  /** 输入区临时切换模型（H4）；null 回到设置里的默认模型 */
+  | { kind: 'setModel'; model: ModelRef | null }
   /** 点「新对话」：清空显示，下一次发问开新对话（回答生成中不动） */
   | { kind: 'newConversation' };
 
@@ -400,6 +411,7 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
             dismissedQuote: null,
             tierOverride: null,
             thinkingOverride: null,
+            modelOverride: null,
             freshConversation: false,
             convHint: null,
           };
@@ -430,6 +442,8 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
       return { ...state, tierOverride: action.contextTier };
     case 'setThinking':
       return { ...state, thinkingOverride: action.thinking };
+    case 'setModel':
+      return { ...state, modelOverride: action.model };
     case 'newConversation':
       if (isGenerating(state.job)) return state;
       return {
@@ -440,6 +454,7 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
         pendingAsk: null,
         tierOverride: null,
         thinkingOverride: null,
+        modelOverride: null,
         freshConversation: true,
         convHint: null,
         actionError: null,
@@ -652,6 +667,9 @@ function applyRejected(state: FloatState, msg: RejectedMsg): FloatState {
       pendingClientRequestId: null,
       pendingAsk: null,
       actionError: T.reject.send(rejectReasonText(msg.reason)),
+      // 临时切换的模型所在连接已不存在（modelGone，J10/V-07）：切回设置里的默认模型，
+      // 不然下次发问还是同一个模型、还是会被拒
+      ...(msg.reason === 'modelGone' ? { modelOverride: null } : {}),
     };
   return state;
 }

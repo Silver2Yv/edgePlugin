@@ -352,6 +352,39 @@ describe('临时切换档位与思考强度（D3、H4）', () => {
   });
 });
 
+describe('临时切换模型（H4、contract-v1.5 增量）', () => {
+  const MODEL_B = { connectionId: 'conn-0002', model: 'mock-pro' } as const;
+
+  it('切换后记在状态里，点「新对话」回到默认；buildAskMessage 带上切换的模型', () => {
+    let s = run(ready(), { kind: 'setModel', model: MODEL_B });
+    expect(s.modelOverride).toEqual(MODEL_B);
+    expect(buildAskMessage({ ...ASK, model: s.modelOverride ?? ASK.model })).toMatchObject({
+      model: MODEL_B,
+    });
+    s = run(askAndAnswer(s, 1, '问', '答'), { kind: 'newConversation' });
+    expect(s.modelOverride).toBeNull();
+  });
+
+  it('换了标签页（侧边栏）回到默认', () => {
+    let p = run(ready(true), { kind: 'retarget', tabId: 1 }, server({ type: 'conv/subscribed', tabId: 1 }));
+    p = run(p, { kind: 'setModel', model: MODEL_B });
+    expect(p.modelOverride).toEqual(MODEL_B);
+    p = run(p, { kind: 'retarget', tabId: 2 });
+    expect(p.modelOverride).toBeNull();
+  });
+
+  it('modelGone：切换的模型所在连接已不存在，后台拒绝后界面切回默认模型', () => {
+    let s = run(ready(), { kind: 'setModel', model: MODEL_B });
+    s = run(
+      s,
+      { kind: 'askSent', clientRequestId: 'req-9', text: '问一下' },
+      server({ type: 'conv/rejected', reason: 'modelGone', refType: 'conv/ask', refId: 'req-9' }),
+    );
+    expect(s.modelOverride).toBeNull();
+    expect(s.actionError).toContain('已改回默认模型');
+  });
+});
+
 describe('新对话', () => {
   it('清空显示，下一次发问不带 conversationId；回答生成中不动', () => {
     let s = askAndAnswer(ready(), 1, '第一问', '回答一');

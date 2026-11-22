@@ -279,3 +279,21 @@ export function latestPlan(
   }
   return undefined;
 }
+
+/**
+ * 「换个模型再试」（H12）：找出某条助手消息对应的发问（问题文字与引用），换个模型重新问一遍要用同样的内容。
+ * 本地暂存的用户消息靠 pairedMessageId 对上；快照来的消息靠「紧挨在它前面那条用户消息」对上
+ * （一问一答按顺序落库，见 jobs.ts 的落库时机）。两边都对不上（消息还没来得及出现在列表里）时返回 null
+ */
+export function questionForJob(
+  messages: readonly MessageView[],
+  jobMessageId: string,
+): { text: string; quote: QuoteSummary | null } | null {
+  for (const m of messages) {
+    if (m.role === 'user' && m.pairedMessageId === jobMessageId)
+      return { text: m.text, quote: m.quote ?? null };
+  }
+  const idx = messages.findIndex((m) => m.id === jobMessageId);
+  const prev = idx > 0 ? messages[idx - 1] : undefined;
+  return prev && prev.role === 'user' ? { text: prev.text, quote: prev.quote ?? null } : null;
+}
