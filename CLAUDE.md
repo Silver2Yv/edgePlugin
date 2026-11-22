@@ -4,8 +4,8 @@ AI 阅读助手浏览器扩展（Chrome / Edge，Manifest V3，最低 141）。�
 
 | 要查什么 | 看哪里 |
 | --- | --- |
-| 代码现状、模块地图、测试资产、下一步 | `docs/核心功能开发/HANDOFF.md` |
-| 架构（v1.2） | `docs/架构设计/ARCHITECTURE.md` |
+| 代码现状、模块地图、测试资产、下一步 | `docs/核心功能开发/HANDOFF.md`；待用户答复的事项见同目录 `REVIEW_CHECKLIST.md` |
+| 架构（v1.3） | `docs/架构设计/ARCHITECTURE.md` |
 | 为什么这么定 | `docs/需求分析梳理/DECISIONS.md`（冲突时编号大的为准） |
 | 需求与验收 | `docs/需求分析梳理/FINAL_PLAN.md` |
 | 已接受的降级、带进本阶段的事项 | `docs/原型验证/PROTOTYPE_REPORT.md` 第 3、4 节 |

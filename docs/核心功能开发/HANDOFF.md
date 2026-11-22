@@ -3,7 +3,7 @@
 > 写于 2026-11-22，对应本地分支 `integrate/wave2`（两轮并行开发全部合并后）的代码。**开发中随时更新**：做完一项就改第 2 节对应行。
 > 只写「代码现在长什么样」，不重复背景：命令、架构规则、目录依赖方向见根目录 `CLAUDE.md`；分期范围见
 > `docs/架构设计/ARCHITECTURE.md` 第 10 节；原型验证接受的降级见 `docs/原型验证/PROTOTYPE_REPORT.md` 第 3、4 节；
-> 本轮各开发块的决策见 `docs/需求分析梳理/DECISIONS.md` 决策 082–094。
+> 本轮各开发块的决策见 `docs/需求分析梳理/DECISIONS.md` 决策 082–096；等用户答复的事项集中在同目录 `REVIEW_CHECKLIST.md`。
 
 ## 1. 一页结论
 
@@ -11,12 +11,12 @@
 （含实体回指、页面级预算）→ 经模型网关发请求（怪癖学习、参数自动重试、按模型识别厂商发思考参数）→ 流式回答 →
 引用可点击跳回原文并高亮 → 可「存」成收藏 → 对话落库，后台重启后历史可续接。**
 
-新增的整条能力线：收藏与历史（侧边栏完整版）、框选截图提问（不含页面图片）、多连接模型下拉与「换个模型再试」、
-设置向导与欢迎页、实时引用与页面变化提示、提示词登记表与各动作系统提示。
+新增的整条能力线：收藏与历史（侧边栏完整版）、框选截图提问、页面图片开关（E2，默认关）、子页面（iframe）正文读取（D10）、
+多连接模型下拉与「换个模型再试」、设置向导与欢迎页、实时引用与页面变化提示、提示词登记表与各动作系统提示。
 
-还没做的（详见第 2 节「没有」行）：页面图片开关（E2）、悬停图片引用、联网搜索、分块总结、网页高亮标注（持久
-批注，非跳转时的临时高亮）、命令面板、按功能配模型、设置导入导出与完整备份、隐藏小窗定时销毁、跨后台重启的
-任务恢复（只能标记中断、不能续播同一条流）、Responses/Anthropic/Gemini 适配器、Edge 上本轮未复测。
+**`FINAL_PLAN.md` 5.1「首期重要」已全部实现**；第 9 节验收除公司网络（第 9 条）、Edge 手动走查（第 14 条）要用户在真实环境确认外，
+都有自动化用例或原型实测结论。还没做的都在首期次要及以后（第 2 节末两张表）：联网搜索、分块总结、网页高亮批注、命令面板、
+按功能配模型、设置导入导出、悬停图片引用等；另有隐藏小窗定时销毁（决策 078 推迟）、跨后台重启续播同一条流（决策 070 不做）。
 
 ## 2. 能力现状
 
@@ -31,7 +31,7 @@
 | 阅读器：三档 | 已有 | `src/core/context/select.ts`、`plan.ts` | selection / nearby / fullPage 不变 |
 | 阅读器：回指（D5） | 已有 | `src/core/context/entities.ts` | 年份、带单位数字、书名号/引号术语、英文专名、代码标识符；中文用 `Intl.Segmenter` 按页内低频筛候选，命中并入 nearby（决策 085，阈值为初值） |
 | 阅读器：换页 | 已有 | `src/background/pages.ts`、`src/page/reader.ts`（页面变化观察器） | 发问前核对 `contentVersion`；新增：小窗/侧边栏开着时阅读器主动比较正文字数（≥40 字且 1.5 秒内不变）或 SPA 路由变化，提示「页面内容已变化」（决策 090） |
-| 阅读器：子框架 | 部分 | 同原状态 | 页面读取仍只读顶层文档，子框架正文不进上下文；未变 |
+| 阅读器：子框架 | 已有 | `src/background/pages.ts`（`readSubframes`）、`src/core/context/frame-merge.ts`、`src/page/subframe-reader.ts` | 读取时一次性探测框架、按「顶层与框架来源取更严」和尺寸（<50 px 跳过）挑框架，按需注入子框架阅读器并行读；子框架块排在顶层之后整页编号、标题链前加「内嵌页面：」；子框架里的选区也能带前后文；引用落在子框架块上只说明原因、不定位（决策 095） |
 | 小窗 | 已有（接受降级） | `src/page/float-host.ts`、`src/ui/FloatApp.tsx` | 重做视觉（`theme.css`）、图钉（`float/pin`）、引用条常驻、模型下拉、截图按钮、「存」、档位与思考强度临时切换；隐藏小窗仍不按 `idleDestroyMs` 定时销毁（常量在 `src/core/domain/float.ts`，未接计时器，决策 078 推迟，本轮未变） |
 | 最小侧边栏 → 完整侧边栏 | 已有 | `src/ui/SidePanelApp.tsx`、`src/ui/panel/*` | 已升级为「首期完整产品」档的完整侧边栏，见下表「完整侧边栏与历史」 |
 | 后台任务与流式 | 已有 | `src/background/jobs.ts` | 增加 `usage`、`droppedParam` 终态字段；跨后台重启不能续播同一条流，但对话已落库，重启后可续接追问（见「任务恢复」行） |
@@ -54,7 +54,7 @@
 | 完整引用跳回 | 已有 | `src/background/citations.ts`、`src/core/anchor/citations.ts`、`src/page/locate.ts`、`src/ui/cite/useCite.tsx` | 回答里【N】与【N】原文【/N】均可点；页面变了按锚点三级降级并提示「原文可能已变化」；`CSS.highlights` 高亮，点网页/回原位/跳下一处清掉；「回到刚才阅读的位置」（F4）；上次总结卡片与版本标注（`SummaryCard.tsx`、`src/background/summary.ts`） |
 | 收藏与导出 | 已有 | `src/background/favorites.ts`、`src/core/domain/favorite-export.ts`、`src/ui/panel/{FavoritesView,favorites-db,favorites-search,export}.ts` | 工具栏「存」（锚点前后约 32 字快照）与回答上的「存」（快照 refCount+1）；编辑标题/笔记、删除（解引用）、导出结构化 Markdown（单条/全部/按页面）；列表与搜索由侧边栏直接只读查询 IndexedDB（决策 093） |
 | 多连接与模型下拉 | 已有 | `src/ui/chat/ModelPicker.tsx`、`src/ui/model/options.ts`、`src/background/jobs.ts`（`resolveModel`） | 按连接分组列常用模型、可搜索；思考控件随模型能力变（开关类/`none`/`effort`）；连接被删时拒绝 `modelGone`（不再静默换默认模型，决策 091）；失败时「换个模型再试」（用原动作/档位重问） |
-| 框选截图 | 部分 | `src/background/{capture,capture-image}.ts`、`src/core/capture/{geometry,data-url}.ts`、`src/page/capture.ts`、`src/ui/chat/{CaptureParts,image-thumbs}.ts` | E1/E3/E4 完成（身份与视口核对、裁剪、预览确认、看不了图拒绝 `noVision`、图表解析提示）；**E2 页面图片开关、悬停图片引用未实现**；追问不重发图片；详见 V-15 记录 |
+| 框选截图与页面图片 | 已有 | `src/background/{capture,capture-image,page-images}.ts`、`src/core/capture/{geometry,data-url}.ts`、`src/page/capture.ts`、`src/ui/chat/{CaptureParts,image-thumbs}.ts` | E1–E4 完成：框选截图（身份与视口核对、裁剪、预览确认、看不了图拒绝 `noVision`、图表解析提示）；页面图片开关（默认关，只取选区所在顶层块里页面已加载的图，最多 3 张，不带凭据、重定向一律跳过，发送说明列地址，决策 096）；追问不重发图片；悬停图片引用（E6）属首期次要未做；详见 V-15 记录 |
 | 设置分层 | 已有 | `src/ui/options/sections.tsx`、`parts.tsx` | 常用项露出（默认模型/上下文档位/回答长度/思考/网站黑名单），其余收进默认折叠的「高级选项」（决策 094） |
 
 ### 首期次要及以后（未进入本轮）
@@ -74,7 +74,7 @@
 | 按功能配模型 | 没有 | 模型按连接/对话临时切换，没有「总结用模型 A、翻译用模型 B」这类按动作绑定模型的设置 |
 | 设置导入导出 | 没有 | 没有 JSON 导出/导入入口；`settings-store.ts` 只有存储层的脱敏导出函数，未接 UI |
 | 完整数据备份/恢复 | 没有 | 见 V-14 记录 |
-| Edge 复测 | 本轮未做 | cite、ui、capture、model、history 等块报告均注明「Edge 未测」；全部基于 CfT 无界面验证 |
+| Edge 复测 | 见第 5 节 | 自动化用例在本机 Edge（有界面）上复跑一遍，结果见第 5 节；手动走查交给用户（`REVIEW_CHECKLIST.md` F2） |
 
 ## 3. 模块地图
 
@@ -85,6 +85,7 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | entrypoints | `background.ts` | 后台 Service Worker 入口 |
 | entrypoints | `sentinel.content.ts` | 哨兵内容脚本入口 |
 | entrypoints | `reader.content.ts` | 阅读器内容脚本入口 |
+| entrypoints | `subframe-reader.content.ts` | 子框架阅读器入口（读取时按需注入，不写进清单） |
 | entrypoints | `float/main.tsx` | 小窗页面 |
 | entrypoints | `sidepanel/main.tsx` | 侧边栏页面 |
 | entrypoints | `options/main.tsx` | 设置页 |
@@ -96,7 +97,7 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | core/domain | `float.ts` | 小窗状态机、握手令牌、`FLOAT_LIMITS`（含未接入的 `idleDestroyMs`） |
 | core/domain | `ids.ts` | 各类编号类型别名 |
 | core/domain | `job.ts` | 任务状态机、`JobRecord` |
-| core/domain | `messages.ts` | 消息协议定义与运行时校验入口（contract-v1.4 已打 tag，v1.5 增量见第 4 节） |
+| core/domain | `messages.ts` | 消息协议定义与运行时校验入口（现为 contract-v1.5，见第 4 节） |
 | core/domain | `records.ts` | IndexedDB 表结构，新增 `FavoriteRecord` 扩展字段、`sentText`、`lastAskedAt` 等 |
 | core/domain | `schema.ts` | 运行时校验器 |
 | core/domain | `session-keys.ts` | `storage.session` 键名登记 |
@@ -104,6 +105,7 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | core/domain | `site-policy.ts` | 站点三级权限矩阵 |
 | core/context | `content-version.ts` | 内容指纹算法 |
 | core/context | `entities.ts` | 实体回指候选识别（D5） |
+| core/context | `frame-merge.ts` | 子框架挑选（站点级别、尺寸）与合并、整页重新编号、指纹重算（D10） |
 | core/context | `page-doc.ts` | 页面模型类型 |
 | core/context | `page-key.ts` | pageKey 归一化 |
 | core/context | `plan.ts` | 请求装配计划类型与预算；新增 `entityBlockIds`、`entitySingleMentions`、页面级预算口径 |
@@ -139,7 +141,8 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | background | `main.ts` | 启动入口：监听器、菜单、哨兵对账、启动扫描 |
 | background | `net-diagnostics.ts` | `webRequest.onErrorOccurred` 归因，接入网络失败路径 |
 | background | `options.ts` | 设置页通道：测试连接、列模型 |
-| background | `pages.ts` | 页面读取与缓存、`currentVersion` |
+| background | `page-images.ts` | 页面图片（E2）：向顶层阅读器要选区块里已加载的图片地址、核对应答、不带凭据取图并编码 |
+| background | `pages.ts` | 页面读取与缓存、`currentVersion`；子框架探测、注入与合并（D10） |
 | background | `quirk-store.ts` | 怪癖学习的 `storage.local` 读写 |
 | background | `quote.ts` | 引用条预览 |
 | background | `roles.ts` | 角色推断 |
@@ -154,7 +157,8 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | page | `float-port.ts` | 小窗私有端口 |
 | page | `locate.ts` | 引用跳回定位与高亮、回到刚才位置 |
 | page | `notice.ts` | 网页一行提示 |
-| page | `page-read.ts` | 响应 `page/read` |
+| page | `page-read.ts` | 响应 `page/read`；`imagesInBlocks` 回报选区块里已加载的图（E2） |
+| page | `subframe-reader.ts` | 子框架阅读器：只响应 `page/read`，复用 `page-read.ts`（D10） |
 | page | `reader.ts` | 阅读器总入口：新增页面变化观察器 |
 | page | `selection-bus.ts` | 选区矩形/修订号小总线 |
 | page | `selection-policy.ts` | 选区判断规则 |
@@ -220,9 +224,9 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | `contract-v1.2` | 2026-11-19 | 测试连接带模型；设置页应答类型 |
 | `contract-v1.3` | 2026-11-21 补打 | 页面缓存未变应答、小窗拖动缩放改宿主侧、侧边栏订阅与转接、网页提示、拒绝原因 `busy` |
 | `contract-v1.4` | 2026-11-22（核心功能第一批），已打 tag | `conv/ask.fresh`、`conv/accepted.newConversation`、`history/delete`/`history/deleted`、`history/page.nextBefore`、`conv/saveFailed`、拒绝原因 `storageFailed`、`conv/jobState.usage`/`droppedParam`、`float/pin`、`PageConfig.toolbarActions` 扩成 `ActionSummary`；计划追加 `entityBlockIds`/`entitySingleMentions`；设置升到版本 2 |
-| `contract-v1.5` 增量（**未打 tag**，待本次合并验收后统一打） | — | 见下 |
+| `contract-v1.5` | 2026-11-22（核心功能第二批与补做的 E2、D10），已打 tag | 见下 |
 
-本次（`messages.ts` 里标「contract-v1.5 增量」的改动，按模块分组）：
+`messages.ts` 里标「contract-v1.5 增量」的改动，按模块分组：
 
 | 来源模块 | 增量内容 |
 | --- | --- |
@@ -232,12 +236,14 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | capture | `capture/rect` 加 `viewport`；新增 `capture/cancel`、`capture/begin`、`capture/discard`、`image/get`、`conv/capture`、`conv/captureCleared`、`conv/captureFailed`；`capture/hideOverlay`/`capture/end` 改为有应答；拒绝原因 `noVision`；提示种类 `captureChanged`/`captureFailed`/`captureUnsupported`；`conv/ask` 加 `captureId` |
 | history/favorites | 新增 `favorite/update`、`favorite/remove`、应答与广播 `favorite/changed`；`favorite/add` 放进 `CONV_COMMON`（小窗也能发）；`favorite/saved` 加 `messageId` |
 | onboard | `demo/ask`、`DemoAskResult` |
+| E2 页面图片 | 后台到阅读器的指令 `page/images`（应答 `{ requestId, contentVersion, urls ≤ 3 }`，`parsePageImagesReply` 校验）；`RequestContextPlan.pageImageUrls`；设置 `context.includePageImages`（默认值合并补齐，设置版本不变） |
+| D10 子框架 | 引用失败原因 `subframe`；`SnapshotRecord.blocks[].frameId`（可选）；没有新增消息 |
 
-**待办**：合并验收通过后，在 `messages.ts` 顶部打下一个 `contract-v1.5` tag 说明，并在 `git tag -n3` 里体现。
+下一次改协议打 `contract-v1.6`。
 
 ## 5. 测试资产
 
-**单测**（`pnpm vitest run` 实测，2026-11-22）：**58 个测试文件，749 个用例全部通过**。
+**单测**（`pnpm verify` 实测，2026-11-22，E2、D10 合并后）：**63 个测试文件，798 个用例全部通过**；lint、类型、依赖方向、构建、体积（哨兵 gzip 4.87 KB / 10 KB）、清单权限同时通过。
 
 | 目录 | 覆盖范围 |
 | --- | --- |
@@ -249,7 +255,7 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | `tests/unit/ui/render/` | V-10 渲染管线（安全、流式一致性、引用、代码复制、高亮、KaTeX、选区保护） |
 | `tests/unit/check-deps.test.ts`、`mock-relay.test.ts` | 同前 |
 
-**e2e**（`pnpm test:e2e`，Playwright，需先 `pnpm build`；下表数字为每个 spec 文件里 `test(` 调用次数，统计未实跑全量）：
+**e2e**（`pnpm test:e2e`，Playwright，需先 `pnpm build`；28 个 spec、137 个用例，下表为各文件用例数）：
 
 | spec | 用例数 | 覆盖什么 |
 | --- | --- | --- |
@@ -266,7 +272,7 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | `request-plan.spec.ts` | 6 | 请求装配与预算、实体回指 nearby 验证 |
 | `ipc-boundary.spec.ts` | 10 | IPC 授权与 iframe 边界 |
 | `lifecycle.spec.ts` | 1 | 28 秒连接超时 |
-| `float-interaction.spec.ts` | 13 | 小窗交互：拖动/缩放/IME/复制/缩放/继续阅读 |
+| `float-interaction.spec.ts` | 14 | 小窗交互：拖动/缩放/IME/复制/缩放/继续阅读 |
 | `markdown.spec.ts` | 2 | 回答安全渲染接入小窗 |
 | `wait-hint.spec.ts` | 1 | 等待提示分级文案 |
 | `options.spec.ts` | 2 | 设置页测试连接、落盘、Key 不出现在页面 |
@@ -279,8 +285,15 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | `history-favorites.spec.ts` | 4 | 工具栏「存」、回答「存」、历史搜索删除、本页对话列表 |
 | `persist.spec.ts` | 2 | 后台重启后续接、生成中重启标中断 |
 | `chat-ui.spec.ts` | 7 | 小窗/侧边栏视觉重做、深色、思考/用量展示 |
+| `page-images.spec.ts` | 4 | E2：开关开着选中段落的图进请求、关着没有、跨主机重定向不取、看不了图不取 |
+| `subframe-read.spec.ts` | 3 | D10：同源与跨源 iframe 正文进全文请求、不读取名单与密码框、iframe 里划词带前后文 |
 
-**本次复跑结果**：`pnpm vitest run` 749/749 全过；`persist.spec.ts`+`history-favorites.spec.ts` 单独跑 6 个用例，`工具栏「存」…` 首次超时失败、单独重跑一次即过（见第 6 节），其余 5 个一次通过。未复跑剩余 spec 的全量（见第 7 节待办）。
+**全量复跑结果（2026-11-22，E2、D10 合并后）**：
+
+| 浏览器 | 结果 | 说明 |
+| --- | --- | --- |
+| CfT（无界面，`E2E_CHROMIUM_PATH`） | 136 通过、1 跳过（专截图用，默认不跑） | 第一次跑 `history-favorites` 3 例失败，查明是侧边栏刚打开按 0 宽排版时测试量到的按钮位置不对（见第 6 节），修了测试辅助函数后连跑 3 次全过，再跑全量全过 |
+| Edge（有界面，`E2E_BROWSER=msedge`） | 133 通过、3 失败、1 跳过 → 复跑全过 | 截图 2 例是断言假定了截图像素比等于 `devicePixelRatio`，有界面 Edge 上不成立（见第 6 节），改断言后通过；欢迎页示例 1 例是有界面 Edge 的焦点类偶发，复跑通过 |
 
 **模拟中转站、scripts/**：同前（`tests/mock-relay/server.ts`，`check-deps.ts`/`check-size.ts`/`check-manifest.ts`/`v08-port-eval.ts`），未结构性变化。
 
@@ -291,20 +304,22 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | 坑 | 出处 |
 | --- | --- |
 | **e2e 夹具默认关掉安装时自动打开的欢迎页**：`fixtures.ts` 的 `dismissWelcome()` 在每个用例的 `context` fixture 里默认调用；需要测欢迎页本身时显式传 `{ keepWelcome: true }` | `tests/e2e/fixtures.ts` |
-| 全量 e2e 偶发超时的用例，单独重跑能过：`toolbar-actions.spec.ts` 长选区确认、`page-identity.spec.ts` 前进后退、`request-plan.spec.ts`；本次复查新发现 `history-favorites.spec.ts` 的「工具栏「存」…」用例也出现过一次同类超时（侧边栏收藏列表轮询 5 秒内未出现），重跑即过，归入同一类已知偶发 | 各块报告；本次复核 |
+| 全量 e2e 偶发：`page-identity.spec.ts` 前进后退用例偶发超时，单独重跑能过。`request-plan`、`toolbar-actions` 长选区确认的偶发已查明：`locator.click({ clickCount: 3 })` 自带的滚动若在 mouseup 之后才派发 scroll 事件，哨兵按「滚动后消失」把刚弹出的工具栏收起；划词一律改用 `page-helpers.ts` 的 `tripleClick`（先滚到位、等两帧）后消除 | `tests/e2e/page-helpers.ts`；根目录 `CLAUDE.md` |
+| 侧边栏页面刚打开时先按 0 宽排版（`innerWidth` 为 0）：按宽度量尺寸的逻辑要在 `resize` 时重算，否则输入框按 0 宽算出的高度一直撑着，对话列表只剩一条缝（已修，`Composer.tsx`）；测试里这时量按钮位置也会量错，`sidepanel-helpers.ts` 的点击等 `innerWidth` 不为 0 再量 | `src/ui/chat/Composer.tsx`、`tests/e2e/sidepanel-helpers.ts` |
+| 有界面 Edge 上 Playwright 模拟了视口和 `devicePixelRatio`（=1），`captureVisibleTab` 却按真实窗口与系统缩放出图（实测宽 1745 对视口 1281）。截图相关断言要用实测比例（截图宽 ÷ 视口宽），不能用 `devicePixelRatio`；裁剪代码本来就按实测比例算 | `tests/e2e/capture.spec.ts` 的 `captureScale` |
 | 思考字段的厂商识别**按模型标识优先**，连接预设（含 `custom`）其次；两边都认不出时什么思考参数都不发，不再默认按预设猜 | `src/core/llm/thinking.ts`；决策 084 |
 | `webRequest.onErrorOccurred` 送达和 `fetch()` reject 不保证先后顺序，取网络诊断要短暂轮询（≤300ms） | `src/background/net-diagnostics.ts` |
 | 引用跳回用的 `CSS.highlights` 是网页与扩展共用的一份，网页脚本能查到/清掉；`insertCSS` 按文档注入的样式同理可见 | `src/background/citations.ts` 相关报告 |
 | 框选截图的系统 DPI、真实切窗口、真实侧边栏开合三类，本机 CfT 无界面无法验证，详见 `docs/原型验证/记录/V-15.md` 第 3 节手动步骤 | V-15 |
-| `jobs.ts` 旧有的 `!selection && text.trim()===''` 守卫仍在（页面级动作与直接发送动作已在 `intents.ts`/`ask.ts` 处补默认问题文本绕过，未改守卫本身） | `src/background/jobs.ts` |
+| `jobs.ts` 接单时的空问题守卫按动作的 `needsInput` 放行：不需要输入的动作（解释、总结本页、自定义直接发送动作）问题可以为空，对话里显示动作名；需要输入的动作没有选区、截图和文字时拒绝 `invalid` | `src/background/jobs.ts` |
 
 ## 7. 接下来做什么
 
+用户要求本批做完后先停下，不急着派下一批。等用户答复 `REVIEW_CHECKLIST.md` 再动：
+
 | 事项 | 说明 |
 | --- | --- |
-| 等用户确认的体验细节 | 决策草稿里标「待用户复核/待用户确认」的共 11 条：083（自定义动作问题用名字、两类动作可编辑内容不同）、087（总结本页接不接近期对话）、088（顶栏纯图标、图钉不记、引用常驻）、089（卡片出现时机、多编号只跳第一个、高亮消失时机）、091（候选范围、错误范围、文案）、092（遮罩文案、只发图默认问题、按钮位置）、093（三视图切换方式、下拉形式）、094（欢迎页布局、向导默认服务商、保存方式）。逐条请用户过目后在 `DECISIONS.md` 对应决策改状态 |
-| 打 `contract-v1.5` tag | 本文件第 4 节已列增量；用户确认体验细节不影响协议本身，可独立推进 |
-| Edge 上复跑 | 本轮全部块只在 CfT 无界面验证过，`cite`/`ui`/`capture`/`model`/`history` 等块报告都注明「Edge 未测」，需要按 `CLAUDE.md`「测试踩坑」用 `E2E_BROWSER=msedge` 复跑一遍，关注冷态焦点、框选 DPI、侧边栏开合重排几类已知环境阻塞项 |
-| V-14、V-16 | V-14（收藏/数据库/更新与恢复）记录已写，见 `docs/原型验证/记录/V-14.md`；V-16（本文件未涉及，若 `VALIDATION_MATRIX.md` 中存在对应启用门槛需单独确认范围后再执行）；截图相关 V-15 已有记录（E2 页面图片仍未执行） |
-| 没做的首期功能 | E2 页面图片开关与悬停图片引用、联网搜索、分块总结、网页高亮批注、命令面板、按功能配模型、设置导入导出与完整备份、隐藏小窗定时销毁（决策 078 推迟，需要确认是否本阶段接入） |
-| 全量 e2e 复跑 | 本次只复跑了 `persist.spec.ts`+`history-favorites.spec.ts`（6 例，1 次偶发超时重跑通过）；建议接手后先 `pnpm build` 一次，再 `E2E_CHROMIUM_PATH=/d/tmp/cft/chrome.exe pnpm test:e2e` 跑全量，确认各块报告里声称的用例数与状态 |
+| 用户答复后落实 | 「决策」类写进 `DECISIONS.md`（087 改状态；新选择追加决策）；「确认」类里用户要改的逐条改；`DECISIONS.md` 里「待用户复核」的状态随之改成「用户确认」 |
+| 下一批开发 | 范围由用户在清单 D2 里定（首期次要 `FINAL_PLAN.md` 5.2），D3（隐藏小窗定时销毁）、D4（删除确认方式）若选 A 一并做 |
+| 真实环境走查 | 清单第三节 F1–F7（公司网络、Edge、真实快捷键、系统 DPI、扩展重载后数据、真实模型、试用一周）由用户做，结果回填 V 记录 |
+| 推送 | 清单 D5：`main` 是否快进到 `integrate/wave2`、是否推送 GitHub |
