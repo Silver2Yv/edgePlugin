@@ -2,6 +2,8 @@
 // 常用项露在外面、其余收进默认折叠的「高级选项」；连接的请求头 / 额外参数 / 逐字输出确实进了请求；
 // 测试失败说清原因并能复制诊断（不含 Key）；勾选常用模型、手动改能力；提示词改了请求随之变化；
 // 自定义动作出现在工具栏并直接发送；工具栏排序与停用；快捷键与权限说明。
+
+import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Page } from '@playwright/test';
@@ -477,9 +479,13 @@ test('自定义动作：在设置页添加后出现在工具栏，点了直接�
   await fold.getByTestId('action-form').getByLabel('动作名字').fill('说人话');
   await fold.getByTestId('action-form').getByRole('button', { name: '保存动作' }).click();
   await expect(row).toContainText('说人话');
-  options.once('dialog', (d) => void d.accept());
+  // 删除用页内确认条，不弹浏览器模态框（M4）
   await row.getByRole('button', { name: '删除「说人话」' }).click();
+  const confirm = row.getByTestId('remove-confirm');
+  await expect(confirm).toContainText('确定删除「说人话」？');
+  await confirm.getByRole('button', { name: '删除', exact: true }).click();
   await expect(row).toHaveCount(0);
+  await expect(fold.getByTestId('undo-bar')).toContainText('已删除「说人话」');
   const after = await readSettings(serviceWorker);
   expect(after.customActions).toEqual([]);
   expect(after.toolbarActions).toEqual(['ask', 'explain', 'save']);
@@ -587,4 +593,99 @@ test('网站黑名单：两级都能加、能删；IPv6 地址提示「不弹工
     ]);
   await common.getByRole('button', { name: '删除站点 intranet.example.com' }).click();
   await expect.poll(async () => (await readSettings(serviceWorker)).sites).toHaveLength(1);
+});
+
+test('设置导出导入：导出的文件不含 Key；改一项后导入能恢复，Key 仍在本机', async ({
+  page,
+  serviceWorker,
+}) => {
+  await writeSettings(serviceWorker, settingsWith(r));
+  await openOptions(page);
+  const fold = await openFold(page, 'fold-transfer');
+
+  const includeKeys = fold.getByLabel('包含 Key');
+  await expect(includeKeys).not.toBeChecked();
+  await expect(fold).toContainText('默认不含：Key');
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    fold.getByRole('button', { name: '导出设置' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^reading-assistant-settings-\d{8}\.json$/);
+  const path = await download.path();
+  if (!path) throw new Error('没有拿到下载文件');
+  const content = await readFile(path, 'utf8');
+  const file = JSON.parse(content) as {
+    format: string;
+    formatVersion: number;
+    settings: { version: number; connections: { apiKey: string; baseUrl: string }[] };
+  };
+  expect(file.format).toBe('reading-assistant-settings');
+  expect(file.formatVersion).toBe(1);
+  expect(file.settings.version).toBe(2);
+  expect(file.settings.connections[0]?.apiKey).toBe('');
+  expect(content).not.toContain('e2e-fake-key');
+
+  // 改一项设置，再导入刚才的文件
+  await page.getByTestId('common').getByLabel('默认回答长度').selectOption('detailed');
+  await expect.poll(async () => (await readSettings(serviceWorker)).reply.lengthTier).toBe('detailed');
+
+  await fold.getByLabel('选择设置文件').setInputFiles(path);
+  const preview = fold.getByTestId('import-preview');
+  await expect(preview).toContainText('1 个连接');
+  await expect(preview).toContainText('0 个自定义动作');
+  await expect(preview).toContainText('默认模型：模拟中转站 · mock-flash');
+  // 文件里 Key 被清空，本机同一 id 的连接还在：保留本机的 Key
+  await expect(preview).toContainText('已保留本机的 Key：模拟中转站');
+  await preview.getByRole('button', { name: '替换当前设置' }).click();
+  await expect(fold.getByText('已导入设置')).toBeVisible();
+  await expect
+    .poll(async () => {
+      const s = await readSettings(serviceWorker);
+      return {
+        tier: s.reply.lengthTier,
+        key: s.connections[0]?.apiKey,
+        def: s.defaultModel?.model,
+      };
+    })
+    .toEqual({ tier: 'brief', key: 'e2e-fake-key', def: MODEL });
+});
+
+test('删除连接：行内确认，取消不删；确认后可以撤销，连接与 Key 一并恢复', async ({ page, serviceWorker }) => {
+  await writeSettings(serviceWorker, settingsWith(r));
+  await openOptions(page);
+  const fold = await openFold(page, 'fold-connections');
+  const item = fold.getByTestId('connection-item').first();
+  await expect(item).toContainText('模拟中转站');
+
+  await item.getByRole('button', { name: '删除', exact: true }).click();
+  const confirm = item.getByTestId('remove-confirm');
+  await expect(confirm).toContainText('是默认模型所在的连接');
+  await expect(confirm).toContainText('确定删除「模拟中转站」？');
+  await confirm.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(item).toContainText('模拟中转站');
+  expect((await readSettings(serviceWorker)).connections).toHaveLength(1);
+
+  await item.getByRole('button', { name: '删除', exact: true }).click();
+  await item.getByTestId('remove-confirm').getByRole('button', { name: '删除', exact: true }).click();
+  await expect(fold.getByTestId('connection-item')).toHaveCount(0);
+  const undo = fold.getByTestId('undo-bar');
+  await expect(undo).toContainText('已删除「模拟中转站」');
+  await expect
+    .poll(async () => {
+      const s = await readSettings(serviceWorker);
+      return { count: s.connections.length, def: s.defaultModel };
+    })
+    .toEqual({ count: 0, def: undefined });
+
+  await undo.getByRole('button', { name: '撤销删除「模拟中转站」' }).click();
+  await expect(fold.getByTestId('connection-item')).toHaveCount(1);
+  await expect(fold.getByTestId('undo-bar')).toHaveCount(0);
+  await expect
+    .poll(async () => {
+      const s = await readSettings(serviceWorker);
+      return { key: s.connections[0]?.apiKey, def: s.defaultModel };
+    })
+    .toEqual({ key: 'e2e-fake-key', def: { connectionId: 'e2e-conn-0001', model: MODEL } });
 });

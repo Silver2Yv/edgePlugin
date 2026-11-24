@@ -143,6 +143,53 @@ export function removeConnection(base: Settings, connectionId: string): Settings
   };
 }
 
+/** 删除连接时记下撤销所需：原位置、连接本体、删除时被清掉的默认 / 辅助模型 */
+export interface RemovedConnection {
+  conn: Connection;
+  index: number;
+  defaultModel?: ModelRef;
+  auxModel?: ModelRef;
+}
+
+/** 删除连接并带回撤销所需的信息；连接不存在返回 undefined */
+export function removeConnectionWithUndo(
+  base: Settings,
+  connectionId: string,
+): { settings: Settings; removed: RemovedConnection } | undefined {
+  const index = base.connections.findIndex((c) => c.id === connectionId);
+  const conn = base.connections[index];
+  if (index < 0 || conn === undefined) return undefined;
+  return {
+    settings: removeConnection(base, connectionId),
+    removed: {
+      conn,
+      index,
+      ...(base.defaultModel !== undefined ? { defaultModel: base.defaultModel } : {}),
+      ...(base.auxModel !== undefined ? { auxModel: base.auxModel } : {}),
+    },
+  };
+}
+
+/**
+ * 撤销删除连接：放回原位置（原来的内容，Key 一并恢复）；删除时被清掉的默认 / 辅助模型一并恢复。
+ * 若用户后来又选了别的模型，不覆盖当前选择
+ */
+export function restoreConnection(base: Settings, removed: RemovedConnection): Settings {
+  if (base.connections.some((c) => c.id === removed.conn.id)) return base;
+  const connections = [...base.connections];
+  connections.splice(Math.min(removed.index, connections.length), 0, removed.conn);
+  return {
+    ...base,
+    connections,
+    ...(base.defaultModel === undefined && removed.defaultModel?.connectionId === removed.conn.id
+      ? { defaultModel: removed.defaultModel }
+      : {}),
+    ...(base.auxModel === undefined && removed.auxModel?.connectionId === removed.conn.id
+      ? { auxModel: removed.auxModel }
+      : {}),
+  };
+}
+
 export function setDefaultModel(base: Settings, model: ModelRef): Settings {
   return { ...base, defaultModel: model };
 }
@@ -470,6 +517,52 @@ export function removeCustomAction(base: Settings, id: ActionId): Settings {
     customActions: base.customActions.filter((a) => a.id !== id),
     toolbarActions: base.toolbarActions.filter((x) => x !== id),
     hiddenActions: base.hiddenActions.filter((x) => x !== id),
+  };
+}
+
+/** 删除自定义动作时记下撤销所需：原位置、动作本体、在工具栏顺序与停用表里的位置（不在为 -1） */
+export interface RemovedCustomAction {
+  def: ActionDef;
+  index: number;
+  toolbarIndex: number;
+  hiddenIndex: number;
+}
+
+/** 删除自定义动作并带回撤销所需的信息；动作不存在返回 undefined */
+export function removeCustomActionWithUndo(
+  base: Settings,
+  id: ActionId,
+): { settings: Settings; removed: RemovedCustomAction } | undefined {
+  const index = base.customActions.findIndex((a) => a.id === id);
+  const def = base.customActions[index];
+  if (index < 0 || def === undefined) return undefined;
+  return {
+    settings: removeCustomAction(base, id),
+    removed: {
+      def,
+      index,
+      toolbarIndex: base.toolbarActions.indexOf(id),
+      hiddenIndex: base.hiddenActions.indexOf(id),
+    },
+  };
+}
+
+/** 撤销删除自定义动作：放回原位置，工具栏顺序与停用表里的编号也回到原位置 */
+export function restoreCustomAction(base: Settings, removed: RemovedCustomAction): Settings {
+  if (base.customActions.some((a) => a.id === removed.def.id)) return base;
+  const customActions = [...base.customActions];
+  customActions.splice(Math.min(removed.index, customActions.length), 0, removed.def);
+  const insertAt = (list: readonly ActionId[], at: number): readonly ActionId[] => {
+    if (at < 0 || list.includes(removed.def.id)) return list;
+    const next = [...list];
+    next.splice(Math.min(at, next.length), 0, removed.def.id);
+    return next;
+  };
+  return {
+    ...base,
+    customActions,
+    toolbarActions: insertAt(base.toolbarActions, removed.toolbarIndex),
+    hiddenActions: insertAt(base.hiddenActions, removed.hiddenIndex),
   };
 }
 

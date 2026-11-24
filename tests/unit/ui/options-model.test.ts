@@ -26,9 +26,13 @@ import {
   parseExtraParams,
   promptText,
   removeConnection,
+  removeConnectionWithUndo,
   removeCustomAction,
+  removeCustomActionWithUndo,
   resetPrompt,
   resolveApiKey,
+  restoreConnection,
+  restoreCustomAction,
   setActionHidden,
   setCapabilityOverride,
   setDefaultModel,
@@ -142,6 +146,36 @@ describe('连接：预设、增删改', () => {
     expect('auxModel' in removedB).toBe(false);
     expectValid(removedA);
     expectValid(removedB);
+  });
+
+  it('撤销删除：放回原位置，Key 与删除时清掉的默认 / 辅助模型一并恢复；不覆盖后来新选的模型', () => {
+    let s = upsertConnection(base(), conn(ID_A)).settings;
+    s = upsertConnection(s, conn(ID_B)).settings;
+    s = {
+      ...setDefaultModel(s, { connectionId: ID_A, model: 'm1' }),
+      auxModel: { connectionId: ID_A, model: 'm3' },
+    };
+    const r = removeConnectionWithUndo(s, ID_A);
+    expect(r).toBeDefined();
+    if (!r) return;
+    expect(r.removed.index).toBe(0);
+    expect(r.settings.connections.map((c) => c.id)).toEqual([ID_B]);
+    expect(r.settings.defaultModel).toBeUndefined();
+    expect('auxModel' in r.settings).toBe(false);
+
+    const restored = restoreConnection(r.settings, r.removed);
+    expect(restored.connections.map((c) => c.id)).toEqual([ID_A, ID_B]);
+    expect(restored.connections[0]?.apiKey).toBe('sk-test');
+    expect(restored.defaultModel).toEqual({ connectionId: ID_A, model: 'm1' });
+    expect(restored.auxModel).toEqual({ connectionId: ID_A, model: 'm3' });
+    expectValid(restored);
+
+    // 撤销前用户又选了别的默认模型：不覆盖当前选择
+    const changed = setDefaultModel(r.settings, { connectionId: ID_B, model: 'm2' });
+    expect(restoreConnection(changed, r.removed).defaultModel).toEqual({ connectionId: ID_B, model: 'm2' });
+    // 连接还在就什么都不做；连接不存在返回 undefined
+    expect(restoreConnection(s, r.removed)).toBe(s);
+    expect(removeConnectionWithUndo(s, 'no-such-conn')).toBeUndefined();
   });
 
   it('Key 输入框不回显：留空沿用已存的，填了替换，点清除才清空', () => {
@@ -437,6 +471,30 @@ describe('自定义动作', () => {
     expect(s.toolbarActions).toEqual(['ask', 'explain', 'save']);
     expect(s.hiddenActions).toEqual([]);
     expectValid(s);
+  });
+
+  it('撤销删除：动作、工具栏位置与停用状态都回到原样', () => {
+    const id = `custom:${UUID}` as const;
+    let s = upsertCustomAction(base(), draft(), UUID);
+    s = moveToolbarAction(s, id, -1);
+    s = setActionHidden(s, id, true);
+    expect(s.toolbarActions).toEqual(['ask', 'explain', id, 'save']);
+    const r = removeCustomActionWithUndo(s, id);
+    expect(r).toBeDefined();
+    if (!r) return;
+    expect(r.removed).toMatchObject({ index: 0, toolbarIndex: 2, hiddenIndex: 0 });
+    expect(r.settings.customActions).toEqual([]);
+    expect(r.settings.hiddenActions).toEqual([]);
+
+    const restored = restoreCustomAction(r.settings, r.removed);
+    expect(restored.customActions).toEqual(s.customActions);
+    expect(restored.toolbarActions).toEqual(['ask', 'explain', id, 'save']);
+    expect(restored.hiddenActions).toEqual([id]);
+    expectValid(restored);
+
+    // 动作还在就什么都不做；不存在返回 undefined
+    expect(restoreCustomAction(s, r.removed)).toBe(s);
+    expect(removeCustomActionWithUndo(s, `custom:${'f'.repeat(32)}`)).toBeUndefined();
   });
 });
 

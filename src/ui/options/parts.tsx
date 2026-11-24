@@ -1,7 +1,8 @@
 // 设置页与欢迎页共用的几个小组件：设置行（名字 + 说明在左，控件在右）、可折叠小节（展开时才渲染内容）、表单字段。
 // 说明文字直接显示在选项旁边，不藏在问号图标里（K3）。
 import type { ComponentChildren } from 'preact';
-import { useState } from 'preact/hooks';
+import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
+import { S } from './strings';
 
 /** 一行设置：左边名字与一两句说明，右边控件 */
 export function Row(props: { label: string; help?: ComponentChildren; children: ComponentChildren }) {
@@ -113,4 +114,48 @@ export function SecretInput(props: {
     ...(props.disabled !== undefined ? { disabled: props.disabled } : {}),
   };
   return props.shown ? <input type="text" {...common} /> : <input type="password" {...common} />;
+}
+
+/**
+ * 删除后的撤销窗口（M4：不用模态弹窗）：记下刚删的名字与恢复数据，到时间自己收起。
+ * 再删一项会替换掉上一条（前一条随之失效）
+ */
+export function useUndo<T>(seconds = 10) {
+  const [notice, setNotice] = useState<{ name: string; data: T } | null>(null);
+  const timer = useRef<number | undefined>(undefined);
+  const clear = useCallback(() => {
+    if (timer.current !== undefined) window.clearTimeout(timer.current);
+    timer.current = undefined;
+    setNotice(null);
+  }, []);
+  const show = useCallback(
+    (name: string, data: T) => {
+      if (timer.current !== undefined) window.clearTimeout(timer.current);
+      setNotice({ name, data });
+      timer.current = window.setTimeout(() => {
+        timer.current = undefined;
+        setNotice(null);
+      }, seconds * 1000);
+    },
+    [seconds],
+  );
+  useEffect(() => clear, [clear]);
+  return { notice, show, clear };
+}
+
+/** 「已删除「X」」与撤销按钮 */
+export function UndoBar(props: { name: string; onUndo: () => void }) {
+  return (
+    <div class="opt-banner" role="status" data-testid="undo-bar">
+      <span>{S.undo.deleted(props.name)}</span>
+      <button
+        type="button"
+        class="ra-btn ra-btn--small"
+        aria-label={S.undo.undoLabel(props.name)}
+        onClick={props.onUndo}
+      >
+        {S.undo.undo}
+      </button>
+    </div>
+  );
 }
