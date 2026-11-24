@@ -48,6 +48,8 @@ const zh = {
     pageChanged: '页面内容已变化，之后的提问会用新内容',
     /** C2：订阅到的对话不属于当前标签页的页面（历史里点开的别页对话） */
     crossPageConversation: '这是别的页面的对话，只能查看；要接着问请回到那一页',
+    /** 决策 098：跨页提示旁的按钮 */
+    backToPage: '回到那一页',
   },
 
   reject: {
@@ -187,7 +189,16 @@ const zh = {
       siteBlocked: '这个网站设为不读取页面内容，无法定位',
       unavailable: '这个页面无法定位（浏览器内部页面，或页面没有响应）',
       subframe: '这段在内嵌页面里，暂时无法定位',
+      noRecord: '找不到这一页的记录（可能已被删除）',
+      badUrl: '这个地址不是网页（只能打开 http、https 和本地文件），没有打开',
+      loadTimeout: '页面加载超时，没有定位；页面打开后可以再点一次',
+      redirected: '页面打开后跳转到了别的地址，和当时的页面对不上，没有定位',
+      openFailed: '没能打开这个页面',
+      noAnchor: '这条收藏没有记下原文位置，只打开了页面',
     },
+    /** 决策 097：一处标了多个编号时，当前跳的是第几处 */
+    position: (index: number, total: number) => `第 ${index} / ${total} 处`,
+    opening: '正在打开页面…',
   },
 
   /** 「总结本页」完整版：上次总结卡片（6.2、I6），cite 块 */
@@ -301,6 +312,9 @@ const zh = {
     deleteFailed: (reason: string) => `删除失败：${reason}`,
     answerLabel: '回答',
     viewOriginal: '查看原文',
+    /** 决策 098：回到收藏时的页面并高亮原文 */
+    jump: '回到原文',
+    jumpTitle: '打开收藏时的那一页，并在网页上标出这段原文',
   },
 };
 

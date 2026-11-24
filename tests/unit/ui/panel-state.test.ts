@@ -332,3 +332,36 @@ describe('回答上的「存」（G3）', () => {
     });
   });
 });
+
+describe('回到某一页后显示那个对话（决策 098）', () => {
+  it('retarget 带对话：订阅消息带上它；同一标签页的再订阅沿用，收到这个对话的订阅确认就清掉', () => {
+    let s = run(readyPanel(), { kind: 'retarget', tabId: 1 }, server(subscribed(1, undefined, 'c-other')));
+    // 点「回到那一页」：标签页已经是 1（同一标签页），对话换成 c-a
+    s = run(s, { kind: 'retarget', tabId: 1, conversationId: 'c-a' });
+    expect(s.subscribeConversation).toBe('c-a');
+    expect(s.targetConfirmed).toBe(false);
+    expect(panelSubscribeMessage(s)).toEqual({ type: 'conv/subscribe', tabId: 1, conversationId: 'c-a' });
+    // 加载过程中地址变化引起的再订阅：仍然带着它
+    s = run(s, { kind: 'retarget', tabId: 1 });
+    expect(panelSubscribeMessage(s)).toEqual({ type: 'conv/subscribe', tabId: 1, conversationId: 'c-a' });
+    // 先订阅的那次（没带对话）的确认先到：不清；后订阅的那次到了才清，并显示 c-a
+    s = run(s, server(subscribed(1, undefined, 'c-latest')));
+    expect(s.subscribeConversation).toBe('c-a');
+    s = run(s, server(subscribed(1, undefined, 'c-a')));
+    expect(s.subscribeConversation).toBeNull();
+    expect(s.conversationId).toBe('c-a');
+    expect(panelSubscribeMessage(s)).toEqual({ type: 'conv/subscribe', tabId: 1 });
+  });
+
+  it('换到别的标签页：带对话的新订阅（点过「新对话」也以这次为准）；之后再换标签页就不带了', () => {
+    let s = run(readyPanel(), { kind: 'retarget', tabId: 1 }, server(subscribed(1)), {
+      kind: 'newConversation',
+    });
+    expect(s.freshConversation).toBe(true);
+    s = run(s, { kind: 'retarget', tabId: 2, conversationId: 'c-a' });
+    expect(s.freshConversation).toBe(false);
+    expect(panelSubscribeMessage(s)).toMatchObject({ tabId: 2, conversationId: 'c-a' });
+    s = run(s, { kind: 'retarget', tabId: 3 });
+    expect(panelSubscribeMessage(s)).toEqual({ type: 'conv/subscribe', tabId: 3 });
+  });
+});

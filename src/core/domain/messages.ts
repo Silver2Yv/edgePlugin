@@ -471,6 +471,18 @@ export const clientToBackground = tagged({
     index: int({ min: 0 }),
     data: str({ maxBytes: PASTE_CHUNK_CHARS, pattern: /^[A-Za-z0-9+/]*={0,2}$/ }),
   }),
+  /**
+   * contract-v1.6 增量，仅侧边栏：回到某一页（决策 098）。pageKey 是「别的页面的对话」所属的页面，favoriteId 是收藏的「回到原文」，
+   * 两者恰好给一个（都给或都不给拒绝 invalid）。目标地址由后台按它们从库里取（PageRecord.url / FavoriteRecord.url），
+   * 消息里没有地址（规则 6、7）；只开 http / https / file。本窗口已有这一页的标签页就切过去，没有就新开一个并等加载完成；
+   * 收藏带锚点时再让阅读器定位并高亮。结果回 jump/result
+   */
+  'jump/open': obj({
+    type: lit('jump/open'),
+    requestId: id,
+    pageKey: opt(str({ min: 1, max: 4_000 })),
+    favoriteId: opt(id),
+  }),
 });
 export type ClientToBackground = Infer<typeof clientToBackground>;
 
@@ -626,6 +638,21 @@ export type BackgroundToClient =
     }
   | {
       /**
+       * contract-v1.6 增量：jump/open 的结果（决策 098）。ok 为真：已到那一页的标签页 tabId（existing 切过去的、new 新开的）；
+       * 收藏回原文时再带定位结果 level / reason / back（同 citation/located；没有锚点回 reason: noAnchor，
+       * 站点不读取回 siteBlocked，只打开页面）。ok 为假：reason 说明没到（页面地址变了回 redirected 等）
+       */
+      type: 'jump/result';
+      requestId: string;
+      ok: boolean;
+      tabId?: number;
+      opened?: 'existing' | 'new';
+      level?: 'exact' | 'fuzzy' | 'scroll' | 'none';
+      reason?: CitationFailReason;
+      back?: boolean;
+    }
+  | {
+      /**
        * contract-v1.5 增量：一页的上次总结（应答 summary/get 时带 requestId；后台复用上次总结、不重新请求时主动推给该标签页，
        * 不带 requestId、show 为真）。summary 不在表示这一页没有可用的上次总结。
        * current：总结所基于的内容版本与页面现在的比较——same 一致；changed 不一致（界面标「基于旧版本」）；unknown 没能核对
@@ -701,6 +728,13 @@ export type PanelNoticeKind =
  * | siteBlocked | 站点设为「不读取页面内容」 |
  * | unavailable | 页面不允许注入（浏览器内部页面等）或阅读器没有应答 |
  * | subframe | 这段在内嵌页面（iframe）里，本版本只读取、不能在网页上定位（D10） |
+ * contract-v1.6 增量（跳回原页面，决策 098）：
+ * | noRecord | 库里没有这一页或这条收藏的记录（已被删除） |
+ * | badUrl | 记录里的地址不是 http / https / file，不打开 |
+ * | loadTimeout | 页面加载超时，没有定位 |
+ * | redirected | 页面打开后跳转到了别处（地址对不上记录），没有定位 |
+ * | openFailed | 标签页没能打开，或加载中途被关掉 |
+ * | noAnchor | 这条收藏没有记下原文位置，只打开了页面 |
  */
 export type CitationFailReason =
   | 'notCited'
@@ -709,7 +743,13 @@ export type CitationFailReason =
   | 'notFound'
   | 'siteBlocked'
   | 'unavailable'
-  | 'subframe';
+  | 'subframe'
+  | 'noRecord'
+  | 'badUrl'
+  | 'loadTimeout'
+  | 'redirected'
+  | 'openFailed'
+  | 'noAnchor';
 
 /** 上次总结（summary/last）：消息记录里去掉了思考过程，正文过长时截断 */
 export interface LastSummary {
@@ -890,6 +930,8 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
     // contract-v1.6 增量
     'paste/begin',
     'paste/chunk',
+    // contract-v1.6 增量：只有侧边栏能让后台开标签页（决策 098）
+    'jump/open',
   ]),
   // contract-v1.5：欢迎页没有另开角色，仍是 options。其中 demo/ask 只有 welcome.html 所在标签页能发，
   // 这一层由处理函数按 sender 再核对（background/welcome-demo.ts），设置页发来也拒绝

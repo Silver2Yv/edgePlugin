@@ -21,6 +21,7 @@ import {
   type ClientToBackground,
   CONV_PORT,
 } from '@/core/domain/messages';
+import type { FavoriteRecord } from '@/core/domain/records';
 import { SESSION_KEYS } from '@/core/domain/session-keys';
 import type { ModelRef } from '@/core/llm/adapter';
 import { isReadCoverageNote, SUMMARIZE_PAGE_QUESTION } from '@/core/prompt/ask';
@@ -38,7 +39,7 @@ import {
   summaryTime,
   useLastSummary,
 } from './cite/SummaryCard';
-import { CiteNote, useCite } from './cite/useCite';
+import { CiteNote, type JumpOptions, useCite } from './cite/useCite';
 import { displayItems, latestPlan, questionForJob } from './float/messages';
 import { pageInfo } from './float/send-summary';
 import {
@@ -108,7 +109,15 @@ export function SidePanelApp() {
   // cite 块：引用跳回原文（F1、F4）与上次总结（6.2）；换了标签页就清掉
   const canSendNow = () => stateRef.current.connPhase === 'ready' && stateRef.current.targetConfirmed;
   const post = (msg: ClientToBackground) => portRef.current?.postMessage(msg);
-  const cite = useCite({ post, canSendNow, wake }, `${state.target}:${state.job?.jobId ?? ''}`);
+  // 回到某一页成功（决策 098）：已在 tabId 这个标签页。要显示对话的就带着对话改订阅；标签页换了本窗口的活动标签页，
+  // 面板自己会跟随，这里不重复订阅。当前标签页正在生成回答时不换掉它显示的对话
+  const onJumped = (tabId: number, o: JumpOptions) => {
+    if (o.conversationId === undefined) return;
+    if (tabId === stateRef.current.target && isGenerating(stateRef.current.job)) return;
+    dispatch({ kind: 'retarget', tabId, conversationId: o.conversationId });
+    wake();
+  };
+  const cite = useCite({ post, canSendNow, wake, onJumped }, `${state.target}:${state.job?.jobId ?? ''}`);
   const lastSummary = useLastSummary({ post, canSendNow }, String(state.target), state.job?.jobId ?? null);
   const opDeps: OpDeps = { post, registry: opRegistryRef.current };
 
@@ -361,6 +370,26 @@ export function SidePanelApp() {
     setView('chat');
   };
 
+  /** 别的页面的对话旁的「回到那一页」（决策 098）：切到或新开那一页的标签页，到了之后显示这个对话 */
+  const handleBackToPage = () => {
+    if (state.conversationPageKey === null || cite.cite?.pending) return;
+    cite.jump(
+      { pageKey: state.conversationPageKey },
+      state.conversationId === null ? {} : { conversationId: state.conversationId },
+    );
+  };
+
+  /**
+   * 收藏的「回到原文」（决策 098）：打开或切到收藏时的页面，有锚点就定位并高亮；
+   * 没有锚点、只有来源对话的（回答上的「存」）显示那个对话。结果说明在对话视图的提示区，所以切过去
+   */
+  const handleJumpFavorite = (f: FavoriteRecord) => {
+    if (cite.cite?.pending) return;
+    setView('chat');
+    const source = f.anchor === undefined ? f.source?.conversationId : undefined;
+    cite.jump({ favoriteId: f.id }, source === undefined ? {} : { conversationId: source, quiet: true });
+  };
+
   const connMessage = CONN_MESSAGE[state.connPhase];
   const pageKeyOfTab = pageUrl ? (toPageKey(pageUrl) ?? null) : null;
   // 跨页对话（C2）：订阅到的对话属于别的页面——只能看，续问请回到那一页（后台 conv/ask 也会拒绝 notOwner）
@@ -394,7 +423,13 @@ export function SidePanelApp() {
         <HistoryView deps={opDeps} pageKey={pageKeyOfTab} onOpen={handleOpenConversation} />
       )}
       {view === 'favorites' && (
-        <FavoritesView deps={opDeps} pageKey={pageKeyOfTab} refreshSeq={favRefreshSeq} />
+        <FavoritesView
+          deps={opDeps}
+          pageKey={pageKeyOfTab}
+          refreshSeq={favRefreshSeq}
+          onJump={handleJumpFavorite}
+          jumping={cite.cite?.pending === true}
+        />
       )}
       {view === 'chat' && (
         <>
@@ -453,6 +488,15 @@ export function SidePanelApp() {
             {isCrossPage && (
               <p data-testid="cross-page-notice" className="ra-note">
                 {T.notice.crossPageConversation}
+                <button
+                  type="button"
+                  data-testid="jump-to-page"
+                  className="ra-btn ra-btn--small"
+                  disabled={cite.cite?.pending === true}
+                  onClick={handleBackToPage}
+                >
+                  {T.notice.backToPage}
+                </button>
               </p>
             )}
             {state.pageChanged && (

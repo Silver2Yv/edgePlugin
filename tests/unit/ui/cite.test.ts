@@ -62,7 +62,11 @@ describe('AnswerView 的引用点击', () => {
     (root.querySelector('mark.ra-citation-quote') as HTMLElement).dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
     );
-    expect(onCitation.mock.calls).toEqual([[{ citation: '2' }], [{ citation: '3', quote: '红光' }]]);
+    expect(onCitation.mock.calls).toEqual([
+      // 多编号【2,3】交出全部编号与它在回答里是第几个引用标记，由 useCite 循环（决策 097）
+      [{ citation: '2', ids: ['2', '3'], slot: 0 }],
+      [{ citation: '3', quote: '红光' }],
+    ]);
     expect(root.querySelector('[data-ids="9"]')).toBeNull();
     expect(root.textContent).toContain('【9】');
     render(null, root);
@@ -77,6 +81,15 @@ describe('结果说明', () => {
     expect(citeNoteText({ ...base, level: 'fuzzy' })).toBe(T.cite.approx);
     expect(citeNoteText({ ...base, level: 'scroll' })).toBe(T.cite.approx);
     expect(citeNoteText({ ...base, level: 'none', reason: 'otherPage' })).toBe(T.cite.fail.otherPage);
+    // 决策 097：一处多个编号时写明是第几处；决策 098：打开页面中与新的失败原因
+    expect(citeNoteText({ ...base, level: 'exact', position: { index: 2, total: 3 } })).toBe(
+      `第 2 / 3 处：${T.cite.exact}`,
+    );
+    expect(citeNoteText({ ...base, pending: true, position: { index: 1, total: 2 } })).toBe(
+      `第 1 / 2 处：${T.cite.locating}`,
+    );
+    expect(citeNoteText({ ...base, pending: true, opening: true })).toBe(T.cite.opening);
+    expect(citeNoteText({ ...base, level: 'none', reason: 'redirected' })).toBe(T.cite.fail.redirected);
   });
 });
 

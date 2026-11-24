@@ -11,6 +11,7 @@ import { createHistory } from './history';
 import { createHub } from './hub';
 import { createIntents } from './intents';
 import { createJobs } from './jobs';
+import { createJump } from './jump';
 import { createOptions } from './options';
 import { createPageImages } from './page-images';
 import { createPages } from './pages';
@@ -45,6 +46,8 @@ export function createBackground(deps: BackgroundDeps) {
   const history = createHistory(deps, jobs);
   // 引用跳回与「总结本页」完整版（cite 块）
   const citations = createCitations(deps, jobs);
+  // 回到某一页（决策 098）：侧边栏「回到那一页」「回到原文」
+  const jump = createJump(deps, citations);
   const summary = createSummary(deps, history, pages, hub);
   const intents = createIntents(deps, store, hub, host, pages, route, jobs, favorites, {
     summary,
@@ -66,7 +69,12 @@ export function createBackground(deps: BackgroundDeps) {
     onMessage(raw: unknown, sender: SenderLike) {
       return senderRole(sender, deps.self) === 'options' ? options(raw, sender) : intents(raw, sender);
     },
-    onConnect: createConv(deps, store, hub, host, jobs, history, favorites, { citations, summary, capture }),
+    onConnect: createConv(deps, store, hub, host, jobs, history, favorites, {
+      citations,
+      summary,
+      capture,
+      jump,
+    }),
     /** 快捷键（commands.onCommand）：在监听器的同步段里调用，要开侧边栏的当场 open（规则 10） */
     onCommand: (command: string, tab: CommandTab | undefined) => commands.onCommand(command, tab),
     /** 右键菜单（contextMenus.onClicked）：同上 */

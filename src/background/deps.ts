@@ -82,6 +82,8 @@ export interface BackgroundDeps {
   sidePanelOpen(): Promise<boolean>;
   /** 叫醒断线的侧边栏后等它握手的上限（默认 1.5 秒）；可选只是为了单测缩短 */
   panelWakeMs?: number;
+  /** 工具栏「存」为取锚点读一次页面最多等多久（默认见 intents.ts 的 SAVE_ANCHOR_WAIT_MS）；可选只是为了单测缩短 */
+  anchorWaitMs?: number;
   /** 广播给扩展页面（runtime.sendMessage）；没有页面在收时不算失败 */
   notifyPages(msg: BackgroundToPages): Promise<void>;
   /** 指令只发给指定框架的指定文档；文档已不在时失败 */
@@ -134,4 +136,27 @@ export interface BackgroundDeps {
   captureVisibleTab?(windowId: number): Promise<string>;
   /** 截图的裁剪、缩放、编码与缩略图（OffscreenCanvas，capture-image.ts） */
   captureImages?: CaptureImages;
+  /**
+   * contract-v1.6 增量：回到某一页（jump/open，决策 098）用的标签页操作。靠 `<all_urls>` 主机权限，能看到标签页地址，
+   * 不加 tabs 权限。可选只是为了不打扰只测别的模块的单测，真实实现一定提供
+   */
+  tabs?: JumpTabs;
+}
+
+/** 窗口里的一个标签页（只取跳回用得到的字段）；url 取已提交的地址，没有就取正在加载的目标地址 */
+export interface TabInfo {
+  id: number;
+  url: string | undefined;
+  active: boolean;
+}
+
+export interface JumpTabs {
+  /** 窗口里所有标签页（tabs.query） */
+  list(windowId: number): Promise<TabInfo[]>;
+  /** 切到这个标签页（tabs.update active） */
+  activate(tabId: number): Promise<void>;
+  /** 在窗口里新开一个标签页并切过去；返回标签页编号 */
+  create(windowId: number, url: string): Promise<number>;
+  /** 等标签页加载完成（已经完成就立刻返回）；中途被关返回 closed */
+  waitLoaded(tabId: number, timeoutMs: number): Promise<'complete' | 'timeout' | 'closed'>;
 }

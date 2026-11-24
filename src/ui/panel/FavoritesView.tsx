@@ -18,6 +18,10 @@ export interface FavoritesViewProps {
   deps: OpDeps;
   pageKey: string | null;
   refreshSeq: number;
+  /** 「回到原文」（决策 098）：打开或切到收藏时的页面并定位；不给就不显示按钮 */
+  onJump?: (f: FavoriteRecord) => void;
+  /** 上一次回到原文还没有结果：先不让再点 */
+  jumping?: boolean;
 }
 
 interface Loaded {
@@ -56,7 +60,7 @@ async function load(pageKey: string | undefined, needle: string, before?: number
   }
 }
 
-export function FavoritesView({ deps, pageKey, refreshSeq }: FavoritesViewProps) {
+export function FavoritesView({ deps, pageKey, refreshSeq, onJump, jumping }: FavoritesViewProps) {
   const [scope, setScope] = useState<'all' | 'page'>('all');
   const [query, setQuery] = useState('');
   const [items, setItems] = useState<FavoriteRecord[]>([]);
@@ -231,6 +235,18 @@ export function FavoritesView({ deps, pageKey, refreshSeq }: FavoritesViewProps)
                   {new Date(f.createdAt).toLocaleString()}
                 </div>
                 <div className="ra-actions">
+                  {onJump && (
+                    <button
+                      type="button"
+                      className="ra-btn ra-btn--small"
+                      data-testid="favorite-jump"
+                      title={T.favorites.jumpTitle}
+                      disabled={jumping === true}
+                      onClick={() => onJump(f)}
+                    >
+                      {T.favorites.jump}
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="ra-btn ra-btn--small"

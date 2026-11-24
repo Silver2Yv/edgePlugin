@@ -63,6 +63,26 @@ describe('工具栏「存」（addFromSelection）', () => {
     const favs = await h.db.listFavorites({ limit: 10 });
     expect(favs[0]).toMatchObject({ selection: SELECTED, sourceText: SELECTED });
     expect(favs[0]?.anchor).toBeUndefined();
+    // 站点不读取：也不为取锚点去读页面
+    expect(h.sent.filter((s) => s.msg.type === 'page/read')).toHaveLength(0);
+  });
+
+  it('没读过页面就存：先读一次页面取锚点（selection/anchored 随读取到达），带锚点落库；读不到锚点也照常保存', async () => {
+    const h = makeHarness({ anchorWaitMs: 150 });
+    const saved = h.message(click(1, 'save'));
+    await until(() => h.sent.some((s) => s.msg.type === 'page/read'), '为取锚点读页面');
+    await h.message({ type: 'selection/anchored', selectionRevision: 1, anchor: ANCHOR, blockIds: ['b1'] });
+    expect(await saved).toMatchObject({ ok: true });
+    const favs = await h.db.listFavorites({ limit: 10 });
+    expect(favs[0]).toMatchObject({ sourceText: `前文${SELECTED}后文`, anchor: { exact: SELECTED } });
+    expect(h.sent.filter((s) => s.msg.type === 'page/read')).toHaveLength(1);
+
+    // 页面没读成（没人应答）：等一会儿就不带锚点存
+    const h2 = makeHarness({ anchorWaitMs: 20 });
+    expect(await h2.message(click(1, 'save'))).toMatchObject({ ok: true });
+    const f2 = await h2.db.listFavorites({ limit: 10 });
+    expect(f2[0]).toMatchObject({ selection: SELECTED, sourceText: SELECTED });
+    expect(f2[0]?.anchor).toBeUndefined();
   });
 
   it('写库失败时回 ok:false，不广播 favorite/changed', async () => {
