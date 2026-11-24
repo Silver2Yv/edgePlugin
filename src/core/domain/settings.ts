@@ -110,6 +110,8 @@ const connectionSchema = obj({
     rec(
       obj({
         thinking: opt(oneOf(['none', 'toggle', 'effort', 'unknown'])),
+        // contract-v1.6 增量：「可调强度」模型自填的思考档位（决策 100）；已有设置没有这一项，不需要升版本
+        thinkingLevels: opt(arr(oneOf(['off', 'low', 'medium', 'high', 'max']), { max: 5 })),
         vision: opt(oneOf(['yes', 'no', 'unknown'])),
         contextWindow: opt(int({ min: 1 })),
       }),
@@ -141,7 +143,7 @@ const settingsSchema = obj({
   reply: obj({
     lengthTier: oneOf(['brief', 'normal', 'detailed']),
     language: str({ min: 1, max: 35 }),
-    thinking: oneOf(['off', 'low', 'medium', 'high']),
+    thinking: oneOf(['off', 'low', 'medium', 'high', 'max']),
   }),
   context: obj({
     speedSoftBudgetRatio: num({ min: 0.1, max: 1 }),

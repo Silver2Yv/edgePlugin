@@ -2,7 +2,6 @@
 // 该消息类型本版本后台不处理，见 background/conv.ts）：按连接分组常用模型、搜索过滤、换模型再试
 // 的候选（H12）、思考控件随模型能力变化（H6）。不碰扩展 API，便于单测。
 
-import type { ThinkingLevel } from '@/core/context/plan';
 import type { Connection, ModelCapabilities, ModelErrorKind, ModelRef } from '@/core/llm/adapter';
 import { effectiveCapabilities } from '@/core/llm/capabilities';
 
@@ -94,21 +93,5 @@ export function capabilitiesFor(
   return conn && model ? effectiveCapabilities(conn, model.model) : null;
 }
 
-export type ThinkingControlMode = 'full' | 'toggle' | 'disabled';
-
-/** 思考控件随模型能力变化（H6）：开关只显示关/开；无思考的禁用；未知（或连接没了）照常四档 */
-export function thinkingControlMode(capability: ModelCapabilities | null): ThinkingControlMode {
-  if (capability?.thinking === 'toggle') return 'toggle';
-  if (capability?.thinking === 'none') return 'disabled';
-  return 'full';
-}
-
-/**
- * 按控件模式换算实际要发送的思考强度：开关类模型只认「关/非关」，各档都按「开」处理（5.8，
- * thinking.ts 的 qwen 分支同一个道理）；不支持思考的模型强制关闭；其余模式原样发送
- */
-export function clampThinking(mode: ThinkingControlMode, level: ThinkingLevel): ThinkingLevel {
-  if (mode === 'disabled') return 'off';
-  if (mode === 'toggle') return level === 'off' ? 'off' : 'medium';
-  return level;
-}
+// 思考控件的档位与就近取档的规则在 core/llm/thinking-levels.ts（后台发送前也用同一份），这里只转出口
+export { clampThinking, type ThinkingControl, thinkingControlOf } from '@/core/llm/thinking-levels';

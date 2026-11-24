@@ -1,5 +1,7 @@
 // 设置页 / 配置向导的表单纯逻辑（K、H2、H5、H11、I1、A3、A4）：与界面状态无关，全部是「旧设置 → 新设置」的纯函数，
 // 单测在 tests/unit/ui/options-model.test.ts。界面只负责收集输入、调用这里、把结果整份写回（5.11 的写入顺序见 persist.ts）。
+
+import type { ThinkingLevel } from '@/core/context/plan';
 import { type ActionDef, type ActionId, BUILTIN_ACTIONS, TOOLBAR_MAX } from '@/core/domain/actions';
 import type { Settings } from '@/core/domain/settings';
 import { normalizeSiteRule, type SiteRule } from '@/core/domain/site-policy';
@@ -233,6 +235,8 @@ export function filterModels(models: readonly string[], query: string): string[]
 
 export type CapabilityPatch = Partial<{
   thinking: ModelCapabilities['thinking'] | undefined;
+  /** 「可调强度」模型自填的思考档位；undefined 表示按内置判断（决策 100） */
+  thinkingLevels: readonly ThinkingLevel[] | undefined;
   vision: ModelCapabilities['vision'] | undefined;
   contextWindow: number | undefined;
 }>;
@@ -243,7 +247,7 @@ export type CapabilityPatch = Partial<{
  */
 export function setCapabilityOverride(conn: Connection, model: string, patch: CapabilityPatch): Connection {
   const current = { ...(conn.capabilityOverrides?.[model] ?? {}) };
-  for (const key of ['thinking', 'vision', 'contextWindow'] as const) {
+  for (const key of ['thinking', 'thinkingLevels', 'vision', 'contextWindow'] as const) {
     if (!(key in patch)) continue;
     const v = patch[key];
     if (v === undefined) delete current[key];
@@ -262,7 +266,7 @@ export interface CapabilityRow {
   builtin: ModelCapabilities;
   effective: ModelCapabilities;
   /** 哪些字段被手动改过 */
-  overridden: { thinking: boolean; vision: boolean; contextWindow: boolean };
+  overridden: { thinking: boolean; thinkingLevels: boolean; vision: boolean; contextWindow: boolean };
 }
 
 export function capabilityRow(conn: Connection, model: string): CapabilityRow {
@@ -273,6 +277,7 @@ export function capabilityRow(conn: Connection, model: string): CapabilityRow {
     effective: effectiveCapabilities(conn, model),
     overridden: {
       thinking: o?.thinking !== undefined,
+      thinkingLevels: o?.thinkingLevels !== undefined,
       vision: o?.vision !== undefined,
       contextWindow: o?.contextWindow !== undefined,
     },

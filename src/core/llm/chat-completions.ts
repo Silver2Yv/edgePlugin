@@ -17,6 +17,7 @@ import {
   type StreamParser,
   type Usage,
 } from './adapter';
+import { declaresThinkingEffort } from './capabilities';
 import { createSseLineParser } from './sse';
 import { buildThinkingBody, thinkingLevelOf } from './thinking';
 
@@ -80,7 +81,15 @@ function buildChatBody(
   if (req.stream) body.stream_options = { include_usage: true };
   // max_tokens 属可覆盖的采样参数（5.8）：额外参数里填了就以用户的为准
   if (req.maxTokens !== undefined && !('max_tokens' in body)) body.max_tokens = req.maxTokens;
-  Object.assign(body, buildThinkingBody(conn.preset, req.model, thinkingLevelOf(req.thinking)));
+  Object.assign(
+    body,
+    buildThinkingBody(
+      conn.preset,
+      req.model,
+      thinkingLevelOf(req.thinking),
+      declaresThinkingEffort(conn, req.model),
+    ),
+  );
   for (const p of excludeParams) delete body[p];
   return body;
 }

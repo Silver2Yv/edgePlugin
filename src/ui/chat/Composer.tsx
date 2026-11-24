@@ -7,15 +7,13 @@ import { useLayoutEffect, useRef } from 'preact/hooks';
 import type { ContextTier, ThinkingLevel } from '@/core/context/plan';
 import type { Connection, ModelRef } from '@/core/llm/adapter';
 import { type CaptureView, type QuoteView, shouldSendOnEnter } from '../float/state';
-import { capabilitiesFor, type ThinkingControlMode } from '../model/options';
+import { capabilitiesFor, type ThinkingControl } from '../model/options';
 import { T } from '../strings';
 import { CaptureButton, CapturePreview } from './CaptureParts';
 import { IconClose } from './Icons';
 import { ModelPicker } from './ModelPicker';
 
 const TIERS: readonly ContextTier[] = ['selection', 'nearby', 'fullPage'];
-const THINKING: readonly ThinkingLevel[] = ['off', 'low', 'medium', 'high'];
-const THINKING_TOGGLE: readonly ThinkingLevel[] = ['off', 'medium'];
 
 export interface ComposerProps {
   inputRef?: Ref<HTMLTextAreaElement>;
@@ -36,8 +34,8 @@ export interface ComposerProps {
   thinkingChanged: boolean;
   onTier: (tier: ContextTier) => void;
   onThinking: (thinking: ThinkingLevel) => void;
-  /** 所选模型支持的思考控件形态（H6）：开关类只显示关/开，不支持的禁用，其余照常四档 */
-  thinkingMode: ThinkingControlMode;
+  /** 所选模型的思考控件（H6、决策 100）：开关类只显示关/开，不支持的禁用，其余列出这个模型支持的档位 */
+  thinkingControl: ThinkingControl;
   /** 实际发送用的模型（J10：界面显示的就是实际发送的）；没有连接时为 null */
   model: ModelRef | null;
   /** 设置里的默认模型，用于判断是否临时切换过 */
@@ -152,7 +150,7 @@ export function Composer(p: ComposerProps) {
             </select>
           </span>
           <span className="ra-pick">
-            {p.thinkingMode === 'disabled' ? (
+            {p.thinkingControl.mode === 'disabled' ? (
               <select
                 className="ra-select"
                 aria-label={T.composer.thinkingLabel}
@@ -171,9 +169,9 @@ export function Composer(p: ComposerProps) {
                 value={p.thinking}
                 onChange={(e) => p.onThinking((e.target as HTMLSelectElement).value as ThinkingLevel)}
               >
-                {(p.thinkingMode === 'toggle' ? THINKING_TOGGLE : THINKING).map((t) => (
+                {p.thinkingControl.levels.map((t) => (
                   <option key={t} value={t}>
-                    {p.thinkingMode === 'toggle'
+                    {p.thinkingControl.mode === 'toggle'
                       ? T.composer.thinkingToggle[t === 'off' ? 'off' : 'on']
                       : T.composer.thinking[t]}
                   </option>

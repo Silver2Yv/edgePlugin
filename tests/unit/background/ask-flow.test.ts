@@ -6,6 +6,7 @@ import {
   click,
   FLOAT_DOC,
   fakeSession,
+  MODEL,
   makeHarness,
   readyFloat,
   SECRET_KEY,
@@ -115,6 +116,33 @@ describe('conv/ask', () => {
     expect(rec).toMatchObject({ state: 'completed', requestSent: true, workerEpoch: h.app.epoch });
     const lastDelta = c.received.lastIndexOf(deltas.at(-1) as Record<string, unknown>);
     expect(c.received.findIndex((m) => m.state === 'completed')).toBeGreaterThan(lastDelta);
+  });
+
+  it('思考强度发送前按模型支持的档位就近取档：计划、消息记录与请求体是同一个值（决策 100、规则 8）', async () => {
+    const cases = [
+      // 旧设置里的「中」/ 不经界面的入口：DeepSeek 没有「中」，取「高」
+      { model: 'deepseek-flash', asked: 'medium', sent: { effort: 'high' } },
+      // 「最高」在支持它的模型上原样发出
+      { model: 'deepseek-flash', asked: 'max', sent: { effort: 'max' } },
+      // 其他模型没有「最高」：取「高」
+      { model: 'mock-flash', asked: 'max', sent: { effort: 'high' } },
+      // 不支持思考的模型：强制关
+      { model: 'deepseek-chat', asked: 'high', sent: 'off' },
+    ] as const;
+    for (const t of cases) {
+      const h = makeHarness();
+      const c = await readyFloat(h);
+      await h.message(click());
+      c.send(askMsg({ model: { connectionId: MODEL.connectionId, model: t.model }, thinking: t.asked }));
+      await until(() => h.fetches.length === 1, 'fetch');
+      const body = JSON.parse(String((h.fetches[0] as { init: RequestInit }).init.body));
+      expect(body.thinking, `${t.model} ${t.asked}`).toEqual(t.sent);
+      const planThinking = (c.ofType('conv/plan')[0] as unknown as { plan: { thinking: string } }).plan
+        .thinking;
+      expect(planThinking, `${t.model} ${t.asked} 计划`).toBe(
+        typeof t.sent === 'string' ? t.sent : t.sent.effort,
+      );
+    }
   });
 
   it('同一个 clientRequestId 只接单一次', async () => {

@@ -52,7 +52,7 @@ import {
   shouldCloseOnToggle,
   switchConversationMessage,
 } from './float/state';
-import { capabilitiesFor, clampThinking, thinkingControlMode } from './model/options';
+import { capabilitiesFor, clampThinking, thinkingControlOf } from './model/options';
 import { ConversationSwitcher } from './panel/ConversationSwitcher';
 import { createOpRegistry, type OpDeps } from './panel/conv-ops';
 import { FavoritesView } from './panel/FavoritesView';
@@ -272,7 +272,7 @@ export function SidePanelApp() {
   }, [pageSummaryDone, state.job?.jobId]);
   const summaryVisible = summaryCardVisible(lastSummary.shown, lastSummary.forced, state);
   const effectiveModel = state.modelOverride ?? defaults.model;
-  const thinkingMode = thinkingControlMode(capabilitiesFor(defaults.connections, effectiveModel));
+  const thinkingControl = thinkingControlOf(capabilitiesFor(defaults.connections, effectiveModel));
 
   const handleSend = async () => {
     if (await submitAsk(askDeps, question)) setQuestion('');
@@ -318,7 +318,7 @@ export function SidePanelApp() {
     const clientRequestId = crypto.randomUUID();
     const text = actionId === 'summarizePage' ? SUMMARIZE_PAGE_QUESTION : label;
     const model = state.modelOverride ?? ask.model;
-    const mode = thinkingControlMode(capabilitiesFor(ask.connections, model));
+    const control = thinkingControlOf(capabilitiesFor(ask.connections, model));
     portRef.current?.postMessage(
       buildAskMessage({
         clientRequestId,
@@ -327,7 +327,7 @@ export function SidePanelApp() {
         conversationId: state.conversationId,
         fresh: state.freshConversation,
         lengthTier: ask.lengthTier,
-        thinking: clampThinking(mode, state.thinkingOverride ?? ask.thinking),
+        thinking: clampThinking(control, state.thinkingOverride ?? ask.thinking),
         model,
         contextTier: 'fullPage',
         actionId,
@@ -499,14 +499,14 @@ export function SidePanelApp() {
               quote={state.quote}
               onDismissQuote={() => dispatch({ kind: 'dismissQuote' })}
               tier={state.tierOverride ?? defaults.contextTier}
-              thinking={clampThinking(thinkingMode, state.thinkingOverride ?? defaults.thinking)}
+              thinking={clampThinking(thinkingControl, state.thinkingOverride ?? defaults.thinking)}
               tierChanged={state.tierOverride !== null && state.tierOverride !== defaults.contextTier}
               thinkingChanged={
                 state.thinkingOverride !== null && state.thinkingOverride !== defaults.thinking
               }
               onTier={(contextTier) => dispatch({ kind: 'setTier', contextTier })}
               onThinking={(thinking) => dispatch({ kind: 'setThinking', thinking })}
-              thinkingMode={thinkingMode}
+              thinkingControl={thinkingControl}
               model={effectiveModel}
               defaultModel={defaults.model}
               connections={defaults.connections}

@@ -6,8 +6,11 @@ import type { ModelRef } from '../llm/adapter';
 export type LengthTier = 'brief' | 'normal' | 'detailed';
 /** 页面上下文档位（三档） */
 export type ContextTier = 'selection' | 'nearby' | 'fullPage';
-/** 思考强度（H6），出厂默认 off；模型只支持开关时 low/medium/high 都按「开」发送 */
-export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high';
+/**
+ * 思考强度（H6），出厂默认 off；模型只支持开关时 low/medium/high/max 都按「开」发送。
+ * max 是 contract-v1.6 增量（决策 100）：界面只列所选模型实际支持的档位（见 llm/thinking-levels.ts）
+ */
+export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high' | 'max';
 
 export interface Budget {
   /** 模型硬上限；能力表未知时按 32k 保守值 */

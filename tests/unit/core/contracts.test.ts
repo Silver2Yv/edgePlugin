@@ -218,7 +218,10 @@ describe('消息协议', () => {
   it('发问消息完整校验；选中文字不经界面转手', () => {
     expect(parseFrom('float', clientToBackground, ask()).ok).toBe(true);
     expect(parseFrom('float', clientToBackground, ask({ selection: { text: '选区' } })).ok).toBe(false);
-    expect(parseFrom('float', clientToBackground, ask({ thinking: 'max' })).ok).toBe(false);
+    expect(parseFrom('float', clientToBackground, ask({ thinking: 'ultra' })).ok).toBe(false);
+    // contract-v1.6 增量：思考强度增加 max；旧的四档取值仍然合法
+    for (const t of ['off', 'low', 'medium', 'high', 'max'])
+      expect(parseFrom('float', clientToBackground, ask({ thinking: t })).ok).toBe(true);
     expect(parseFrom('float', clientToBackground, ask({ actionId: 'custom:x' })).ok).toBe(false);
     expect(parseFrom('float', clientToBackground, ask({ actionId: `custom:${ID}` })).ok).toBe(true);
   });
@@ -466,6 +469,11 @@ describe('设置迁移', () => {
   it('非法值判为损坏，不静默接受', () => {
     for (const bad of [
       { version: 1, reply: { lengthTier: 'huge' } },
+      { version: 1, reply: { thinking: 'ultra' } },
+      {
+        version: 1,
+        connections: [{ ...conn, capabilityOverrides: { m: { thinkingLevels: ['low', 'ultra'] } } }],
+      },
       { version: 1, context: { speedSoftBudgetRatio: Number.NaN } },
       { version: 1, connections: [{ ...conn, interfaceType: 'grpc' }] },
       { version: 1, toolbarActions: ['rm -rf'] },
@@ -473,6 +481,34 @@ describe('设置迁移', () => {
     ]) {
       expect(migrateSettings(bad)).toMatchObject({ ok: false, error: 'corrupt' });
     }
+  });
+
+  it('思考强度增加「最高」、模型能力可自填思考档位（contract-v1.6 增量）：不升版本，旧设置原样可读', () => {
+    // 旧设置里存的「中」仍合法（用在 DeepSeek 上由发送前就近取档处理，不改存储）
+    const old = migrateSettings({ version: SETTINGS_VERSION, reply: { thinking: 'medium' } });
+    expect(old).toMatchObject({ ok: true, migratedFrom: SETTINGS_VERSION });
+    if (old.ok) expect(old.settings.reply.thinking).toBe('medium');
+
+    const withMax = migrateSettings({
+      version: SETTINGS_VERSION,
+      reply: { thinking: 'max' },
+      connections: [
+        {
+          ...conn,
+          capabilityOverrides: {
+            'corp-model': { thinking: 'effort', thinkingLevels: ['off', 'low', 'max'] },
+          },
+        },
+      ],
+    });
+    expect(withMax.ok).toBe(true);
+    if (!withMax.ok) return;
+    expect(withMax.settings.reply.thinking).toBe('max');
+    expect(withMax.settings.connections[0]?.capabilityOverrides?.['corp-model']?.thinkingLevels).toEqual([
+      'off',
+      'low',
+      'max',
+    ]);
   });
 
   it('导出默认脱敏：Key、像凭据的请求头与参数、地址查询串', () => {

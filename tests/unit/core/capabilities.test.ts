@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { builtinCapabilities, effectiveCapabilities } from '@/core/llm/capabilities';
+import { builtinCapabilities, declaresThinkingEffort, effectiveCapabilities } from '@/core/llm/capabilities';
 
 describe('builtinCapabilities', () => {
   it('DeepSeek：reasoner 系列是 effort，chat/v3 系列是 none', () => {
@@ -55,5 +55,69 @@ describe('effectiveCapabilities', () => {
       'deepseek-reasoner',
     );
     expect(c.thinking).toBe('effort');
+  });
+
+  it('DeepSeek 可调强度的模型带档位 关/低/高/最高；其他厂商不写档位（界面按关/低/中/高）', () => {
+    expect(builtinCapabilities('deepseek-reasoner').thinkingLevels).toEqual(['off', 'low', 'high', 'max']);
+    expect(builtinCapabilities('deepseek-flash').thinkingLevels).toEqual(['off', 'low', 'high', 'max']);
+    expect(builtinCapabilities('deepseek-chat').thinkingLevels).toBeUndefined();
+    expect(builtinCapabilities('gpt-5').thinkingLevels).toBeUndefined();
+    expect(builtinCapabilities('claude-sonnet-4-5').thinkingLevels).toBeUndefined();
+  });
+
+  it('自填档位盖过内置：去重、按强弱排序、丢掉非法值；一档都没有当没写', () => {
+    const c = effectiveCapabilities(
+      { capabilityOverrides: { 'deepseek-flash': { thinkingLevels: ['max', 'low', 'low', 'medium'] } } },
+      'deepseek-flash',
+    );
+    expect(c.thinkingLevels).toEqual(['low', 'medium', 'max']);
+    const empty = effectiveCapabilities(
+      { capabilityOverrides: { 'deepseek-flash': { thinkingLevels: [] } } },
+      'deepseek-flash',
+    );
+    expect(empty.thinkingLevels).toEqual(['off', 'low', 'high', 'max']);
+  });
+
+  it('自填档位给没有内置档位的模型也生效', () => {
+    const c = effectiveCapabilities(
+      {
+        capabilityOverrides: { 'corp-model': { thinking: 'effort', thinkingLevels: ['off', 'low', 'high'] } },
+      },
+      'corp-model',
+    );
+    expect(c).toMatchObject({ thinking: 'effort', thinkingLevels: ['off', 'low', 'high'] });
+  });
+});
+
+describe('declaresThinkingEffort', () => {
+  it('没有覆盖、覆盖成别的类型、或只改了别的字段：不算声明', () => {
+    expect(declaresThinkingEffort({}, 'corp-model')).toBe(false);
+    expect(
+      declaresThinkingEffort({ capabilityOverrides: { 'corp-model': { vision: 'yes' } } }, 'corp-model'),
+    ).toBe(false);
+    expect(
+      declaresThinkingEffort({ capabilityOverrides: { 'corp-model': { thinking: 'toggle' } } }, 'corp-model'),
+    ).toBe(false);
+    // 内置本来就是 effort、没有手动覆盖：不算声明
+    expect(declaresThinkingEffort({}, 'deepseek-flash')).toBe(false);
+  });
+
+  it('把思考覆盖成可调强度，或自填了档位（且有效能力是可调强度）：算声明', () => {
+    expect(
+      declaresThinkingEffort({ capabilityOverrides: { 'corp-model': { thinking: 'effort' } } }, 'corp-model'),
+    ).toBe(true);
+    expect(
+      declaresThinkingEffort(
+        { capabilityOverrides: { 'deepseek-flash': { thinkingLevels: ['low', 'max'] } } },
+        'deepseek-flash',
+      ),
+    ).toBe(true);
+    // 自填了档位，但这个模型被覆盖成「只有开关」：档位无效
+    expect(
+      declaresThinkingEffort(
+        { capabilityOverrides: { 'corp-model': { thinking: 'toggle', thinkingLevels: ['low'] } } },
+        'corp-model',
+      ),
+    ).toBe(false);
   });
 });

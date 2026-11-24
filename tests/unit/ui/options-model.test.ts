@@ -244,7 +244,12 @@ describe('常用模型与能力覆盖', () => {
     const row = capabilityRow(c, 'my-model');
     expect(row.builtin).toMatchObject({ thinking: 'unknown', vision: 'unknown' });
     expect(row.effective).toMatchObject({ thinking: 'effort', vision: 'unknown', contextWindow: 64_000 });
-    expect(row.overridden).toEqual({ thinking: true, vision: false, contextWindow: true });
+    expect(row.overridden).toEqual({
+      thinking: true,
+      thinkingLevels: false,
+      vision: false,
+      contextWindow: true,
+    });
 
     c = setCapabilityOverride(c, 'my-model', { thinking: undefined, contextWindow: undefined });
     expect(c.capabilityOverrides).toEqual({ other: { vision: 'yes' } });
@@ -252,10 +257,40 @@ describe('常用模型与能力覆盖', () => {
     expect('capabilityOverrides' in c).toBe(false);
   });
 
+  it('自填思考档位：写进覆盖、校验通过、有效能力随之变化；改回「按内置判断」删除', () => {
+    let c = setCapabilityOverride(conn(ID_A), 'corp-model', { thinking: 'effort' });
+    c = setCapabilityOverride(c, 'corp-model', { thinkingLevels: ['off', 'low', 'max'] });
+    expect(c.capabilityOverrides).toEqual({
+      'corp-model': { thinking: 'effort', thinkingLevels: ['off', 'low', 'max'] },
+    });
+    expectValid(upsertConnection(base(), c).settings);
+    const row = capabilityRow(c, 'corp-model');
+    expect(row.effective.thinkingLevels).toEqual(['off', 'low', 'max']);
+    expect(row.builtin.thinkingLevels).toBeUndefined();
+    expect(row.overridden.thinkingLevels).toBe(true);
+
+    // 内置档位的模型（DeepSeek）也可以改；改回按内置判断后恢复内置档位
+    let d = setCapabilityOverride(conn(ID_A), 'deepseek-flash', { thinkingLevels: ['low', 'high'] });
+    expect(capabilityRow(d, 'deepseek-flash').effective.thinkingLevels).toEqual(['low', 'high']);
+    d = setCapabilityOverride(d, 'deepseek-flash', { thinkingLevels: undefined });
+    expect('capabilityOverrides' in d).toBe(false);
+    expect(capabilityRow(d, 'deepseek-flash').effective.thinkingLevels).toEqual([
+      'off',
+      'low',
+      'high',
+      'max',
+    ]);
+  });
+
   it('内置能认出的模型：未覆盖时显示内置判断', () => {
     const row = capabilityRow(conn(ID_A), 'deepseek-reasoner');
     expect(row.effective.thinking).toBe('effort');
-    expect(row.overridden).toEqual({ thinking: false, vision: false, contextWindow: false });
+    expect(row.overridden).toEqual({
+      thinking: false,
+      thinkingLevels: false,
+      vision: false,
+      contextWindow: false,
+    });
   });
 
   it('默认模型下拉：各连接勾选的常用模型，加上当前默认模型（没勾选也要显示）', () => {

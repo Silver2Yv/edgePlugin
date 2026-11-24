@@ -274,6 +274,12 @@ describe('实际发送说明（B8）', () => {
     expect(s.details).toContain('模型 mock-flash');
   });
 
+  it('发送说明展开明细里写明实际发出的思考强度（含最高）', () => {
+    expect(sendSummary(plan({ thinking: 'off' }), 5).details).toContain('思考 关');
+    expect(sendSummary(plan({ thinking: 'max' }), 5).details).toContain('思考 最高');
+    expect(sendSummary(plan({ thinking: 'max' }), 5).parts.join('')).not.toContain('思考');
+  });
+
   it('带全文：发完了写「带全文」，没发完写明发了多少字、已截断', () => {
     const full = plan({ contextTier: 'fullPage', coverage: { sentChars: 3214, extractableChars: 3214 } });
     expect(sendSummary(full, 10).parts).toEqual(['选中 10 字', '带全文', '全文共 3,214 字']);

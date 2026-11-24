@@ -50,7 +50,7 @@ import {
   restoreCommandsOnConnect,
   subscribeMessage,
 } from './float/state';
-import { capabilitiesFor, clampThinking, thinkingControlMode } from './model/options';
+import { capabilitiesFor, clampThinking, thinkingControlOf } from './model/options';
 import { T } from './strings';
 import './theme.css';
 
@@ -299,7 +299,7 @@ export function FloatApp() {
   const summaryVisible = summaryCardVisible(lastSummary.shown, lastSummary.forced, state);
   // 当前生效的模型（临时切换的，或设置里的默认模型）与它支持的思考控件形态（H4、H6）
   const effectiveModel = state.modelOverride ?? defaults.model;
-  const thinkingMode = thinkingControlMode(capabilitiesFor(defaults.connections, effectiveModel));
+  const thinkingControl = thinkingControlOf(capabilitiesFor(defaults.connections, effectiveModel));
 
   const handleSend = async () => {
     if (await submitAsk(askDeps, question)) setQuestion('');
@@ -471,12 +471,12 @@ export function FloatApp() {
           quote={state.quote}
           onDismissQuote={() => dispatch({ kind: 'dismissQuote' })}
           tier={state.tierOverride ?? defaults.contextTier}
-          thinking={clampThinking(thinkingMode, state.thinkingOverride ?? defaults.thinking)}
+          thinking={clampThinking(thinkingControl, state.thinkingOverride ?? defaults.thinking)}
           tierChanged={state.tierOverride !== null && state.tierOverride !== defaults.contextTier}
           thinkingChanged={state.thinkingOverride !== null && state.thinkingOverride !== defaults.thinking}
           onTier={(contextTier) => dispatch({ kind: 'setTier', contextTier })}
           onThinking={(thinking) => dispatch({ kind: 'setThinking', thinking })}
-          thinkingMode={thinkingMode}
+          thinkingControl={thinkingControl}
           model={effectiveModel}
           defaultModel={defaults.model}
           connections={defaults.connections}

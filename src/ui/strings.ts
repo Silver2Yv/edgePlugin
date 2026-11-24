@@ -103,7 +103,7 @@ const zh = {
       fullPage: '带全文：把整篇正文发给模型，回答更完整，但首次等待更久；超长页面会截断并写明。',
     },
     thinkingLabel: '思考强度',
-    thinking: { off: '思考 关', low: '思考 低', medium: '思考 中', high: '思考 高' },
+    thinking: { off: '思考 关', low: '思考 低', medium: '思考 中', high: '思考 高', max: '思考 最高' },
     /** H6：所选模型只支持思考开关时，思考控件只显示这两档 */
     thinkingToggle: { off: '思考 关', on: '思考 开' },
     thinkingHelp: '思考：开启后更适合复杂问题，但等待更久、费用更高；只是解释一句话时建议关闭。',

@@ -49,9 +49,9 @@ const zh = {
     },
     thinking: '默认思考强度',
     thinkingLabel: '默认思考强度',
-    thinkingOption: { off: '关', low: '低', medium: '中', high: '高' },
+    thinkingOption: { off: '关', low: '低', medium: '中', high: '高', max: '最高' },
     thinkingHelp:
-      '开启后更适合复杂问题，但等待更久、费用更高；只是解释一句话时建议关闭。模型只支持开关时，低 / 中 / 高都按「开」处理。',
+      '开启后更适合复杂问题，但等待更久、费用更高；只是解释一句话时建议关闭。各模型支持的档位不同（如 DeepSeek 没有「中」），所选档位不在当前模型里时，发送前取这个模型最接近的一档，输入区显示的就是实际发送的；模型只支持开关时，各档都按「开」处理。',
   },
 
   sites: {
@@ -154,7 +154,7 @@ const zh = {
 
   cap: {
     heading: '模型能力',
-    help: '按模型名字做的判断，可能不准。「未知」时不会向模型发送思考强度，也不会把它当成能看图；确认支持可以手动改。',
+    help: '按模型名字做的判断，可能不准。「未知」时不会向模型发送思考强度，也不会把它当成能看图；确认支持可以手动改。公司中转站上的自定义模型，把思考改成「可调强度」后可以勾选它支持的档位（按 reasoning_effort 发送）。',
     model: '模型',
     thinking: '思考',
     vision: '看图',
@@ -165,6 +165,12 @@ const zh = {
     contextUnknown: '未知',
     contextPlaceholder: (n: number | undefined) => (n === undefined ? '未知' : `内置 ${fmt(n)}`),
     thinkingLabel: (m: string) => `${m} 的思考能力`,
+    levels: '思考档位',
+    levelsHelp:
+      '勾选这个模型实际支持的思考档位；输入区的思考下拉只列勾选的档位。没勾「关」表示这个模型关不掉思考。',
+    levelLabel: (m: string, level: string) => `${m} 思考档位 ${level}`,
+    levelsReset: '按内置判断',
+    levelsResetLabel: (m: string) => `${m} 的思考档位改回按内置判断`,
     visionLabel: (m: string) => `${m} 的看图能力`,
     contextLabel: (m: string) => `${m} 的上下文大小`,
     changed: '已手动修改',
