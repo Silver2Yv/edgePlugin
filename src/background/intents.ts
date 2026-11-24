@@ -262,6 +262,16 @@ export function createIntents(
         }
         return { ok: true };
       }
+      /**
+       * contract-v1.6 增量：小窗不可见满 10 分钟，阅读器销毁了 iframe（决策 078/101）。
+       * 只认顶层框架的阅读器、且文档对得上当前顶层文档（规则 7）；对不上拒绝，无副作用
+       */
+      case 'float/destroyed': {
+        if (s.frameId !== 0 || s.documentId === undefined) return refuse('notOwner', { type: msg.type });
+        return (await host.floatDestroyed(s.tabId, s.documentId, msg.missed === true))
+          ? { ok: true }
+          : refuse('notOwner', { type: msg.type });
+      }
       // 页面读取（5.6）：身份取自 sender，对不上这次读取的标签页、顶层框架、文档就拒绝（规则 7）
       case 'page/docPart':
       case 'page/docUnchanged': {

@@ -130,6 +130,36 @@ export function createFloatHost(deps: BackgroundDeps, store: Store) {
       if (st) st.floatFor = undefined;
     },
 
+    /**
+     * 阅读器报告：小窗不可见满 10 分钟，iframe 已销毁（决策 078/101）。身份取自 sender（规则 7）：
+     * 调用方只放行顶层框架；这里再核对文档——已知的当前顶层文档与发送者不同就拒绝（返回 false，无副作用）。
+     * 作废这个文档的绑定与未消费令牌、忘掉「本进程建过小窗」的记录，之后的显示按没有小窗走（带新令牌现建）。
+     * 阅读器本身还在页面里，不用重新注入。任务归后台，与这里无关（规则 2）。
+     * missed：销毁之后页面收到了我们发的无令牌显示、落了空（用户点「问」与到点销毁几乎同时）。清理在先一条通知里
+     * 已经做过，这里不再清（现在的绑定与令牌可能已是新小窗的）；只在确认没有小窗时带新令牌补发显示
+     */
+    floatDestroyed(tabId: number, documentId: string, missed = false): Promise<boolean> {
+      return queue(tabId, async () => {
+        const st = stateOf(tabId);
+        if (st.docId !== undefined && st.docId !== documentId) return false;
+        if (!missed) {
+          const b = await store.getBinding(tabId);
+          if (b?.hostDocumentId === documentId) await store.deleteBinding(tabId);
+          await store.voidTokens(tabId, documentId);
+          if (st.floatFor?.docId === documentId) st.floatFor = undefined;
+          if (store.readinessNow(tabId) === 'ready') await store.setReadiness(tabId, 'unknown');
+          return true;
+        }
+        if (await hasFloat(st, tabId, documentId)) return true; // 已经有新的了，这次显示不用补
+        try {
+          await sendShow(st, tabId, documentId);
+        } catch (e) {
+          deps.log('float/reshowFailed', { error: e instanceof Error ? e.message.slice(0, 200) : 'unknown' });
+        }
+        return true;
+      });
+    },
+
     /** 在网页上显示一行提示（page/notice）：小窗用不了、侧边栏又没能替用户打开时 */
     notice(tabId: number, kind: 'floatFailed' | 'floatUnsupported'): Promise<void> {
       return queue(tabId, async () => {

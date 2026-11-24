@@ -151,6 +151,14 @@ export const contentToBackground = tagged({
     result: oneOf(['ready', 'failedUnsupported', 'failedTransient']),
   }),
   /**
+   * contract-v1.6 增量（决策 078/101）：阅读器把这个文档里不可见满 10 分钟的小窗 iframe 销毁了。
+   * 不带内容：身份取自 sender（标签页、顶层框架、文档，规则 7）；后台据此作废这个文档的小窗绑定与令牌，
+   * 下次显示按「没有小窗」走（带新令牌现建）。
+   * missed 为真：销毁之后阅读器收到了后台发来的、没带令牌的显示（用户点「问」与到点销毁几乎同时，后台发出显示时
+   * 还以为有小窗），这次显示落了空。后台不再清理（销毁的清理在先一条里做完了），只在确认现在没有小窗时带新令牌补发
+   */
+  'float/destroyed': obj({ type: lit('float/destroyed'), missed: opt(bool) }),
+  /**
    * contract-v1.5 增量（live）：小窗或侧边栏开着、且订阅了这个标签页时，哨兵据后台下发的 live/toggle
    * 在选区稳定后上报这一次选中的文字，换引用条实时更新（D11、B5）。形状与 action/click 一致，但不触发任何任务、
    * 不经过路由；没有订阅者时后台会撤回 live/toggle，哨兵就不再发这个消息（隐私：没人看着就不把文字交出去）

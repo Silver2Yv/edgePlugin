@@ -25,6 +25,7 @@ export interface StoredSelection {
 }
 
 const JOB_PREFIX = SESSION_KEYS.job('');
+const TOKEN_PREFIX = SESSION_KEYS.token('');
 /** 侧边栏顶部说明等多久没被侧边栏取走就作废（用户没打开侧边栏，过后再开不该看到旧原因） */
 export const NOTICE_TTL_MS = 30_000;
 const FLOAT_PREFIX = SESSION_KEYS.float(0).replace(/0$/, '');
@@ -87,6 +88,26 @@ export function createStore(session: SessionArea, now: () => number, newToken: (
           pendingTokens.delete(token);
         }
       })();
+    },
+
+    /**
+     * 作废某个标签页某个文档的全部未消费令牌（小窗 iframe 已销毁，令牌没有用了）。
+     * 内存与 storage.session 都扫：后台重启过的话令牌只在 storage.session 里
+     */
+    async voidTokens(tabId: number, documentId: string): Promise<void> {
+      const keys = new Set<string>();
+      for (const [k, v] of tokens) {
+        if (v.tabId !== tabId || v.documentId !== documentId) continue;
+        tokens.delete(k);
+        keys.add(SESSION_KEYS.token(k));
+      }
+      const all = await session.get(null);
+      for (const [k, v] of Object.entries(all)) {
+        if (!k.startsWith(TOKEN_PREFIX)) continue;
+        const t = v as FloatToken;
+        if (t.tabId === tabId && t.documentId === documentId) keys.add(k);
+      }
+      if (keys.size > 0) await session.remove([...keys]);
     },
 
     async getBinding(tabId: number): Promise<FloatBinding | undefined> {
