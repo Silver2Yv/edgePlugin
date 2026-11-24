@@ -75,6 +75,55 @@ describe('buildThinkingBody：按连接预设识别厂商（预设本身就是�
   });
 });
 
+describe('buildThinkingBody：最高（max，决策 100）', () => {
+  it('DeepSeek：max 发 reasoning_effort=max；low / medium / high 的映射不变；关只发 disabled', () => {
+    expect(buildThinkingBody('deepseek', GENERIC_MODEL, 'max')).toEqual({
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'max',
+    });
+    expect(buildThinkingBody('custom', 'deepseek-flash', 'max')).toEqual({
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'max',
+    });
+    expect(buildThinkingBody('deepseek', GENERIC_MODEL, 'low')).toEqual({
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'low',
+    });
+    expect(buildThinkingBody('deepseek', GENERIC_MODEL, 'high')).toEqual({
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'high',
+    });
+    expect(buildThinkingBody('deepseek', GENERIC_MODEL, 'off')).toEqual({ thinking: { type: 'disabled' } });
+  });
+
+  it('其他厂商没有官方 max：兜底按 high（Qwen 按开、Claude 用 high 的预算）', () => {
+    expect(buildThinkingBody('openai', GENERIC_MODEL, 'max')).toEqual({ reasoning_effort: 'high' });
+    expect(buildThinkingBody('gemini', GENERIC_MODEL, 'max')).toEqual({ reasoning_effort: 'high' });
+    expect(buildThinkingBody('qwen', GENERIC_MODEL, 'max')).toEqual({ enable_thinking: true });
+    expect(buildThinkingBody('claude', GENERIC_MODEL, 'max')).toEqual({
+      thinking: { type: 'enabled', budget_tokens: 8_192 },
+    });
+    expect(buildThinkingBody('custom', GENERIC_MODEL, 'max')).toEqual({});
+  });
+
+  it('用户声明了「可调强度」：OpenAI / Gemini 档位原样发；认不出的模型按 reasoning_effort 发，关不发', () => {
+    expect(buildThinkingBody('openai', GENERIC_MODEL, 'max', true)).toEqual({ reasoning_effort: 'max' });
+    expect(buildThinkingBody('gemini', GENERIC_MODEL, 'max', true)).toEqual({ reasoning_effort: 'max' });
+    expect(buildThinkingBody('custom', GENERIC_MODEL, 'low', true)).toEqual({ reasoning_effort: 'low' });
+    expect(buildThinkingBody('custom', GENERIC_MODEL, 'max', true)).toEqual({ reasoning_effort: 'max' });
+    expect(buildThinkingBody('custom', GENERIC_MODEL, 'off', true)).toEqual({});
+    // 声明不改变 DeepSeek 的官方写法
+    expect(buildThinkingBody('custom', 'deepseek-flash', 'medium', true)).toEqual({
+      thinking: { type: 'enabled' },
+      reasoning_effort: 'high',
+    });
+  });
+
+  it('thinkingLevelOf 透传 max', () => {
+    expect(thinkingLevelOf({ effort: 'max' })).toBe('max');
+  });
+});
+
 describe('buildThinkingBody：模型标识优先于连接预设（公司中转站挂着上百个不同厂商的模型）', () => {
   it('custom 预设 + deepseek 模型：按模型识别为 deepseek，思考走开关 + 强度，不是什么都不发', () => {
     expect(buildThinkingBody('custom', 'deepseek-chat', 'off')).toEqual({ thinking: { type: 'disabled' } });

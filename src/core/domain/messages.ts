@@ -291,7 +291,8 @@ export function parsePageImagesReply(v: unknown): Result<PageImagesReply> {
 
 // ───────────── 对话流：小窗 / 侧边栏 → 后台（端口 CONV_PORT） ─────────────
 
-const thinking = oneOf(['off', 'low', 'medium', 'high']);
+// contract-v1.6 增量：思考强度增加 max（最高，决策 100）；旧消息的四档取值仍然合法
+const thinking = oneOf(['off', 'low', 'medium', 'high', 'max']);
 
 const askBody = {
   clientRequestId: id,

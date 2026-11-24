@@ -468,6 +468,33 @@ describe('buildChat：正文', () => {
     expect(none.reasoning_effort).toBeUndefined();
   });
 
+  it('最高（max）：DeepSeek 发 reasoning_effort=max；用户声明可调强度的自定义模型按 reasoning_effort 发', () => {
+    const body = (c: Connection, r: ChatRequest) =>
+      JSON.parse(chatCompletionsAdapter.buildChat(c, r).body ?? '{}');
+
+    const max = body(conn({ preset: 'deepseek' }), req({ thinking: { effort: 'max' } }));
+    expect(max.thinking).toEqual({ type: 'enabled' });
+    expect(max.reasoning_effort).toBe('max');
+
+    // 没声明：custom 预设 + 认不出的模型什么都不发
+    const plain = conn();
+    expect(
+      body(plain, req({ model: 'corp-model', thinking: { effort: 'max' } })).reasoning_effort,
+    ).toBeUndefined();
+
+    // 声明了「可调强度」（自填档位）：档位原样发，关不发
+    const declared = conn({
+      capabilityOverrides: { 'corp-model': { thinking: 'effort', thinkingLevels: ['off', 'low', 'max'] } },
+    });
+    expect(body(declared, req({ model: 'corp-model', thinking: { effort: 'max' } })).reasoning_effort).toBe(
+      'max',
+    );
+    expect(body(declared, req({ model: 'corp-model', thinking: { effort: 'low' } })).reasoning_effort).toBe(
+      'low',
+    );
+    expect(body(declared, req({ model: 'corp-model', thinking: 'off' })).reasoning_effort).toBeUndefined();
+  });
+
   it('excludeParams：去掉指定的顶层字段（H7 参数自动重试、AR-09 怪癖学习用）', () => {
     const body = JSON.parse(
       chatCompletionsAdapter.buildChat(

@@ -11,7 +11,7 @@ import type { SettingsHandle } from './useSettings';
 
 const TIERS: readonly ContextTier[] = ['selection', 'nearby', 'fullPage'];
 const LENGTHS: readonly LengthTier[] = ['brief', 'normal', 'detailed'];
-const THINKING: readonly ThinkingLevel[] = ['off', 'low', 'medium', 'high'];
+const THINKING: readonly ThinkingLevel[] = ['off', 'low', 'medium', 'high', 'max'];
 
 export function CommonSection({ handle }: { handle: SettingsHandle }) {
   const { settings } = handle;

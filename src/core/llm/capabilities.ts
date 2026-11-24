@@ -2,6 +2,7 @@
 // 「已关闭」。允许按连接、按模型手动覆盖（Connection.capabilityOverrides，adapter.ts）。
 // 纯逻辑：只按模型标识字符串匹配正则，不碰网络、不碰扩展 API。
 import type { Connection, ModelCapabilities, Tri } from './adapter';
+import { normalizeThinkingLevels } from './thinking-levels';
 
 type BuiltinCapability = Omit<ModelCapabilities, 'quirks'>;
 
@@ -9,6 +10,8 @@ type BuiltinCapability = Omit<ModelCapabilities, 'quirks'>;
 export type ModelVendor = 'deepseek' | 'qwen' | 'openai' | 'claude' | 'gemini';
 
 const UNKNOWN: BuiltinCapability = { thinking: 'unknown', vision: 'unknown' };
+
+const DEEPSEEK_LEVELS = ['off', 'low', 'high', 'max'] as const;
 
 interface Rule {
   test: RegExp;
@@ -21,18 +24,28 @@ interface Rule {
  * 数字与窗口大小是文档发布时的近似值，厂商更新型号后可能变化——这正是允许手动覆盖的原因。
  */
 const RULES: readonly Rule[] = [
-  // DeepSeek（api-docs.deepseek.com/zh-cn/guides/thinking_mode）
+  // DeepSeek（api-docs.deepseek.com/zh-cn/guides/thinking_mode）：思考开关 + reasoning_effort 只收
+  // low / high / max（传 medium 会被当 high），所以没有「中」档（决策 100）
   {
     test: /deepseek.*(reasoner|r1)/i,
     vendor: 'deepseek',
-    capability: { thinking: 'effort', vision: 'no', contextWindow: 65_536 },
+    capability: {
+      thinking: 'effort',
+      thinkingLevels: DEEPSEEK_LEVELS,
+      vision: 'no',
+      contextWindow: 65_536,
+    },
   },
   {
     test: /deepseek.*(chat|v3)/i,
     vendor: 'deepseek',
     capability: { thinking: 'none', vision: 'no', contextWindow: 65_536 },
   },
-  { test: /deepseek/i, vendor: 'deepseek', capability: { thinking: 'effort', vision: 'unknown' } },
+  {
+    test: /deepseek/i,
+    vendor: 'deepseek',
+    capability: { thinking: 'effort', thinkingLevels: DEEPSEEK_LEVELS, vision: 'unknown' },
+  },
 
   // 通义千问 / 阿里云百炼（help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions）
   {
@@ -111,10 +124,28 @@ export function effectiveCapabilities(
       : base.thinking;
   const vision = isTri(override?.vision) ? override.vision : base.vision;
   const contextWindow = override?.contextWindow ?? base.contextWindow;
+  // 自填的档位（设置页勾选）盖过内置；一档都没有当没写
+  const thinkingLevels = normalizeThinkingLevels(override?.thinkingLevels) ?? base.thinkingLevels;
   return {
     thinking,
+    ...(thinkingLevels ? { thinkingLevels } : {}),
     vision,
     ...(contextWindow !== undefined ? { contextWindow } : {}),
     quirks: learnedQuirks,
   };
+}
+
+/**
+ * 用户在设置里明确说「这个模型可调强度」：把思考覆盖成 effort，或自填了档位且有效能力是 effort。
+ * 认不出厂商的模型（公司中转站上的自定义名字）据此按 OpenAI 兼容写法发 reasoning_effort，
+ * 否则界面上能选档位、实际什么都不发（thinking.ts）
+ */
+export function declaresThinkingEffort(
+  conn: Pick<Connection, 'capabilityOverrides'>,
+  model: string,
+): boolean {
+  const o = conn.capabilityOverrides?.[model];
+  if (!o) return false;
+  if (effectiveCapabilities(conn, model).thinking !== 'effort') return false;
+  return o.thinking === 'effort' || normalizeThinkingLevels(o.thinkingLevels) !== undefined;
 }

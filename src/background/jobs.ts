@@ -58,6 +58,7 @@ import type {
 } from '@/core/llm/adapter';
 import { effectiveCapabilities } from '@/core/llm/capabilities';
 import { decideParamRetry } from '@/core/llm/param-retry';
+import { clampThinking, thinkingControlOf } from '@/core/llm/thinking-levels';
 import { type AskTurn, assembleAsk, resolveActionDef } from '@/core/prompt/ask';
 import type { DbWrites } from '@/platform/conv-db';
 import type { Capture, TakenCapture } from './capture';
@@ -211,6 +212,17 @@ function resolveModel(s: Settings, wanted: ModelRef): { conn: Connection; model:
 
 const thinkingParam = (t: AskMsg['thinking']): NonNullable<ChatRequest['thinking']> =>
   t === 'off' ? 'off' : { effort: t };
+
+/**
+ * 实际发送的思考强度：按所选模型支持的档位就近取（决策 100、规则 8、J10）。界面发来的已经按同样规则取过，
+ * 这里兜住不经界面的入口（快捷键、欢迎页直接用设置默认值）和旧设置里存的「中」用在 DeepSeek 上的情形，
+ * 发送计划、消息记录与请求体用的是同一个值
+ */
+const thinkingFor = (
+  target: { conn: Connection; model: ModelRef },
+  level: AskMsg['thinking'],
+): AskMsg['thinking'] =>
+  clampThinking(thinkingControlOf(effectiveCapabilities(target.conn, target.model.model)), level);
 
 export type Jobs = ReturnType<typeof createJobs>;
 
@@ -825,7 +837,7 @@ export function createJobs(
         actionId: msg.actionId as ActionId,
         contextTier: msg.contextTier,
         lengthTier: msg.lengthTier,
-        thinking: msg.thinking,
+        thinking: thinkingFor(target, msg.thinking),
       },
       ...(selection
         ? {
@@ -1153,6 +1165,7 @@ export function createJobs(
           if (isTerminal(job.record.state)) return;
         }
       }
+      const thinking = thinkingFor(target, msg.thinking);
       const assembly = assembleAsk({
         question: msg.text,
         ...(selection
@@ -1167,7 +1180,7 @@ export function createJobs(
         history: conv.turns,
         lengthTier: msg.lengthTier,
         language: settings.reply.language,
-        thinking: msg.thinking,
+        thinking,
         requestedContextTier: msg.contextTier,
         model: target.model,
         contextSnapshotId,
@@ -1239,7 +1252,7 @@ export function createJobs(
         model: target.model.model,
         messages: assembly.messages,
         stream: target.conn.stream,
-        thinking: thinkingParam(msg.thinking),
+        thinking: thinkingParam(thinking),
       };
       void run(job, job.conn, job.adapter, job.req);
     },

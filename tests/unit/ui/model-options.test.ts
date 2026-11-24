@@ -9,7 +9,7 @@ import {
   modelGroups,
   sameModel,
   switchCandidates,
-  thinkingControlMode,
+  thinkingControlOf,
   totalModels,
 } from '@/ui/model/options';
 
@@ -71,30 +71,61 @@ describe('换个模型再试的候选（H12）', () => {
   });
 });
 
-describe('思考控件随模型能力变化（H6）', () => {
-  const connections = [CONN('c1', '连接', ['qwen-plus', 'deepseek-chat', 'gpt-4o', 'unknown-model'])];
+describe('思考控件随模型能力变化（H6、决策 100）', () => {
+  const connections = [
+    CONN('c1', '连接', ['qwen-plus', 'deepseek-chat', 'deepseek-flash', 'gpt-5', 'unknown-model']),
+  ];
+  const ctl = (model: string) =>
+    thinkingControlOf(capabilitiesFor(connections, { connectionId: 'c1', model }));
 
   it('开关类（qwen）只显示关/开；各档都按「开」处理', () => {
-    const cap = capabilitiesFor(connections, { connectionId: 'c1', model: 'qwen-plus' });
-    expect(thinkingControlMode(cap)).toBe('toggle');
-    expect(clampThinking('toggle', 'off')).toBe('off');
-    expect(clampThinking('toggle', 'low')).toBe('medium');
-    expect(clampThinking('toggle', 'high')).toBe('medium');
+    const c = ctl('qwen-plus');
+    expect(c).toEqual({ mode: 'toggle', levels: ['off', 'medium'] });
+    expect(clampThinking(c, 'off')).toBe('off');
+    expect(clampThinking(c, 'low')).toBe('medium');
+    expect(clampThinking(c, 'high')).toBe('medium');
+    expect(clampThinking(c, 'max')).toBe('medium');
   });
 
   it('不支持思考（deepseek-chat）控件禁用，强制为关', () => {
-    const cap = capabilitiesFor(connections, { connectionId: 'c1', model: 'deepseek-chat' });
-    expect(thinkingControlMode(cap)).toBe('disabled');
-    expect(clampThinking('disabled', 'high')).toBe('off');
+    const c = ctl('deepseek-chat');
+    expect(c.mode).toBe('disabled');
+    expect(clampThinking(c, 'high')).toBe('off');
   });
 
-  it('按强度分档（gpt-4o 未知）或连接没了都照常四档，原样发送', () => {
-    expect(
-      thinkingControlMode(capabilitiesFor(connections, { connectionId: 'c1', model: 'unknown-model' })),
-    ).toBe('full');
-    expect(thinkingControlMode(capabilitiesFor(connections, { connectionId: 'gone', model: 'x' }))).toBe(
+  it('DeepSeek（deepseek-flash）只列 关/低/高/最高，没有「中」', () => {
+    expect(ctl('deepseek-flash')).toEqual({ mode: 'full', levels: ['off', 'low', 'high', 'max'] });
+  });
+
+  it('切到 DeepSeek 时「中」就近取到「高」；「最高」「低」「关」原样保留', () => {
+    const c = ctl('deepseek-flash');
+    expect(clampThinking(c, 'medium')).toBe('high');
+    expect(clampThinking(c, 'max')).toBe('max');
+    expect(clampThinking(c, 'low')).toBe('low');
+    expect(clampThinking(c, 'off')).toBe('off');
+  });
+
+  it('其他按强度分档的模型保持关/低/中/高；默认值是「最高」时切过去取「高」', () => {
+    const c = ctl('gpt-5');
+    expect(c).toEqual({ mode: 'full', levels: ['off', 'low', 'medium', 'high'] });
+    expect(clampThinking(c, 'max')).toBe('high');
+  });
+
+  it('未知模型或连接没了照常四档（不含最高）', () => {
+    expect(ctl('unknown-model')).toEqual({ mode: 'full', levels: ['off', 'low', 'medium', 'high'] });
+    expect(thinkingControlOf(capabilitiesFor(connections, { connectionId: 'gone', model: 'x' })).mode).toBe(
       'full',
     );
-    expect(clampThinking('full', 'high')).toBe('high');
+  });
+
+  it('设置里自填的档位生效：控件只列勾选的档位，没勾「关」就关不掉', () => {
+    const custom: Connection = {
+      ...CONN('c2', '中转站', ['corp-model']),
+      capabilityOverrides: { 'corp-model': { thinking: 'effort', thinkingLevels: ['low', 'max'] } },
+    };
+    const c = thinkingControlOf(capabilitiesFor([custom], { connectionId: 'c2', model: 'corp-model' }));
+    expect(c).toEqual({ mode: 'full', levels: ['low', 'max'] });
+    expect(clampThinking(c, 'off')).toBe('low');
+    expect(clampThinking(c, 'high')).toBe('max');
   });
 });

@@ -6,6 +6,7 @@ import { useState } from 'preact/hooks';
 import type { Settings } from '@/core/domain/settings';
 import type { Connection, ModelCapabilities, Tri } from '@/core/llm/adapter';
 import { PROVIDER_PRESETS } from '@/core/llm/presets';
+import { DEFAULT_THINKING_LEVELS, THINKING_LEVELS } from '@/core/llm/thinking-levels';
 import { listModels, testConnection } from './api';
 import { ModelList } from './ModelList';
 import {
@@ -570,7 +571,10 @@ function CommonModels(props: { handle: SettingsHandle; conn: Connection; fetched
               const row = capabilityRow(conn, m);
               const o = conn.capabilityOverrides?.[m];
               const changed =
-                row.overridden.thinking || row.overridden.vision || row.overridden.contextWindow;
+                row.overridden.thinking ||
+                row.overridden.thinkingLevels ||
+                row.overridden.vision ||
+                row.overridden.contextWindow;
               return (
                 <li key={m} class="opt-cap" data-model={m}>
                   <div class="opt-cap__head">
@@ -620,6 +624,44 @@ function CommonModels(props: { handle: SettingsHandle; conn: Connection; fetched
                         ))}
                       </select>
                     </label>
+                    {row.effective.thinking === 'effort' && (
+                      <div class="opt-cap__field" data-testid="thinking-levels" title={S.cap.levelsHelp}>
+                        <span>{S.cap.levels}</span>
+                        {THINKING_LEVELS.map((level) => {
+                          const current = row.effective.thinkingLevels ?? DEFAULT_THINKING_LEVELS;
+                          const on = current.includes(level);
+                          return (
+                            <label key={level} class="opt-check">
+                              <input
+                                type="checkbox"
+                                aria-label={S.cap.levelLabel(m, S.common.thinkingOption[level])}
+                                checked={on}
+                                // 至少留一档：全取消没有意义，要回到内置判断点「按内置判断」
+                                disabled={on && current.length === 1}
+                                onChange={() =>
+                                  override(m, {
+                                    thinkingLevels: on
+                                      ? current.filter((l) => l !== level)
+                                      : [...current, level],
+                                  })
+                                }
+                              />
+                              <span>{S.common.thinkingOption[level]}</span>
+                            </label>
+                          );
+                        })}
+                        {row.overridden.thinkingLevels && (
+                          <button
+                            type="button"
+                            class="ra-btn ra-btn--small"
+                            aria-label={S.cap.levelsResetLabel(m)}
+                            onClick={() => override(m, { thinkingLevels: undefined })}
+                          >
+                            {S.cap.levelsReset}
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <label class="opt-cap__field">
                       <span>{S.cap.vision}</span>
                       <select

@@ -1,5 +1,6 @@
 // 模型网关契约（5.8、5.14）。适配器是纯逻辑：把请求变成 fetch 参数、把字节流变成事件；
 // 真正的 fetch 由后台执行，所以适配器不碰网络与扩展 API。
+import type { ThinkingLevel } from '../context/plan';
 import type { ConnectionId } from '../domain/ids';
 
 export type InterfaceType = 'chatCompletions' | 'responses' | 'anthropic' | 'gemini';
@@ -38,6 +39,11 @@ export type Tri = 'yes' | 'no' | 'unknown';
 /** 能力表：未知就显示未知，不默认成「已关闭 / 已支持」 */
 export interface ModelCapabilities {
   thinking: 'none' | 'toggle' | 'effort' | 'unknown';
+  /**
+   * 「可调强度」模型实际支持的思考档位（含是否有「关」），决策 100 / contract-v1.6 增量；
+   * 没写按 DEFAULT_THINKING_LEVELS（关/低/中/高）。只在 thinking 为 effort 时有意义
+   */
+  thinkingLevels?: readonly ThinkingLevel[];
   vision: Tri;
   contextWindow?: number;
   /** 学到的怪癖，如某参数被拒 */
@@ -75,7 +81,7 @@ export interface ChatRequest {
   stream: boolean;
   maxTokens?: number;
   /** 不填就不发思考相关字段；辅助任务（问题建议）必须显式关思考 */
-  thinking?: 'off' | 'on' | { effort: 'low' | 'medium' | 'high' };
+  thinking?: 'off' | 'on' | { effort: 'low' | 'medium' | 'high' | 'max' };
   signal?: AbortSignal;
 }
 

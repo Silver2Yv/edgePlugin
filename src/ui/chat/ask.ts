@@ -10,7 +10,7 @@ import { loadSettings, SETTINGS_KEY } from '@/platform/settings-store';
 import { loadAskDefaults } from '../ask-defaults';
 import type { AskRequest } from '../float/messages';
 import { buildAskMessage, type FloatAction, type FloatState, isGenerating } from '../float/state';
-import { capabilitiesFor, clampThinking, thinkingControlMode } from '../model/options';
+import { capabilitiesFor, clampThinking, thinkingControlOf } from '../model/options';
 import { T } from '../strings';
 
 export interface AskDeps {
@@ -50,12 +50,12 @@ export async function submitAsk(
   }
   const s = deps.getState();
   const model = opts.model ?? s.modelOverride ?? defaults.model;
-  // 思考强度随模型能力变（H6）：开关类模型各档都按「开」，不支持思考的模型强制关闭，
-  // 和 Composer 里显示的控件形态保持一致，不会出现界面显示「关」实际却发了思考参数
-  const mode = thinkingControlMode(capabilitiesFor(defaults.connections, model));
+  // 思考强度随模型能力变（H6、决策 100）：开关类模型各档都按「开」，不支持思考的模型强制关闭，档位不在模型里的取最接近的一档，
+  // 和 Composer 里显示的控件保持一致，不会出现界面显示「关」实际却发了思考参数
+  const control = thinkingControlOf(capabilitiesFor(defaults.connections, model));
   const params = {
     lengthTier: opts.lengthTier ?? defaults.lengthTier,
-    thinking: clampThinking(mode, s.thinkingOverride ?? defaults.thinking),
+    thinking: clampThinking(control, s.thinkingOverride ?? defaults.thinking),
     contextTier: action?.contextTier ?? s.tierOverride ?? defaults.contextTier,
     model,
   };

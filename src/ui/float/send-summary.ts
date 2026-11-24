@@ -55,6 +55,9 @@ export function sendSummary(plan: RequestContextPlan, selectedChars: number | nu
   if (plan.historyHasPageText) extra.push(T.sent.historyHasPageText);
   if (plan.removedEarlierPageText) extra.push(T.sent.removedEarlierPageText);
   extra.push(T.sent.estimatedTokens(plan.estimatedInputTokens), T.sent.model(plan.model.model));
+  // 思考强度（决策 100）：计划里的就是后台按模型支持的档位取过的、实际发出的那一档
+  const thinking = T.composer.thinking[plan.thinking];
+  if (thinking) extra.push(thinking);
   return { parts, details: [...new Set([...parts, ...extra])] };
 }
 
