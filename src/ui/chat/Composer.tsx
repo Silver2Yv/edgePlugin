@@ -12,6 +12,7 @@ import { T } from '../strings';
 import { CaptureButton, CapturePreview } from './CaptureParts';
 import { IconClose } from './Icons';
 import { ModelPicker } from './ModelPicker';
+import { pickPastedImage } from './paste';
 
 const TIERS: readonly ContextTier[] = ['selection', 'nearby', 'fullPage'];
 const THINKING: readonly ThinkingLevel[] = ['off', 'low', 'medium', 'high'];
@@ -49,6 +50,8 @@ export interface ComposerProps {
   capture?: CaptureView | null;
   onDismissCapture?: () => void;
   onCapture?: () => void;
+  /** 输入框里粘贴了图片（决策 099）：只取第一张。不给就不接管，粘贴照旧 */
+  onPasteImage?: (file: File) => void;
 }
 
 export function Composer(p: ComposerProps) {
@@ -79,6 +82,15 @@ export function Composer(p: ComposerProps) {
     if (!shouldSendOnEnter(e)) return;
     e.preventDefault();
     p.onSend();
+  };
+
+  /** 粘贴的是图片时接管（不让浏览器往输入框里塞东西）；文字粘贴照旧不受影响 */
+  const onPaste = (e: ClipboardEvent) => {
+    if (!p.onPasteImage) return;
+    const file = pickPastedImage(e.clipboardData);
+    if (!file) return;
+    e.preventDefault();
+    p.onPasteImage(file);
   };
 
   return (
@@ -122,6 +134,7 @@ export function Composer(p: ComposerProps) {
           value={p.value}
           onInput={(e) => p.onInput((e.target as HTMLTextAreaElement).value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
           onFocus={p.onFocus}
         />
         <div className="ra-composer__bar">

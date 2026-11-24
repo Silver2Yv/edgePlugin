@@ -14,6 +14,7 @@
 //
 // 大小（5.12）：整条消息 JSON 序列化后不超过 64 KB。大字段按 JSON 字节设上限（maxBytes，见 bytes.ts），
 // 每条消息的字段上限之和都小于 64 KB，所以「字段合法」就一定「不超限」（单测逐条核对）。
+import { PASTE_CHUNK_CHARS, PASTE_MIMES } from '../capture/paste';
 import { BLOCK_KINDS, PAGE_NOTE_KINDS } from '../context/page-doc';
 import type { ContextTier, RequestContextPlan } from '../context/plan';
 import type { ModelError, ModelErrorKind, Usage } from '../llm/adapter';
@@ -441,6 +442,26 @@ export const clientToBackground = tagged({
     messageId: id,
     index: int({ min: 0, max: 15 }),
   }),
+  /**
+   * contract-v1.6 增量（外部图片粘贴，决策 099）：输入框粘贴的图片，字节分片交给后台（单条消息不超过 64 KB）。
+   * paste/begin 声明类型、总字节数与片数；之后按 index 从 0 起依次发 paste/chunk（base64，每片原始 36 KB，最后一片可短）。
+   * 收齐后后台核对文件头、缩放编码（同框选截图的上限），存成这个标签页待确认的图，并推 conv/capture（external 为真）；
+   * 超限推 conv/captureFailed（tooLarge），不是可用图片推 badImage；顺序、片长、编号对不上拒绝（invalid）并丢弃整次。
+   * 小窗是令牌绑定的标签页，侧边栏是订阅的标签页（须仍在本窗口）。声明的 size 不在这里设上限：超限回 tooLarge，而不是笼统的 invalid
+   */
+  'paste/begin': obj({
+    type: lit('paste/begin'),
+    uploadId: id,
+    mime: oneOf(PASTE_MIMES),
+    size: int({ min: 1 }),
+    chunks: int({ min: 1 }),
+  }),
+  'paste/chunk': obj({
+    type: lit('paste/chunk'),
+    uploadId: id,
+    index: int({ min: 0 }),
+    data: str({ maxBytes: PASTE_CHUNK_CHARS, pattern: /^[A-Za-z0-9+/]*={0,2}$/ }),
+  }),
 });
 export type ClientToBackground = Infer<typeof clientToBackground>;
 
@@ -630,6 +651,8 @@ export type BackgroundToClient =
       thumb: string;
       width: number;
       height: number;
+      /** contract-v1.6 增量：外部图片（输入框粘贴，决策 099）：没有页面位置，预览旁要提示；框选截图没有这个字段 */
+      external?: true;
     }
   /** contract-v1.5 增量：待确认的截图没了（已随发问取走、被 × 去掉、被新截图替换、过期） */
   | { type: 'conv/captureCleared'; captureId: string }
@@ -638,7 +661,10 @@ export type BackgroundToClient =
   /** contract-v1.5 增量：image/get 的应答。thumb 同 conv/capture */
   | { type: 'image/thumb'; requestId: string; messageId: string; index: number; thumb: string };
 
-export type CaptureFailReason = 'changed' | 'unsupported' | 'failed';
+/**
+ * contract-v1.6 增量：tooLarge 粘贴的图片超过 MAX_PASTE_BYTES；badImage 粘贴的内容不是（或损坏的）可用图片
+ */
+export type CaptureFailReason = 'changed' | 'unsupported' | 'failed' | 'tooLarge' | 'badImage';
 /** 缩略图 data URL 的长度上限（字符）：conv/capture、image/thumb 单条都远小于 64 KB */
 export const CAPTURE_THUMB_MAX_CHARS = 44 * 1024;
 
@@ -836,6 +862,9 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
     'capture/begin',
     'capture/discard',
     'image/get',
+    // contract-v1.6 增量
+    'paste/begin',
+    'paste/chunk',
   ]),
   sidepanel: new Set<ClientType>([
     ...CONV_COMMON,
@@ -849,6 +878,9 @@ const ROLE_ALLOWED: Readonly<Record<SenderRole, ReadonlySet<string>>> = {
     'capture/begin',
     'capture/discard',
     'image/get',
+    // contract-v1.6 增量
+    'paste/begin',
+    'paste/chunk',
   ]),
   // contract-v1.5：欢迎页没有另开角色，仍是 options。其中 demo/ask 只有 welcome.html 所在标签页能发，
   // 这一层由处理函数按 sender 再核对（background/welcome-demo.ts），设置页发来也拒绝

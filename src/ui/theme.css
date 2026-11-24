@@ -1003,3 +1003,16 @@ body {
   border-radius: var(--ra-radius);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
 }
+
+/* ───────────── 外部图片粘贴的提示（决策 099，追加） ───────────── */
+
+.ra-capture__hint {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--ra-border);
+}
+.ra-capture__hint-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}

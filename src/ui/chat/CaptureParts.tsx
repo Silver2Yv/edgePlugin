@@ -2,7 +2,7 @@
 // 对话里用户消息附带的截图、回答下方的轻提示。小窗与侧边栏共用。
 // 图片一律画在 <canvas> 上：扩展页面的 CSP 是 img-src 'self'（5.10，回答渲染不加载外部图片），
 // data: 图片放不进 <img>；不为截图放宽 CSP。缩略图来自后台（JPEG data URL），原图不进界面。
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { base64ToBytes, parseDataUrl } from '@/core/capture/data-url';
 import type { ModelErrorKind, Tri } from '@/core/llm/adapter';
 import type { AnswerLike, UserImageView } from '../float/messages';
@@ -10,6 +10,7 @@ import type { CaptureView } from '../float/state';
 import { T } from '../strings';
 import { IconClose } from './Icons';
 import { useImageThumb } from './image-thumbs';
+import { usePasteHintOff } from './paste-hint';
 
 /** 把 data URL 画到画布上（画布按图片原尺寸，显示尺寸由样式限制） */
 function ThumbCanvas({ dataUrl, label, testId }: { dataUrl: string; label: string; testId: string }) {
@@ -82,14 +83,46 @@ export function CapturePreview({
   vision: Tri | null;
   onDismiss: (() => void) | undefined;
 }) {
+  // 外部图片（粘贴，决策 099）：预览旁提示没有页面位置。「关闭」只关这一张的提示；「不再提醒」记进 storage.local
+  const { hintOff, turnOff } = usePasteHintOff();
+  const [hintClosedFor, setHintClosedFor] = useState<string | null>(null);
+  const showHint = capture.external === true && !hintOff && hintClosedFor !== capture.captureId;
   return (
     <div className="ra-capture" data-testid="capture-preview">
       <ThumbCanvas dataUrl={capture.thumb} label={T.capture.previewLabel} testId="capture-thumb" />
       <div className="ra-capture__body">
         <div className="ra-capture__label">
-          {T.capture.previewLabel} · {T.capture.size(capture.width, capture.height)}
+          {T.capture.previewLabel} ·{' '}
+          {capture.external
+            ? T.capture.externalSize(capture.width, capture.height)
+            : T.capture.size(capture.width, capture.height)}
         </div>
         <p className="ra-capture__note">{T.capture.sensitive}</p>
+        {showHint && (
+          <div className="ra-capture__hint" data-testid="paste-hint">
+            <p className="ra-capture__note">{T.capture.pasteHint}</p>
+            <div className="ra-capture__hint-actions">
+              <button
+                type="button"
+                className="ra-btn ra-btn--small"
+                title={T.capture.pasteHintCloseTitle}
+                data-testid="paste-hint-close"
+                onClick={() => setHintClosedFor(capture.captureId)}
+              >
+                {T.capture.pasteHintClose}
+              </button>
+              <button
+                type="button"
+                className="ra-btn ra-btn--small"
+                title={T.capture.pasteHintOffTitle}
+                data-testid="paste-hint-off"
+                onClick={turnOff}
+              >
+                {T.capture.pasteHintOff}
+              </button>
+            </div>
+          </div>
+        )}
         {vision === 'no' && (
           <p className="ra-capture__note ra-capture__note--warn" data-testid="capture-no-vision">
             {T.capture.noVision}

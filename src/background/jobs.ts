@@ -1180,7 +1180,9 @@ export function createJobs(
         actionId: msg.actionId as ActionId,
         promptOverrides: settings.promptOverrides,
         customActions: settings.customActions,
-        ...(a.image ? { image: { dataUrl: a.image.dataUrl } } : {}),
+        ...(a.image
+          ? { image: { dataUrl: a.image.dataUrl, ...(a.image.external ? { external: true } : {}) } }
+          : {}),
         ...(fetchedImages.length > 0
           ? { pageImages: fetchedImages.map((i) => ({ url: i.url, dataUrl: i.dataUrl })) }
           : {}),

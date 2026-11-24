@@ -35,6 +35,7 @@ import { Composer } from './chat/Composer';
 import { IconClose, IconPanel, IconPin, IconPlus } from './chat/Icons';
 import { onImageMessage, setImageRequester } from './chat/image-thumbs';
 import { MessageList } from './chat/MessageList';
+import { sendPastedImage } from './chat/paste';
 import { resummarize, SummaryCard, summaryCardVisible, useLastSummary } from './cite/SummaryCard';
 import { CiteNote, useCite } from './cite/useCite';
 import { displayItems, questionForJob } from './float/messages';
@@ -146,6 +147,15 @@ export function FloatApp() {
     }
     portRef.current?.postMessage({ type: 'capture/begin' } satisfies ClientToBackground);
   };
+
+  /** 输入框粘贴了图片（决策 099）：字节分片交给后台缩放编码，预览与提示由后台推回来的缩略图决定 */
+  const handlePasteImage = (file: File) =>
+    void sendPastedImage(file, {
+      ready: () => stateRef.current.connPhase === 'ready',
+      post: (m) => portRef.current?.postMessage(m),
+      fail: (message) => dispatch({ kind: 'localError', message }),
+      wake,
+    });
 
   const handleDismissCapture = () => {
     const id = stateRef.current.capture?.captureId;
@@ -484,6 +494,7 @@ export function FloatApp() {
           capture={state.capture}
           onDismissCapture={handleDismissCapture}
           onCapture={handleCapture}
+          onPasteImage={handlePasteImage}
         />
       )}
     </main>

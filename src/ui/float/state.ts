@@ -237,6 +237,8 @@ export interface CaptureView {
   thumb: string;
   width: number;
   height: number;
+  /** 外部图片（输入框粘贴，决策 099）：没有页面位置，预览旁提示 */
+  external?: boolean;
 }
 
 // ───────────── 转接（6.4） ─────────────
@@ -686,7 +688,13 @@ function applyServerMessage(state: FloatState, msg: BackgroundToClient): FloatSt
       if (msg.captureId === state.dismissedCaptureId) return state;
       return {
         ...state,
-        capture: { captureId: msg.captureId, thumb: msg.thumb, width: msg.width, height: msg.height },
+        capture: {
+          captureId: msg.captureId,
+          thumb: msg.thumb,
+          width: msg.width,
+          height: msg.height,
+          ...(msg.external ? { external: true } : {}),
+        },
       };
     case 'conv/captureCleared':
       return state.capture?.captureId === msg.captureId ? { ...state, capture: null } : state;
