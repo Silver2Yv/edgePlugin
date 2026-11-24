@@ -5,7 +5,7 @@ AI 阅读助手浏览器扩展（Chrome / Edge，Manifest V3，最低 141）。�
 | 要查什么 | 看哪里 |
 | --- | --- |
 | 代码现状、模块地图、测试资产、下一步 | `docs/核心功能开发/HANDOFF.md`；待用户答复的事项见同目录 `REVIEW_CHECKLIST.md` |
-| 架构（v1.3） | `docs/架构设计/ARCHITECTURE.md` |
+| 架构（v1.4） | `docs/架构设计/ARCHITECTURE.md` |
 | 为什么这么定 | `docs/需求分析梳理/DECISIONS.md`（冲突时编号大的为准） |
 | 需求与验收 | `docs/需求分析梳理/FINAL_PLAN.md` |
 | 已接受的降级、带进本阶段的事项 | `docs/原型验证/PROTOTYPE_REPORT.md` 第 3、4 节 |
@@ -31,6 +31,11 @@ AI 阅读助手浏览器扩展（Chrome / Edge，Manifest V3，最低 141）。�
 - Preact 的数字样式值要写成带 `px` 的字符串（`tests/unit/ui/style-units.test.ts` 守住）。
 - 首次安装会自动打开欢迎页并抢走活动标签页：e2e 夹具默认关掉它（`tests/e2e/fixtures.ts` 的 `dismissWelcome`），测欢迎页用 `keepWelcome`；自己起浏览器的用例要自己调 `dismissWelcome`。
 - 划词用 `page-helpers.ts` 的 `tripleClick`（先滚到位、等两帧再三击）：直接 `locator.click({ clickCount: 3 })` 自带的滚动若在 mouseup 之后才派发 scroll 事件，哨兵会把刚弹出的工具栏按「滚动后消失」收起，用例偶发等不到工具栏。`page-identity` 前进后退用例在全量跑时偶发超时，单独重跑能过。
+- 侧边栏页面刚打开时先按 0 宽排版（`innerWidth` 为 0），这时量的尺寸、位置都不可信：`sidepanel-helpers.ts` 的点击等宽度不为 0 再量。
+- 有界面 Edge 上 Playwright 模拟的 `devicePixelRatio` 是 1，`captureVisibleTab` 却按真实窗口与系统缩放出图：截图尺寸断言用实测比例（`capture.spec.ts` 的 `captureScale`）。
+- `context.route` 拦不到扩展自己用 `tabs.create` 新开标签页的第一次导航：这类用例的网页用本地 http 服务（`jump-back.spec.ts`）。
+- 小窗是网页里的 iframe，里面调不了 `navigator.clipboard`：粘贴用例在另一个标签页写剪贴板再回来按 Ctrl+V；侧边栏用调试协议派发带 DataTransfer 的 paste 事件（`paste-image.spec.ts`）。
+- 要缩短页面侧的长计时（小窗 10 分钟销毁），用调试协议在内容脚本的隔离环境里替换 `setTimeout`，不给生产代码加开关（`float-idle.spec.ts`）。
 
 ## 不可违反的架构规则（ARCHITECTURE 4.3）
 
@@ -63,7 +68,7 @@ AI 阅读助手浏览器扩展（Chrome / Edge，Manifest V3，最低 141）。�
 ## 约定
 
 - WXT 自动导入已关闭（`imports: false`）：扩展 API 从 `wxt/browser` 显式导入，`define*` 从 `wxt/utils/*` 导入。
-- 消息协议只在 `src/core/domain/messages.ts` 定义；后台入口做运行时校验，未知类型与超限消息拒绝且无副作用。改了协议就打下一个 `contract-v1.x` 注解 tag（现为 v1.5）。
+- 消息协议只在 `src/core/domain/messages.ts` 定义；后台入口做运行时校验，未知类型与超限消息拒绝且无副作用。改了协议就打下一个 `contract-v1.x` 注解 tag（现为 v1.6）。
 - 改清单权限要同步 `scripts/manifest-baseline.json`，并在 PR 描述里标出。
 - 文档用中文、表格风格。新决策追加到 `DECISIONS.md`，编号顺延。
 

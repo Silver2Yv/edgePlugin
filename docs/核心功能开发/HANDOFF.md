@@ -1,9 +1,9 @@
 # HANDOFF.md — 核心功能开发阶段交接
 
-> 写于 2026-11-22，对应本地分支 `integrate/wave2`（两轮并行开发全部合并后）的代码。**开发中随时更新**：做完一项就改第 2 节对应行。
+> 写于 2026-11-22，2026-11-24 按第二批第一波更新，对应分支 `integrate/batch2` 的代码。**开发中随时更新**：做完一项就改第 2 节对应行。
 > 只写「代码现在长什么样」，不重复背景：命令、架构规则、目录依赖方向见根目录 `CLAUDE.md`；分期范围见
 > `docs/架构设计/ARCHITECTURE.md` 第 10 节；原型验证接受的降级见 `docs/原型验证/PROTOTYPE_REPORT.md` 第 3、4 节；
-> 本轮各开发块的决策见 `docs/需求分析梳理/DECISIONS.md` 决策 082–096；等用户答复的事项集中在同目录 `REVIEW_CHECKLIST.md`。
+> 各开发块的决策见 `docs/需求分析梳理/DECISIONS.md` 决策 082–107（097–101 是用户对清单的答复）；等用户答复的事项集中在同目录 `REVIEW_CHECKLIST.md`。
 
 ## 1. 一页结论
 
@@ -16,7 +16,10 @@
 
 **`FINAL_PLAN.md` 5.1「首期重要」已全部实现**；第 9 节验收除公司网络（第 9 条）、Edge 手动走查（第 14 条）要用户在真实环境确认外，
 都有自动化用例或原型实测结论。还没做的都在首期次要及以后（第 2 节末两张表）：联网搜索、分块总结、网页高亮批注、命令面板、
-按功能配模型、设置导入导出、悬停图片引用等；另有隐藏小窗定时销毁（决策 078 推迟）、跨后台重启续播同一条流（决策 070 不做）。
+按功能配模型、悬停图片引用等；跨后台重启续播同一条流（决策 070）不做。
+
+**第二批第一波（2026-11-24）**：用户答复清单后的四处修改（多编号循环跳转、回到那一页与收藏回原文、外部截图粘贴、按模型的思考档位），
+加上收起的小窗满 10 分钟销毁、设置导出导入、删除改行内确认条，都已合并。用户对界面视觉仍不满意，**之后另开对话专门重做**。
 
 ## 2. 能力现状
 
@@ -32,7 +35,7 @@
 | 阅读器：回指（D5） | 已有 | `src/core/context/entities.ts` | 年份、带单位数字、书名号/引号术语、英文专名、代码标识符；中文用 `Intl.Segmenter` 按页内低频筛候选，命中并入 nearby（决策 085，阈值为初值） |
 | 阅读器：换页 | 已有 | `src/background/pages.ts`、`src/page/reader.ts`（页面变化观察器） | 发问前核对 `contentVersion`；新增：小窗/侧边栏开着时阅读器主动比较正文字数（≥40 字且 1.5 秒内不变）或 SPA 路由变化，提示「页面内容已变化」（决策 090） |
 | 阅读器：子框架 | 已有 | `src/background/pages.ts`（`readSubframes`）、`src/core/context/frame-merge.ts`、`src/page/subframe-reader.ts` | 读取时一次性探测框架、按「顶层与框架来源取更严」和尺寸（<50 px 跳过）挑框架，按需注入子框架阅读器并行读；子框架块排在顶层之后整页编号、标题链前加「内嵌页面：」；子框架里的选区也能带前后文；引用落在子框架块上只说明原因、不定位（决策 095） |
-| 小窗 | 已有（接受降级） | `src/page/float-host.ts`、`src/ui/FloatApp.tsx` | 重做视觉（`theme.css`）、图钉（`float/pin`）、引用条常驻、模型下拉、截图按钮、「存」、档位与思考强度临时切换；隐藏小窗仍不按 `idleDestroyMs` 定时销毁（常量在 `src/core/domain/float.ts`，未接计时器，决策 078 推迟，本轮未变） |
+| 小窗 | 已有（接受降级） | `src/page/float-host.ts`、`src/ui/FloatApp.tsx` | 重做视觉（`theme.css`）、图钉（`float/pin`）、引用条常驻、模型下拉、截图按钮、「存」、档位与思考强度临时切换；不可见（收起或预热后从未显示）满 10 分钟销毁 iframe，阅读器发 `float/destroyed`，后台作废绑定与令牌，再显示时新建并恢复对话（决策 106） |
 | 最小侧边栏 → 完整侧边栏 | 已有 | `src/ui/SidePanelApp.tsx`、`src/ui/panel/*` | 已升级为「首期完整产品」档的完整侧边栏，见下表「完整侧边栏与历史」 |
 | 后台任务与流式 | 已有 | `src/background/jobs.ts` | 增加 `usage`、`droppedParam` 终态字段；跨后台重启不能续播同一条流，但对话已落库，重启后可续接追问（见「任务恢复」行） |
 | 模型网关 | 已有（次要适配器除外） | `src/core/llm/{capabilities,thinking,param-retry,quirks,presets,diagnostics}.ts`、`src/background/net-diagnostics.ts` | 能力表、按模型标识优先识别厂商发思考参数、参数被拒自动重试一次、怪癖学习（按连接+接口+模型+配置版本）、`webRequest` 网络诊断已接入（≤300ms 轮询取浏览器错误码）、服务商预设；只有 `chatCompletions` 一种接口实现，Responses/Anthropic/Gemini 仍无适配器（首期次要） |
@@ -51,11 +54,11 @@
 | --- | --- | --- | --- |
 | 完整侧边栏与历史 | 已有 | `src/ui/SidePanelApp.tsx`、`src/ui/panel/{Nav,ConversationSwitcher,HistoryView,FavoritesView,PageActions,conv-ops,history-group}.ts(x)`、`src/background/history.ts` | 顶部分段切换对话/历史/收藏（决策 093）；本页对话列表下拉；历史按页面/网站分组、搜索、分页、就地删除（级联）；整页快捷动作（总结/提取要点/这页在讲什么+自定义 page 动作） |
 | 自定义动作与黑名单 UI | 已有 | `src/ui/options/ActionsSection.tsx`（自定义动作增删改、工具栏顺序/隐藏）、`sections.tsx`（网站黑名单两级规则） | — |
-| 完整引用跳回 | 已有 | `src/background/citations.ts`、`src/core/anchor/citations.ts`、`src/page/locate.ts`、`src/ui/cite/useCite.tsx` | 回答里【N】与【N】原文【/N】均可点；页面变了按锚点三级降级并提示「原文可能已变化」；`CSS.highlights` 高亮，点网页/回原位/跳下一处清掉；「回到刚才阅读的位置」（F4）；上次总结卡片与版本标注（`SummaryCard.tsx`、`src/background/summary.ts`） |
-| 收藏与导出 | 已有 | `src/background/favorites.ts`、`src/core/domain/favorite-export.ts`、`src/ui/panel/{FavoritesView,favorites-db,favorites-search,export}.ts` | 工具栏「存」（锚点前后约 32 字快照）与回答上的「存」（快照 refCount+1）；编辑标题/笔记、删除（解引用）、导出结构化 Markdown（单条/全部/按页面）；列表与搜索由侧边栏直接只读查询 IndexedDB（决策 093） |
-| 多连接与模型下拉 | 已有 | `src/ui/chat/ModelPicker.tsx`、`src/ui/model/options.ts`、`src/background/jobs.ts`（`resolveModel`） | 按连接分组列常用模型、可搜索；思考控件随模型能力变（开关类/`none`/`effort`）；连接被删时拒绝 `modelGone`（不再静默换默认模型，决策 091）；失败时「换个模型再试」（用原动作/档位重问） |
-| 框选截图与页面图片 | 已有 | `src/background/{capture,capture-image,page-images}.ts`、`src/core/capture/{geometry,data-url}.ts`、`src/page/capture.ts`、`src/ui/chat/{CaptureParts,image-thumbs}.ts` | E1–E4 完成：框选截图（身份与视口核对、裁剪、预览确认、看不了图拒绝 `noVision`、图表解析提示）；页面图片开关（默认关，只取选区所在顶层块里页面已加载的图，最多 3 张，不带凭据、重定向一律跳过，发送说明列地址，决策 096）；追问不重发图片；悬停图片引用（E6）属首期次要未做；详见 V-15 记录 |
-| 设置分层 | 已有 | `src/ui/options/sections.tsx`、`parts.tsx` | 常用项露出（默认模型/上下文档位/回答长度/思考/网站黑名单），其余收进默认折叠的「高级选项」（决策 094） |
+| 完整引用跳回 | 已有 | `src/background/citations.ts`、`src/core/anchor/citations.ts`、`src/page/locate.ts`、`src/ui/cite/useCite.tsx` | 回答里【N】与【N】原文【/N】均可点；页面变了按锚点三级降级并提示「原文可能已变化」；`CSS.highlights` 高亮，点网页/回原位/跳下一处清掉；「回到刚才阅读的位置」（F4）；上次总结卡片与版本标注（`SummaryCard.tsx`、`src/background/summary.ts`）；一处多个编号点一次跳下一个、循环（`src/ui/cite/cycle.ts`，决策 097、102）；别的页面的对话「回到那一页」与收藏「回到原文」共用 `src/background/jump.ts`（`jump/open`，地址只从库里取，决策 098、103） |
+| 收藏与导出 | 已有 | `src/background/favorites.ts`、`src/core/domain/favorite-export.ts`、`src/ui/panel/{FavoritesView,favorites-db,favorites-search,export}.ts` | 工具栏「存」（锚点前后约 32 字快照）与回答上的「存」（快照 refCount+1）；编辑标题/笔记、删除（解引用）、导出结构化 Markdown（单条/全部/按页面）；列表与搜索由侧边栏直接只读查询 IndexedDB（决策 093）；工具栏「存」时页面没读过就先在本地读一次取锚点（决策 103） |
+| 多连接与模型下拉 | 已有 | `src/ui/chat/ModelPicker.tsx`、`src/ui/model/options.ts`、`src/background/jobs.ts`（`resolveModel`） | 按连接分组列常用模型、可搜索；思考控件随模型能力变（开关类/`none`/`effort`）；连接被删时拒绝 `modelGone`（不再静默换默认模型，决策 091）；失败时「换个模型再试」（用原动作/档位重问）；思考强度加「最高」，下拉按模型列档位（DeepSeek 关/低/高/最高），界面与后台按 `src/core/llm/thinking-levels.ts` 同一规则就近取档，设置页可给模型自填档位（决策 100、105） |
+| 框选截图与页面图片 | 已有 | `src/background/{capture,capture-image,page-images}.ts`、`src/core/capture/{geometry,data-url}.ts`、`src/page/capture.ts`、`src/ui/chat/{CaptureParts,image-thumbs}.ts` | E1–E4 完成：框选截图（身份与视口核对、裁剪、预览确认、看不了图拒绝 `noVision`、图表解析提示）；页面图片开关（默认关，只取选区所在顶层块里页面已加载的图，最多 3 张，不带凭据、重定向一律跳过，发送说明列地址，决策 096）；追问不重发图片；悬停图片引用（E6）属首期次要未做；详见 V-15 记录；输入框可粘贴外部图片（分片交后台，单张 ≤ 16 MB，预览旁提示无法定位原文、可「不再提醒」，`src/core/capture/paste.ts`、`src/ui/chat/paste.ts`，决策 099、104） |
+| 设置分层 | 已有 | `src/ui/options/sections.tsx`、`parts.tsx` | 常用项露出（默认模型/上下文档位/回答长度/思考/网站黑名单），其余收进默认折叠的「高级选项」（决策 094）；「高级选项 › 导出与导入」（K6，默认脱敏、导入先预览、保留本机同 id 连接的 Key，`src/ui/options/{transfer.ts,TransferSection.tsx}`）；删除连接与自定义动作改行内确认、10 秒可撤销（决策 107） |
 
 ### 首期次要及以后（未进入本轮）
 
@@ -72,7 +75,7 @@
 | 项目 | 状态 | 说明 |
 | --- | --- | --- |
 | 按功能配模型 | 没有 | 模型按连接/对话临时切换，没有「总结用模型 A、翻译用模型 B」这类按动作绑定模型的设置 |
-| 设置导入导出 | 没有 | 没有 JSON 导出/导入入口；`settings-store.ts` 只有存储层的脱敏导出函数，未接 UI |
+| 设置导入导出 | 已有（第二批第一波） | 见上表「设置分层」行 |
 | 完整数据备份/恢复 | 没有 | 见 V-14 记录 |
 | Edge 复测 | 见第 5 节 | 自动化用例在本机 Edge（有界面）上复跑一遍，结果见第 5 节；手动走查交给用户（`REVIEW_CHECKLIST.md` F2） |
 
@@ -94,10 +97,10 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | core/domain | `bytes.ts` | JSON 字节口径计算 |
 | core/domain | `conversation.ts` | 续接规则常量（30 分钟、20 轮，D12/D13） |
 | core/domain | `favorite-export.ts` | 收藏导出格式化（纯函数） |
-| core/domain | `float.ts` | 小窗状态机、握手令牌、`FLOAT_LIMITS`（含未接入的 `idleDestroyMs`） |
+| core/domain | `float.ts` | 小窗状态机、握手令牌、`FLOAT_LIMITS`（`idleDestroyMs` 由 `page/float-host.ts` 计时） |
 | core/domain | `ids.ts` | 各类编号类型别名 |
 | core/domain | `job.ts` | 任务状态机、`JobRecord` |
-| core/domain | `messages.ts` | 消息协议定义与运行时校验入口（现为 contract-v1.5，见第 4 节） |
+| core/domain | `messages.ts` | 消息协议定义与运行时校验入口（现为 contract-v1.6，见第 4 节） |
 | core/domain | `records.ts` | IndexedDB 表结构，新增 `FavoriteRecord` 扩展字段、`sentText`、`lastAskedAt` 等 |
 | core/domain | `schema.ts` | 运行时校验器 |
 | core/domain | `session-keys.ts` | `storage.session` 键名登记 |
@@ -118,10 +121,12 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | core/llm | `presets.ts` | 服务商预设数据表 |
 | core/llm | `quirks.ts` | 怪癖学习纯逻辑（增删查） |
 | core/llm | `sse.ts` | SSE 行解析 |
+| core/llm | `thinking-levels.ts` | 思考档位表、就近取档、思考控件选项（界面与后台共用，决策 105） |
 | core/llm | `thinking.ts` | 思考字段按厂商映射（模型标识优先于连接预设） |
 | core/prompt | `ask.ts` | 划词/动作提问装配：`PROMPT_REGISTRY`、长度档、语言、引用编号对齐、页面级预算 |
 | core/anchor | `anchor.ts` | 锚点生成与三级降级匹配 |
 | core/anchor | `citations.ts` | 引用标记解析与「引用→锚点」（纯逻辑，界面与后台共用） |
+| core/capture | `paste.ts` | 粘贴图片的分片常量、拼装与文件头核对（决策 104） |
 | core/capture | `data-url.ts` | data: URL ↔ 字节转换 |
 | core/capture | `geometry.ts` | 框选截图坐标换算（按实际图片尺寸÷视口现算） |
 | background | `app.ts` | 装配所有后台子模块 |
@@ -138,6 +143,7 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | background | `hub.ts` | 对话端口分组登记与推送 |
 | background | `intents.ts` | 意图通道：划词、点击（按 `kind/needsInput/scope` 分流）、配置读取 |
 | background | `jobs.ts` | 任务执行：接单落库、发请求、增量合并、检查点、重试、`usage`/`droppedParam` |
+| background | `jump.ts` | 回到那一页 / 收藏回原文（`jump/open`）：库里取地址、找或开标签页、等加载、定位（决策 103） |
 | background | `main.ts` | 启动入口：监听器、菜单、哨兵对账、启动扫描 |
 | background | `net-diagnostics.ts` | `webRequest.onErrorOccurred` 归因，接入网络失败路径 |
 | background | `options.ts` | 设置页通道：测试连接、列模型 |
@@ -178,9 +184,11 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | ui/chat | `MessageList.tsx` | 消息列表：历史回答渲染、引用、「存」 |
 | ui/chat | `CaptureParts.tsx` | 截图预览、消息里的截图、提示 |
 | ui/chat | `image-thumbs.ts` | 缩略图按需拉取与页面内缓存 |
+| ui/chat | `paste.ts`、`paste-hint.ts` | 输入框粘贴图片：认图、分片发送、本地拦截；「不再提醒」读写 |
 | ui/chat | `Icons.tsx` | 内联 SVG 图标 |
 | ui/chat | `ask.ts` | 发问动作（副作用层，配合 `float/state.ts`） |
 | ui/cite | `useCite.tsx` | 引用跳回/回到刚才位置的界面逻辑 |
+| ui/cite | `cycle.ts` | 多编号引用的循环位置（决策 102） |
 | ui/cite | `SummaryCard.tsx` | 上次总结卡片 |
 | ui/panel | `Nav.tsx` | 侧边栏三视图切换 |
 | ui/panel | `ConversationSwitcher.tsx` | 本页对话列表下拉 |
@@ -193,6 +201,7 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | ui/panel | `favorites-search.ts` | 收藏搜索匹配规则 |
 | ui/panel | `history-group.ts` | 历史分组纯逻辑 |
 | ui/model | `options.ts` | 模型下拉/思考控件/换模型再试纯逻辑 |
+| ui/options | `transfer.ts`、`TransferSection.tsx` | 设置导出导入（K6，决策 107） |
 | ui/options | `Wizard.tsx` | 配置向导 |
 | ui/options | `ConnectionsSection.tsx` | 连接管理：预设、Key、测试连接、常用模型勾选 |
 | ui/options | `ActionsSection.tsx` | 工具栏顺序与自定义动作增删改 |
@@ -225,6 +234,7 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | `contract-v1.3` | 2026-11-21 补打 | 页面缓存未变应答、小窗拖动缩放改宿主侧、侧边栏订阅与转接、网页提示、拒绝原因 `busy` |
 | `contract-v1.4` | 2026-11-22（核心功能第一批），已打 tag | `conv/ask.fresh`、`conv/accepted.newConversation`、`history/delete`/`history/deleted`、`history/page.nextBefore`、`conv/saveFailed`、拒绝原因 `storageFailed`、`conv/jobState.usage`/`droppedParam`、`float/pin`、`PageConfig.toolbarActions` 扩成 `ActionSummary`；计划追加 `entityBlockIds`/`entitySingleMentions`；设置升到版本 2 |
 | `contract-v1.5` | 2026-11-22（核心功能第二批与补做的 E2、D10），已打 tag | 见下 |
+| `contract-v1.6` | 2026-11-24（第二批第一波），已打 tag | 见下 |
 
 `messages.ts` 里标「contract-v1.5 增量」的改动，按模块分组：
 
@@ -239,7 +249,16 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | E2 页面图片 | 后台到阅读器的指令 `page/images`（应答 `{ requestId, contentVersion, urls ≤ 3 }`，`parsePageImagesReply` 校验）；`RequestContextPlan.pageImageUrls`；设置 `context.includePageImages`（默认值合并补齐，设置版本不变） |
 | D10 子框架 | 引用失败原因 `subframe`；`SnapshotRecord.blocks[].frameId`（可选）；没有新增消息 |
 
-下一次改协议打 `contract-v1.6`。
+`messages.ts` 里标「contract-v1.6 增量」的改动（2026-11-24，第二批第一波，已打 tag）：
+
+| 来源 | 增量内容 |
+| --- | --- |
+| 跳回原页面 | `jump/open`（仅侧边栏，只带 `pageKey` 或 `favoriteId`）、`jump/result`；`CitationFailReason` 加 `noRecord`、`badUrl`、`loadTimeout`、`redirected`、`openFailed`、`noAnchor` |
+| 外部截图粘贴 | `paste/begin`、`paste/chunk`（小窗与侧边栏）；`conv/capture.external`；`CaptureFailReason` 加 `tooLarge`、`badImage` |
+| 思考档位 | `conv/ask.thinking`、设置 `reply.thinking` 加 `max`；`Connection.capabilityOverrides[model].thinkingLevels`（可选）；设置版本不变 |
+| 小窗空闲销毁 | `float/destroyed`（阅读器到后台，可选 `missed`） |
+
+下一次改协议打 `contract-v1.7`。
 
 ## 5. 测试资产
 
