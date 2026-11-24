@@ -121,10 +121,15 @@ export interface FloatHostApi {
 /**
  * onUnavailable：用户要看小窗（点了「问」、快捷键唤起），小窗却用不了——加载超时、宿主被网页移除。
  * 阅读器据此在网页上提示改用侧边栏（M4，page/notice.ts）；同时上报 failedTransient，后台下次换新令牌重建
+ *
+ * onIdleDestroyed（决策 078/101）：小窗不可见（收起后，或预热后从未显示）连续满 FLOAT_LIMITS.idleDestroyMs，
+ * iframe 已销毁。阅读器据此通知后台作废这个文档的小窗绑定与令牌；每次销毁通知一次（missed 为假）。
+ * 销毁后收到没带令牌的显示（后台发出时还以为有小窗，撞上了销毁）：再以 missed 为真通知后台，请它带新令牌补发
  */
 export function createFloatHost(
   onLoadResult: (result: FloatLoadResult) => void,
   onUnavailable: () => void = () => undefined,
+  onIdleDestroyed: (missed: boolean) => void = () => undefined,
 ): FloatHostApi {
   let host: HTMLElement | null = null;
   let iframe: HTMLIFrameElement | null = null;
@@ -134,6 +139,12 @@ export function createFloatHost(
   /** 用户此刻想看到小窗（show 之后、hide 之前） */
   let wanted = false;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  /** 不可见计时：从小窗变为不可见开始，期间再次显示就取消；到点销毁 iframe */
+  let idleTimerId: ReturnType<typeof setTimeout> | undefined;
+  /** 空闲销毁时的位置与尺寸：下一次新建沿用，用户拖过、缩放过的窗口不因销毁而回到默认 */
+  let keptRect: FloatRect | null = null;
+  /** 空闲销毁之后、还没重建：此时收到无令牌的显示说明后台撞上了销毁（见 onIdleDestroyed） */
+  let idleDestroyed = false;
   // 显示时小窗还没加载完：等加载完再聚焦。加载中的 iframe 拿到焦点后，换成扩展页面时焦点会丢回网页
   let focusOnLoad = false;
   /** 当前位置与尺寸；build() 之后才有值 */
@@ -313,11 +324,16 @@ export function createFloatHost(
     document.documentElement.append(h);
     host = h;
     iframe = frame;
+    idleDestroyed = false;
     dragHandleEl = dragHandle;
     gripEl = grip;
     resizeHandleEl = resizeHandle;
     paintShell();
     applyRect({ left: 0, top: 0, width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
+    if (keptRect !== null) {
+      applyRect(keptRect);
+      keptRect = null;
+    }
     timeoutId = setTimeout(() => {
       if (loaded) return;
       failed = true;
@@ -325,6 +341,7 @@ export function createFloatHost(
       // 用户正等着看小窗：收起空白的外壳，改在网页上提示怎么继续（不能替用户打开侧边栏：这时已不在点击的手势里）
       if (wanted) {
         hideHost();
+        startIdle();
         onUnavailable();
       }
     }, FLOAT_LIMITS.loadTimeoutMs);
@@ -334,9 +351,33 @@ export function createFloatHost(
     if (host?.isConnected && host.matches(':popover-open')) host.hidePopover();
   }
 
+  function cancelIdle(): void {
+    if (idleTimerId !== undefined) clearTimeout(idleTimerId);
+    idleTimerId = undefined;
+  }
+
+  /** 小窗变为不可见时开始计时。已在计时就不重置：网页上每次点击都会调 hide()，不能让它们把计时拖长 */
+  function startIdle(): void {
+    if (host === null || idleTimerId !== undefined) return;
+    idleTimerId = setTimeout(() => {
+      idleTimerId = undefined;
+      destroyIdle();
+    }, FLOAT_LIMITS.idleDestroyMs);
+  }
+
+  /** 不可见满时限：销毁 iframe（任务归后台，不受影响，规则 2），并通知后台作废绑定与令牌 */
+  function destroyIdle(): void {
+    if (host === null || (host.isConnected && host.matches(':popover-open'))) return;
+    keptRect = rect;
+    discard();
+    idleDestroyed = true;
+    onIdleDestroyed(false);
+  }
+
   /** 丢掉不可用的小窗（超时、被网页移除），下次带新令牌重建 */
   function discard(): void {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
+    cancelIdle();
     host?.remove();
     host = null;
     iframe = null;
@@ -374,10 +415,14 @@ export function createFloatHost(
         if (open && prev !== null) {
           applyRect(prev);
           host?.showPopover();
+        } else {
+          startIdle();
         }
         return;
       }
       build(token);
+      // 预热出来的小窗是隐藏的：从此刻起计不可见时间
+      startIdle();
     },
     show({ token, focusInput }) {
       wanted = true;
@@ -393,7 +438,11 @@ export function createFloatHost(
         }
       }
       if (host === null) {
-        if (token === undefined) return; // 没令牌造不出小窗
+        if (token === undefined) {
+          // 没令牌造不出小窗。刚空闲销毁过：后台发这次显示时还不知道，请它带新令牌补发
+          if (idleDestroyed) onIdleDestroyed(true);
+          return;
+        }
         build(token);
       }
       if (pinned || (keepOpen && host?.matches(':popover-open'))) {
@@ -402,6 +451,8 @@ export function createFloatHost(
       } else {
         reposition();
       }
+      // 要显示了：不可见计时作废（收起后再显示、或预热后第一次显示）
+      cancelIdle();
       if (host !== null && !host.matches(':popover-open')) host.showPopover();
       // 聚焦 iframe 元素而不是 contentWindow：元素 focus() 会先更新布局，刚显示出来的小窗也能拿到焦点；
       // 对刚从隐藏变为显示的 iframe 调 contentWindow.focus() 有时不生效，按键会落到网页里（e2e 复现）
@@ -412,6 +463,7 @@ export function createFloatHost(
     hide() {
       wanted = false;
       hideHost();
+      startIdle();
     },
     owns(e) {
       // 外壳在封闭 shadow root 里，网页文档上的监听器看到的目标是宿主元素本身

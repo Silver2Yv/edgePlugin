@@ -99,6 +99,14 @@ export function startReader(): void {
     },
     // 用户等着的小窗用不了：在网页上提示改用侧边栏（选区后台已存下，侧边栏打开时带上引用）
     () => notice.show('floatFailed'),
+    // 收起满 10 分钟（或预热后一直没显示）iframe 已销毁：告诉后台作废这个文档的小窗绑定与令牌（contract-v1.6 增量）
+    (missed) => {
+      const msg: Extract<ContentToBackground, { type: 'float/destroyed' }> = {
+        type: 'float/destroyed',
+        ...(missed ? { missed: true } : {}),
+      };
+      void browser.runtime.sendMessage(msg).catch(() => undefined);
+    },
   );
   attachFloatPort(floatHost);
   // 框选截图（5.13）：遮罩、视口修订号；截图期间小窗只藏起来，不收起
