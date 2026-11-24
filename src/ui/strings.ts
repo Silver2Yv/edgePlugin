@@ -223,7 +223,17 @@ const zh = {
       changed: '截图前页面发生了变化（滚动、缩放或切换了页面），这张没有保留，请重新框选',
       unsupported: '这个页面截不了图（浏览器内部页面等），请在普通网页上框选',
       failed: '这次没能截图，请再试一次',
+      // 外部图片粘贴（决策 099，contract-v1.6 增量）。上限数字与 core/capture/paste.ts 的 MAX_PASTE_BYTES 一致（单测核对）
+      tooLarge: '粘贴的图片超过 16 MB，没有保留；请先在截图软件里缩小或裁剪后再粘贴',
+      badImage: '粘贴的内容不是可用的图片（或这种图片格式不支持），没有保留',
     },
+    /** 外部图片粘贴（决策 099）：预览标签、预览旁的提示与它的两个按钮 */
+    externalSize: (w: number, h: number) => `外部图片 ${w}×${h}`,
+    pasteHint: '当前外部截图无法定位原文位置及上下文，建议使用插件截图按钮或快捷键',
+    pasteHintClose: '关闭',
+    pasteHintCloseTitle: '关闭这一次的提示',
+    pasteHintOff: '不再提醒',
+    pasteHintOffTitle: '之后粘贴图片不再显示这条提示',
     noticeUnsupported: '这个页面截不了图（浏览器内部页面等），请在普通网页上按 Alt+Shift+X 框选',
     userNoText: '（没有输入问题，只发送了截图）',
     imageLabel: '附带的截图',

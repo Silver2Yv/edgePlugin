@@ -79,7 +79,7 @@ export interface AskInput {
    * 图片单列预算（5.9）：不计入文本预算，文本的取舍不因它改变；计划里 imageCount 照实写。只随这一轮发送，
    * 之后的追问不重发（历史里留一句「本轮附有截图」的说明）
    */
-  image?: { dataUrl: string };
+  image?: { dataUrl: string /** 粘贴来的外部图片：没有页面位置（决策 099） */; external?: boolean };
   /**
    * 页面图片（E2、5.14「页面图片（可选）」，contract-v1.5 增量）：设置开着且这次请求带了选区所在块时，
    * 后台已经从图片所在主机取到、按与截图同样的上限缩放编码的图（background/page-images.ts）。
@@ -289,6 +289,12 @@ export const IMAGE_QUESTION = '请看这张截图，说明其中的内容。';
 /** 附了截图的那一轮，用户消息文字开头的说明：模型知道有图，之后的追问在历史里也看得出那一轮带过图 */
 export const IMAGE_LEAD = '（本轮附有一张用户在网页上框选的截图。）';
 /**
+ * 外部图片（决策 099，contract-v1.6 增量）：用户在输入框粘贴的图（其他截图软件、系统截图），不是在网页上框选的，
+ * 与页面没有位置对应关系。告诉模型这一点，免得它把图里的内容当成就是当前页面正文的某一处
+ */
+export const EXTERNAL_IMAGE_LEAD =
+  '（本轮附有一张用户粘贴的外部图片，来自其他截图软件或剪贴板，没有页面位置，无法对应到网页上的具体位置。）';
+/**
  * 附了页面图片的那一轮，用户消息文字开头的说明（E2）：模型知道这些图是网页正文里、选区所在位置的配图，
  * 不是用户自己截的；之后的追问在历史里也看得出那一轮带过图。图的地址不写进正文（规则 8：地址在发送说明里可见）
  */
@@ -413,7 +419,7 @@ export function assembleAsk(input: AskInput): AskAssembly {
   const scope = actionDef?.scope ?? 'selection';
   const notes: string[] = [];
   const bareParts: string[] = [];
-  if (input.image) bareParts.push(IMAGE_LEAD);
+  if (input.image) bareParts.push(input.image.external ? EXTERNAL_IMAGE_LEAD : IMAGE_LEAD);
   const pageImages = input.pageImages ?? [];
   if (pageImages.length > 0) bareParts.push(pageImageLead(pageImages.length));
   // 页面级动作（总结 / 提取要点 / 这页在讲什么 / scope 为 page 的自定义动作）不带选区，只带页面内容

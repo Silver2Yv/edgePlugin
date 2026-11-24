@@ -9,6 +9,7 @@
 // 转到侧边栏（6.4、AR-19）：小窗 handoff/start → 后台记下 windowId + tabId + conversationId（storage.session，
 // 短期有效）→ 侧边栏带 handoffId 订阅、初始推送发完 → 后台才通知小窗 handoff/done，小窗收到再收起。
 
+import { createPasteAssembler } from '@/core/capture/paste';
 import { toPageKey } from '@/core/context/page-key';
 import { bindingMatches, HANDOFF_TTL_MS, type Handoff, handoffMatches } from '@/core/domain/float';
 import { ID_PATTERN } from '@/core/domain/ids';
@@ -94,6 +95,9 @@ export function createConv(
       windowId: undefined,
     };
     const post = (msg: BackgroundToClient) => hub.post(port, msg);
+    // 外部图片粘贴的分片拼装（每个端口同一时刻一次上传）与这次上传所属的标签页
+    const paste = createPasteAssembler();
+    let pasteTab: number | undefined;
     const reject = (reason: RejectReason, raw: unknown) => {
       deps.log('conv/rejected', { role: st.role, reason, ...refOf(raw) });
       post({ type: 'conv/rejected', reason, ...refOf(raw) });
@@ -375,6 +379,26 @@ export function createConv(
           );
         case 'capture/discard':
           return capture?.discard(tabId, msg.captureId);
+        // 外部图片粘贴（决策 099，contract-v1.6 增量）：分片收齐、核对后交给 capture 缩放编码。
+        // 上传绑定 begin 时的标签页；中途换了订阅的标签页（侧边栏）就整次丢掉。编码不占着串行队列
+        case 'paste/begin':
+        case 'paste/chunk': {
+          if (!capture) return reject('notAllowed', msg);
+          if (msg.type === 'paste/begin') pasteTab = tabId;
+          const step = msg.type === 'paste/begin' ? paste.begin(msg) : paste.chunk(msg);
+          if (step.kind === 'more') return;
+          if (step.kind === 'fail') {
+            if (step.reason === 'invalid') return reject('invalid', msg);
+            return capture.pasteRefused(tabId, step.reason);
+          }
+          if (pasteTab !== tabId) return;
+          const windowId = st.role === 'sidepanel' ? st.windowId : sender.tab?.windowId;
+          void capture.fromPaste(tabId, windowId, step.bytes, step.mime).catch((e: unknown) => {
+            deps.log('capture/pasteError', { error: e instanceof Error ? e.name : 'unknown' });
+            capture.pasteRefused(tabId, 'badImage');
+          });
+          return;
+        }
         case 'image/get': {
           if (!capture) return reject('notAllowed', msg);
           const url = await deps.getTabUrl?.(tabId).catch(() => undefined);

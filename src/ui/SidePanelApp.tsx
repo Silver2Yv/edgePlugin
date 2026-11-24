@@ -30,6 +30,7 @@ import { Composer } from './chat/Composer';
 import { IconPlus } from './chat/Icons';
 import { onImageMessage, setImageRequester } from './chat/image-thumbs';
 import { MessageList } from './chat/MessageList';
+import { sendPastedImage } from './chat/paste';
 import {
   resummarize,
   SummaryCard,
@@ -178,6 +179,15 @@ export function SidePanelApp() {
     }
     portRef.current?.postMessage({ type: 'capture/begin' } satisfies ClientToBackground);
   };
+
+  /** 输入框粘贴了图片（决策 099）：字节分片交给后台缩放编码，预览与提示由后台推回来的缩略图决定 */
+  const handlePasteImage = (file: File) =>
+    void sendPastedImage(file, {
+      ready: () => stateRef.current.connPhase === 'ready' && stateRef.current.targetConfirmed,
+      post: (m) => portRef.current?.postMessage(m),
+      fail: (message) => dispatch({ kind: 'localError', message }),
+      wake,
+    });
 
   const handleDismissCapture = () => {
     const id = stateRef.current.capture?.captureId;
@@ -514,6 +524,7 @@ export function SidePanelApp() {
               capture={state.capture}
               onDismissCapture={handleDismissCapture}
               onCapture={handleCapture}
+              onPasteImage={handlePasteImage}
             />
           )}
         </>

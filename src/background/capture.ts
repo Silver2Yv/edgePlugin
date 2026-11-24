@@ -17,6 +17,10 @@
 //
 // 原图不经网页 DOM、不进界面（规则 4）：界面只拿到缩略图（conv/capture、image/thumb，单条远小于 64 KB）；
 // 原图只在后台、storage.session、数据库与发给模型的请求里。
+//
+// 外部图片（决策 099，contract-v1.6 增量）：输入框里粘贴的图片（系统截图、其他截图软件复制的图）走同一套——
+// 字节由界面分片交给后台（core/capture/paste.ts、conv.ts 的 paste/*），后台缩放编码后存成这个标签页待确认的图
+// （与框选截图同一个位置，新图替换旧图），界面只拿缩略图，不保留原图；它没有页面位置，PendingCapture 标 external。
 import { base64ToBytes, parseDataUrl } from '@/core/capture/data-url';
 import { type CssRect, type Size, sameViewport } from '@/core/capture/geometry';
 import { floatHostable } from '@/core/domain/float';
@@ -58,12 +62,15 @@ export interface PendingCapture {
   captureId: string;
   tabId: number;
   windowId: number;
-  documentId: string;
+  /** 框选截图是注入阅读器的那个文档；外部图片（粘贴）没有 */
+  documentId?: string;
   dataUrl: string;
   mime: string;
   width: number;
   height: number;
   thumb: string;
+  /** contract-v1.6：外部图片（输入框粘贴，决策 099）：没有页面位置；预览旁提示，发给模型的文字里说明 */
+  external?: true;
   at: number;
 }
 
@@ -72,6 +79,7 @@ export interface TakenCapture {
   dataUrl: string;
   image: MessageImage;
   blob: BlobRecord;
+  external?: true;
 }
 
 /** 用户迟迟不拖框，进行中的框选多久作废 */
@@ -131,6 +139,7 @@ export const previewOf = (p: PendingCapture): Extract<BackgroundToClient, { type
   thumb: p.thumb,
   width: p.width,
   height: p.height,
+  ...(p.external ? { external: true as const } : {}),
 });
 
 const errName = (e: unknown) => (e instanceof Error ? e.message.slice(0, 200) : 'unknown');
@@ -328,6 +337,55 @@ export function createCapture(deps: BackgroundDeps, store: Store, hub: Hub, host
       await begin(tabId, w, origin);
     },
 
+    /**
+     * 外部图片（决策 099，contract-v1.6 增量）：输入框粘贴的图片字节（conv.ts 已按 paste/* 收齐并核对文件头）→
+     * 缩放编码（同框选截图的上限）→ 存成这个标签页待确认的图（同一位置，替换旧图）→ 推缩略图预览。
+     * 没有页面位置，标记 external。原图字节处理完即丢，界面不保留；解码失败（损坏、浏览器不支持的编码）回 badImage
+     */
+    async fromPaste(
+      tabId: number,
+      windowId: number | undefined,
+      bytes: Uint8Array,
+      mime: string,
+    ): Promise<void> {
+      const w = windowId ?? (await deps.tabWindow(tabId));
+      if (w === undefined || !deps.captureImages) return failed(tabId, 'failed');
+      let pending: PendingCapture;
+      try {
+        const enc = await deps.captureImages.encodeImage(new Blob([bytes as BlobPart], { type: mime }));
+        const parsed = parseDataUrl(enc.dataUrl);
+        if (!parsed) throw new Error('编码结果不是 base64 data URL');
+        const thumb = await deps.captureImages.thumbnail(
+          new Blob([base64ToBytes(parsed.base64) as BlobPart], { type: enc.mime }),
+        );
+        pending = {
+          captureId: deps.newId(),
+          tabId,
+          windowId: w,
+          ...enc,
+          thumb,
+          external: true,
+          at: deps.now(),
+        };
+      } catch (e) {
+        deps.log('capture/pasteFailed', { error: errName(e) });
+        return failed(tabId, 'badImage');
+      }
+      await putPending(pending);
+      hub.toTab(tabId, previewOf(pending));
+      deps.log('capture/ready', {
+        origin: 'paste',
+        width: pending.width,
+        height: pending.height,
+        mime: pending.mime,
+      });
+    },
+
+    /** 粘贴的图片在收齐阶段就不合格（超限、不是可用图片）：告诉这个标签页的界面 */
+    pasteRefused(tabId: number, reason: 'tooLarge' | 'badImage'): void {
+      failed(tabId, reason);
+    },
+
     /** capture/rect：核对身份 → 隐藏遮罩、截图、裁剪 → 存成待确认截图并推预览 */
     async onRect(
       msg: RectMsg,
@@ -385,6 +443,7 @@ export function createCapture(deps: BackgroundDeps, store: Store, hub: Hub, host
           refCount: 1,
           createdAt: deps.now(),
         },
+        ...(p.external ? { external: true as const } : {}),
       };
     },
 
