@@ -22,14 +22,16 @@ import {
   mergeConnectionForm,
   parseExtraParams,
   presetOf,
-  removeConnection,
+  type RemovedConnection,
+  removeConnectionWithUndo,
   resolveApiKey,
+  restoreConnection,
   setCapabilityOverride,
   setDefaultModel,
   toggleCommonModel,
   upsertConnection,
 } from './model';
-import { Field, SecretInput } from './parts';
+import { Field, SecretInput, UndoBar, useUndo } from './parts';
 import { S } from './strings';
 import { type TestOutcome, TestResultView } from './TestResultView';
 import type { SettingsHandle } from './useSettings';
@@ -53,17 +55,29 @@ function changeStored(
 export function ConnectionsSection({ handle }: { handle: SettingsHandle }) {
   const { settings } = handle;
   const [editing, setEditing] = useState<{ conn: Connection; isNew: boolean } | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const undo = useUndo<RemovedConnection>();
 
-  async function remove(conn: Connection): Promise<void> {
-    const isDefault = settings.defaultModel?.connectionId === conn.id;
-    const message = isDefault ? S.conn.confirmRemoveDefault(conn.name) : S.conn.confirmRemove(conn.name);
-    if (!window.confirm(message)) return;
-    const ok = await handle.set((s) => removeConnection(s, conn.id));
-    if (ok && editing?.conn.id === conn.id) setEditing(null);
+  async function removeConfirmed(conn: Connection): Promise<void> {
+    const removed = await handle.update((s) => {
+      const r = removeConnectionWithUndo(s, conn.id);
+      return r ? { settings: r.settings, result: r.removed } : { settings: s, result: undefined };
+    });
+    setConfirming(null);
+    if (removed === undefined) return;
+    if (editing?.conn.id === conn.id) setEditing(null);
+    undo.show(conn.name, removed);
+  }
+
+  function undoRemove(): void {
+    const data = undo.notice?.data;
+    undo.clear();
+    if (data) void handle.set((s) => restoreConnection(s, data));
   }
 
   return (
     <div class="opt-conns">
+      {undo.notice && <UndoBar name={undo.notice.name} onUndo={undoRemove} />}
       {settings.connections.length === 0 && <div class="opt-muted">{S.conn.empty}</div>}
       <ul class="opt-list">
         {settings.connections.map((conn) => (
@@ -76,11 +90,30 @@ export function ConnectionsSection({ handle }: { handle: SettingsHandle }) {
                 )}
               </div>
               <div class="opt-list__sub">{displayBaseUrl(conn.baseUrl)}</div>
+              {confirming === conn.id && (
+                <div class="opt-inline" data-testid="remove-confirm">
+                  <span>
+                    {(settings.defaultModel?.connectionId === conn.id
+                      ? S.undo.confirmRemoveConnectionDefault
+                      : S.undo.confirmRemoveConnection)(conn.name)}
+                  </span>
+                  <button
+                    type="button"
+                    class="ra-btn ra-btn--small"
+                    onClick={() => void removeConfirmed(conn)}
+                  >
+                    {S.undo.delete}
+                  </button>
+                  <button type="button" class="ra-btn ra-btn--small" onClick={() => setConfirming(null)}>
+                    {S.undo.cancel}
+                  </button>
+                </div>
+              )}
             </div>
             <button type="button" class="ra-btn" onClick={() => setEditing({ conn, isNew: false })}>
               {S.conn.edit}
             </button>
-            <button type="button" class="ra-btn" onClick={() => void remove(conn)}>
+            <button type="button" class="ra-btn" onClick={() => setConfirming(conn.id)}>
               {S.conn.remove}
             </button>
           </li>

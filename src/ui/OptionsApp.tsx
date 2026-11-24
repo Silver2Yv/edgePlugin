@@ -18,6 +18,7 @@ import {
   SitesSection,
 } from './options/sections';
 import { S } from './options/strings';
+import { TransferSection } from './options/TransferSection';
 import { useSettings } from './options/useSettings';
 import { Wizard } from './options/Wizard';
 import { T } from './strings';
@@ -91,6 +92,9 @@ export function OptionsApp() {
       <Fold major title={S.advanced.heading} hint={S.advanced.hint} testId="advanced">
         <Fold title={S.conn.heading} hint={S.conn.summary} testId="fold-connections">
           <ConnectionsSection handle={state} />
+        </Fold>
+        <Fold title={S.transfer.heading} hint={S.transfer.summary} testId="fold-transfer">
+          <TransferSection handle={state} />
         </Fold>
         <Fold title={S.prompts.heading} hint={S.prompts.summary} testId="fold-prompts">
           <PromptsSection handle={state} />

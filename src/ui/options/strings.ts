@@ -449,6 +449,51 @@ const zh = {
     openTabsNote:
       '如果在某个网页上选中文字没有反应，刷新一次。浏览器内部页面、扩展商店这类页面本来就不能划词，可以按快捷键或点图标用侧边栏。',
   },
+
+  undo: {
+    confirmRemoveConnection: (name: string) => `确定删除「${name}」？`,
+    confirmRemoveConnectionDefault: (name: string) =>
+      `「${name}」是默认模型所在的连接，删除后默认模型会被清空，确定删除「${name}」？`,
+    confirmRemoveAction: (name: string) => `确定删除「${name}」？`,
+    delete: '删除',
+    cancel: '取消',
+    deleted: (name: string) => `已删除「${name}」`,
+    undo: '撤销',
+    undoLabel: (name: string) => `撤销删除「${name}」`,
+  },
+
+  transfer: {
+    heading: '导出与导入',
+    summary: '备份设置、换电脑时带过去',
+    help: '导出的是一个 JSON 文件，包含连接、默认模型、提示词、自定义动作、网站规则等全部设置。默认不含 Key 等凭据。',
+    includeKeys: '包含 Key',
+    includeKeysHelp:
+      '默认不含：Key、名字像凭据的请求头与额外参数会被清空，地址里的查询串会去掉。勾选后文件里会有明文 Key，请注意保管。',
+    includeKeysWarn: '文件里会有明文 Key，注意保管。',
+    export: '导出设置',
+    exported: (name: string) => `已导出 ${name}`,
+    import: '导入设置',
+    importHelp: '选一个之前导出的设置文件。导入前会先显示文件里有什么，确认后才替换当前设置。',
+    selectFile: '选择设置文件',
+    notJson: '不是合法的 JSON 文件',
+    notSettingsFile: '这不是阅读助手的设置文件（格式标记不对）',
+    newerFormat: (v: number) => `文件来自更新版本的扩展（格式 ${fmt(v)}），请先更新扩展`,
+    missingSettings: '文件里没有设置内容',
+    newerVersion: (v: number) => `文件里的设置版本是 ${fmt(v)}，比当前版本新，请先更新扩展`,
+    corrupt: '文件内容不完整，没有通过校验，没有导入',
+    preview: '导入预览',
+    countConnections: (n: number) => `${fmt(n)} 个连接`,
+    countActions: (n: number) => `${fmt(n)} 个自定义动作`,
+    countSites: (n: number) => `${fmt(n)} 条网站规则`,
+    defaultModel: (m: string) => `默认模型：${m}`,
+    defaultModelUnset: '默认模型：未设置',
+    keptKeys: (names: readonly string[]) => `已保留本机的 Key：${names.join('、')}`,
+    missingKeys: (names: readonly string[]) =>
+      `这些连接没有 Key，导入后请到连接管理里补填：${names.join('、')}`,
+    apply: '替换当前设置',
+    cancel: '取消',
+    imported: '已导入设置',
+  },
 };
 
 export type OptionStrings = typeof zh;

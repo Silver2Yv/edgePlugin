@@ -10,14 +10,16 @@ import {
   type CustomActionErrors,
   customActionDraft,
   moveToolbarAction,
-  removeCustomAction,
+  type RemovedCustomAction,
+  removeCustomActionWithUndo,
+  restoreCustomAction,
   setActionHidden,
   setOnToolbar,
   toolbarPlacement,
   upsertCustomAction,
   validateCustomAction,
 } from './model';
-import { Field } from './parts';
+import { Field, UndoBar, useUndo } from './parts';
 import { S } from './strings';
 import type { SettingsHandle } from './useSettings';
 
@@ -25,6 +27,8 @@ export function ActionsSection({ handle }: { handle: SettingsHandle }) {
   const { settings } = handle;
   const [form, setForm] = useState<CustomActionDraft | null>(null);
   const [errors, setErrors] = useState<CustomActionErrors>({});
+  const [confirming, setConfirming] = useState<ActionId | null>(null);
+  const undo = useUndo<RemovedCustomAction>();
   const rows = actionRows(settings);
   const placement = toolbarPlacement(settings);
   const onToolbar = rows.filter((r) => r.toolbarIndex >= 0);
@@ -37,16 +41,28 @@ export function ActionsSection({ handle }: { handle: SettingsHandle }) {
     if (await handle.set((s) => upsertCustomAction(s, form, crypto.randomUUID()))) setForm(null);
   }
 
-  async function remove(row: ActionRow): Promise<void> {
-    if (!window.confirm(S.actions.confirmRemove(row.def.label))) return;
-    await handle.set((s) => removeCustomAction(s, row.def.id));
+  async function removeConfirmed(row: ActionRow): Promise<void> {
+    const removed = await handle.update((s) => {
+      const r = removeCustomActionWithUndo(s, row.def.id);
+      return r ? { settings: r.settings, result: r.removed } : { settings: s, result: undefined };
+    });
+    setConfirming(null);
+    if (removed === undefined) return;
     if (form?.id === row.def.id) setForm(null);
+    undo.show(row.def.label, removed);
+  }
+
+  function undoRemove(): void {
+    const data = undo.notice?.data;
+    undo.clear();
+    if (data) void handle.set((s) => restoreCustomAction(s, data));
   }
 
   const move = (id: ActionId, delta: -1 | 1) => void handle.set((s) => moveToolbarAction(s, id, delta));
 
   return (
     <div class="opt-actions">
+      {undo.notice && <UndoBar name={undo.notice.name} onUndo={undoRemove} />}
       <div class="opt-help">{S.actions.help}</div>
       <ul class="opt-list" data-testid="action-list">
         {rows.map((row) => {
@@ -87,13 +103,28 @@ export function ActionsSection({ handle }: { handle: SettingsHandle }) {
                         type="button"
                         class="opt-link"
                         aria-label={S.actions.removeLabel(name)}
-                        onClick={() => void remove(row)}
+                        onClick={() => setConfirming(row.def.id)}
                       >
                         {S.actions.remove}
                       </button>
                     </span>
                   )}
                 </div>
+                {confirming === row.def.id && (
+                  <div class="opt-inline" data-testid="remove-confirm">
+                    <span>{S.undo.confirmRemoveAction(name)}</span>
+                    <button
+                      type="button"
+                      class="ra-btn ra-btn--small"
+                      onClick={() => void removeConfirmed(row)}
+                    >
+                      {S.undo.delete}
+                    </button>
+                    <button type="button" class="ra-btn ra-btn--small" onClick={() => setConfirming(null)}>
+                      {S.undo.cancel}
+                    </button>
+                  </div>
+                )}
               </div>
               <label class="opt-check">
                 <input

@@ -229,7 +229,7 @@ export function migrateSettings(raw: unknown): MigrateResult {
 // ───────────── 导出 ─────────────
 
 /** 名字像凭据的请求头与额外参数，导出时清空值 */
-const SENSITIVE_NAME = /auth|key|token|secret|cookie/i;
+export const SENSITIVE_NAME = /auth|key|token|secret|cookie/i;
 
 /**
  * 导出设置（K6）。默认脱敏：清空 Key、名字像凭据的请求头与额外参数，去掉地址里的查询串与片段
