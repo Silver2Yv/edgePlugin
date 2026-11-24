@@ -52,6 +52,18 @@ const DRAW = `async (size) => {
 }`;
 
 /**
+ * 有界面 Edge 由 Playwright 启动时剪贴板不通：navigator.clipboard.writeText 成功返回，readText 却读回空串，
+ * 页面里普通 textarea 按 Ctrl+V 也粘不进东西（2026-11-24 实测，CfT 上同样的步骤正常）。走真实剪贴板的小窗用例
+ * 只在 CfT 上跑；侧边栏用例派发 paste 事件，不受影响
+ */
+function skipOnEdge(): void {
+  test.skip(
+    process.env.E2E_BROWSER === 'msedge',
+    '有界面 Edge 在 Playwright 下剪贴板不通（读回空），以 CfT 为准',
+  );
+}
+
+/**
  * 把内容写进系统剪贴板。小窗是网页里的 iframe，没有 clipboard 的 permissions policy，不能在里面调 navigator.clipboard；
  * 所以在另一个标签页里写（系统剪贴板是共用的），写完回到原标签页。这只是测试的准备动作，粘贴本身是真实的 Ctrl+V
  */
@@ -60,6 +72,7 @@ async function writeClipboard(
   page: Page,
   what: { text: string } | { w: number; h: number },
 ) {
+  skipOnEdge();
   const aux = await context.newPage();
   await aux.goto('https://e2e.test/clip');
   await aux.bringToFront();

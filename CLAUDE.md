@@ -34,7 +34,7 @@ AI 阅读助手浏览器扩展（Chrome / Edge，Manifest V3，最低 141）。�
 - 侧边栏页面刚打开时先按 0 宽排版（`innerWidth` 为 0），这时量的尺寸、位置都不可信：`sidepanel-helpers.ts` 的点击等宽度不为 0 再量。
 - 有界面 Edge 上 Playwright 模拟的 `devicePixelRatio` 是 1，`captureVisibleTab` 却按真实窗口与系统缩放出图：截图尺寸断言用实测比例（`capture.spec.ts` 的 `captureScale`）。
 - `context.route` 拦不到扩展自己用 `tabs.create` 新开标签页的第一次导航：这类用例的网页用本地 http 服务（`jump-back.spec.ts`）。
-- 小窗是网页里的 iframe，里面调不了 `navigator.clipboard`：粘贴用例在另一个标签页写剪贴板再回来按 Ctrl+V；侧边栏用调试协议派发带 DataTransfer 的 paste 事件（`paste-image.spec.ts`）。
+- 小窗是网页里的 iframe，里面调不了 `navigator.clipboard`：粘贴用例在另一个标签页写剪贴板再回来按 Ctrl+V；侧边栏用调试协议派发带 DataTransfer 的 paste 事件（`paste-image.spec.ts`）。有界面 Edge 由 Playwright 启动时剪贴板不通（写入成功、读回空、Ctrl+V 粘不进），走真实剪贴板的用例在 Edge 上跳过。
 - 要缩短页面侧的长计时（小窗 10 分钟销毁），用调试协议在内容脚本的隔离环境里替换 `setTimeout`，不给生产代码加开关（`float-idle.spec.ts`）。
 
 ## 不可违反的架构规则（ARCHITECTURE 4.3）

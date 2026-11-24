@@ -307,6 +307,13 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | `page-images.spec.ts` | 4 | E2：开关开着选中段落的图进请求、关着没有、跨主机重定向不取、看不了图不取 |
 | `subframe-read.spec.ts` | 3 | D10：同源与跨源 iframe 正文进全文请求、不读取名单与密码框、iframe 里划词带前后文 |
 
+**全量复跑结果（2026-11-24，第二批第一波合并后）**：`pnpm verify` 全过，单测 72 个文件 941 个用例；e2e 33 个 spec、154 个用例。
+
+| 浏览器 | 结果 | 说明 |
+| --- | --- | --- |
+| CfT（无界面） | 153 通过、1 跳过（专截图用，默认不跑） | 一次全过 |
+| Edge（有界面） | 148 通过、5 失败、1 跳过 → 处理后全过 | 粘贴图片 4 例：Playwright 启动的有界面 Edge 剪贴板不通（写入成功、读回空、普通 textarea 也粘不进，CfT 正常），改为 Edge 上跳过（见第 6 节）；欢迎页示例 1 例是有界面 Edge 的焦点类偶发，复跑通过 |
+
 **全量复跑结果（2026-11-22，E2、D10 合并后）**：
 
 | 浏览器 | 结果 | 说明 |
@@ -325,6 +332,7 @@ entrypoints 下每个入口只做渲染装配，同目录 `index.html` 不单列
 | **e2e 夹具默认关掉安装时自动打开的欢迎页**：`fixtures.ts` 的 `dismissWelcome()` 在每个用例的 `context` fixture 里默认调用；需要测欢迎页本身时显式传 `{ keepWelcome: true }` | `tests/e2e/fixtures.ts` |
 | 全量 e2e 偶发：`page-identity.spec.ts` 前进后退用例偶发超时，单独重跑能过。`request-plan`、`toolbar-actions` 长选区确认的偶发已查明：`locator.click({ clickCount: 3 })` 自带的滚动若在 mouseup 之后才派发 scroll 事件，哨兵按「滚动后消失」把刚弹出的工具栏收起；划词一律改用 `page-helpers.ts` 的 `tripleClick`（先滚到位、等两帧）后消除 | `tests/e2e/page-helpers.ts`；根目录 `CLAUDE.md` |
 | 侧边栏页面刚打开时先按 0 宽排版（`innerWidth` 为 0）：按宽度量尺寸的逻辑要在 `resize` 时重算，否则输入框按 0 宽算出的高度一直撑着，对话列表只剩一条缝（已修，`Composer.tsx`）；测试里这时量按钮位置也会量错，`sidepanel-helpers.ts` 的点击等 `innerWidth` 不为 0 再量 | `src/ui/chat/Composer.tsx`、`tests/e2e/sidepanel-helpers.ts` |
+| 有界面 Edge 由 Playwright 启动时剪贴板不通：`navigator.clipboard.writeText` 成功返回，`readText` 读回空串，页面里普通 textarea 按 Ctrl+V 也粘不进。走真实剪贴板的粘贴用例在 Edge 上跳过，以 CfT 为准；真实用户的粘贴不受影响（待用户在 Edge 上手动试一次） | `tests/e2e/paste-image.spec.ts` 的 `skipOnEdge` |
 | 有界面 Edge 上 Playwright 模拟了视口和 `devicePixelRatio`（=1），`captureVisibleTab` 却按真实窗口与系统缩放出图（实测宽 1745 对视口 1281）。截图相关断言要用实测比例（截图宽 ÷ 视口宽），不能用 `devicePixelRatio`；裁剪代码本来就按实测比例算 | `tests/e2e/capture.spec.ts` 的 `captureScale` |
 | 思考字段的厂商识别**按模型标识优先**，连接预设（含 `custom`）其次；两边都认不出时什么思考参数都不发，不再默认按预设猜 | `src/core/llm/thinking.ts`；决策 084 |
 | `webRequest.onErrorOccurred` 送达和 `fetch()` reject 不保证先后顺序，取网络诊断要短暂轮询（≤300ms） | `src/background/net-diagnostics.ts` |
