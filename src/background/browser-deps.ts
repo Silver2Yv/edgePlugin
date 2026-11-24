@@ -145,5 +145,52 @@ export function browserDeps(): BackgroundDeps {
       ),
     captureVisibleTab: (windowId) => browser.tabs.captureVisibleTab(windowId, { format: 'png' }),
     captureImages: offscreenCaptureImages,
+    tabs: jumpTabs,
   };
 }
+
+/**
+ * 回到某一页用的标签页操作（jump/open，决策 098）。waitLoaded 先挂监听再查一次当前状态，两者之间不漏事件；
+ * 新开的标签页一开始可能是空白页且状态已是 complete，所以现状查询只认有真实地址的 complete
+ */
+const jumpTabs: NonNullable<BackgroundDeps['tabs']> = {
+  list: async (windowId) =>
+    (await browser.tabs.query({ windowId })).flatMap((t) =>
+      t.id === undefined ? [] : [{ id: t.id, url: t.url || t.pendingUrl || undefined, active: t.active }],
+    ),
+  activate: async (tabId) => {
+    await browser.tabs.update(tabId, { active: true });
+  },
+  create: async (windowId, url) => {
+    const t = await browser.tabs.create({ windowId, url, active: true });
+    if (t.id === undefined) throw new Error('标签页没有编号');
+    return t.id;
+  },
+  waitLoaded: (tabId, timeoutMs) =>
+    new Promise((resolve) => {
+      let done = false;
+      const finish = (r: 'complete' | 'timeout' | 'closed'): void => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        browser.tabs.onUpdated.removeListener(onUpdated);
+        browser.tabs.onRemoved.removeListener(onRemoved);
+        resolve(r);
+      };
+      const onUpdated = (id: number, change: { status?: string }): void => {
+        if (id === tabId && change.status === 'complete') finish('complete');
+      };
+      const onRemoved = (id: number): void => {
+        if (id === tabId) finish('closed');
+      };
+      const timer = setTimeout(() => finish('timeout'), timeoutMs);
+      browser.tabs.onUpdated.addListener(onUpdated);
+      browser.tabs.onRemoved.addListener(onRemoved);
+      browser.tabs.get(tabId).then(
+        (t) => {
+          if (t.status === 'complete' && t.url && t.url !== 'about:blank') finish('complete');
+        },
+        () => finish('closed'),
+      );
+    }),
+};

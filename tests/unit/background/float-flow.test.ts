@@ -58,7 +58,8 @@ describe('action/click', () => {
     expect(res).toMatchObject({ ok: true });
     expect((res as { favoriteId?: string }).favoriteId).toMatch(/^id-/);
     expect(h.session.data.size).toBe(before);
-    expect(h.sent).toHaveLength(0);
+    // 没读过页面时存会为取锚点读一次页面（page/read，不发给模型）；除此之外不发任何指令
+    expect(h.sent.filter((s) => s.msg.type !== 'page/read')).toHaveLength(0);
     const favs = await h.db.listFavorites({ limit: 10 });
     expect(favs).toHaveLength(1);
     expect(favs[0]).toMatchObject({ selection: SELECTED, blobIds: [] });

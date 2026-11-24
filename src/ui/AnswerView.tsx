@@ -61,7 +61,10 @@ export interface AnswerViewProps {
   saved?: boolean;
 }
 
-/** 点到的引用元素 → 编号与原文；多编号【12,5】按第一个 */
+/**
+ * 点到的引用元素 → 编号与原文。要点编号【12,5】带上全部编号与它是回答里第几个引用标记，
+ * 由 useCite 决定这一次跳哪个（循环，决策 097）
+ */
 function citationOf(target: EventTarget | null, root: HTMLElement | null): CitationClick | undefined {
   const el = target instanceof Element ? target.closest('.ra-citation, .ra-citation-quote') : null;
   if (!el || !root?.contains(el)) return undefined;
@@ -69,8 +72,14 @@ function citationOf(target: EventTarget | null, root: HTMLElement | null): Citat
     const citation = el.getAttribute('data-id') ?? '';
     return citation ? { citation, quote: el.textContent ?? '' } : undefined;
   }
-  const citation = (el.getAttribute('data-ids') ?? '').split(',')[0]?.trim() ?? '';
-  return citation ? { citation } : undefined;
+  const ids = (el.getAttribute('data-ids') ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s !== '');
+  const citation = ids[0];
+  if (!citation) return undefined;
+  const slot = Array.from(root.querySelectorAll('.ra-citation, .ra-citation-quote')).indexOf(el);
+  return { citation, ids, slot };
 }
 
 export function AnswerView({

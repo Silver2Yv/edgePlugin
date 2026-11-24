@@ -31,6 +31,7 @@ import type { FloatHost } from './float-host';
 import type { History } from './history';
 import type { Hub } from './hub';
 import type { Jobs } from './jobs';
+import type { Jump } from './jump';
 import { quoteOf } from './quote';
 import { senderRole, senderSummary } from './roles';
 import type { Store } from './store';
@@ -80,8 +81,8 @@ export function createConv(
   jobs: Jobs,
   history: History,
   favorites: Favorites,
-  /** cite 块：引用跳回、上次总结；capture 块：框选截图（都可选只是为了不打扰只测别的模块的单测） */
-  extra: { citations?: Citations; summary?: Summary; capture?: Capture } = {},
+  /** cite 块：引用跳回、上次总结；capture 块：框选截图；jump：回到某一页（都可选只是为了不打扰只测别的模块的单测） */
+  extra: { citations?: Citations; summary?: Summary; capture?: Capture; jump?: Jump } = {},
 ) {
   const { capture } = extra;
   return function onConnect(port: ConvPort): void {
@@ -315,6 +316,17 @@ export function createConv(
       if (msg.type === 'favorite/add') return favorites.addFromMessage(msg, post, reject);
       if (msg.type === 'favorite/update') return favorites.update(msg, post, reject);
       if (msg.type === 'favorite/remove') return favorites.remove(msg, post, reject);
+      // 回到某一页（仅侧边栏，contract-v1.6，决策 098）：不针对已订阅的标签页，在握手定下的窗口里找或新开标签页。
+      // 要等页面加载（最多十几秒），不占着串行队列
+      if (msg.type === 'jump/open') {
+        if (!extra.jump || st.windowId === undefined) return reject('notAllowed', msg);
+        if ((msg.pageKey === undefined) === (msg.favoriteId === undefined)) return reject('invalid', msg);
+        void extra.jump.open(st.windowId, msg, post).catch((e: unknown) => {
+          deps.log('jump/error', { error: e instanceof Error ? e.name : 'unknown' });
+          post({ type: 'jump/result', requestId: msg.requestId, ok: false, reason: 'openFailed' });
+        });
+        return;
+      }
       // 以下需要目标标签页：小窗是令牌绑定的那个，侧边栏是当前订阅的那个（须仍在本窗口）
       const tabId = st.tabId;
       if (tabId === undefined) return reject('notAllowed', msg);

@@ -285,6 +285,11 @@ export interface FloatState {
   targetSeq: number;
   /** 订阅附带的转接：侧边栏带着它订阅，后台据此通知小窗收起 */
   subscribeHandoff: IncomingHandoff | null;
+  /**
+   * 回到某一页之后要显示的对话（决策 098，仅侧边栏）：订阅时带上（panelSubscribeMessage）。
+   * 同一标签页上的再订阅（地址变化、加载完成）沿用，等到收到这个对话的订阅确认就清掉，换了标签页也清掉
+   */
+  subscribeConversation: string | null;
   /** 侧边栏收到、还没处理的待接转接 */
   incomingHandoff: IncomingHandoff | null;
   /** 侧边栏顶部的一行说明 */
@@ -361,6 +366,7 @@ export function initialFloatState(hasToken: boolean): FloatState {
     targetConfirmed: true,
     targetSeq: 0,
     subscribeHandoff: null,
+    subscribeConversation: null,
     incomingHandoff: null,
     notice: null,
     handoff: null,
@@ -406,8 +412,8 @@ export type FloatAction =
     }
   | { kind: 'queueAsk'; ask: QueuedAsk }
   | { kind: 'localError'; message: string }
-  /** 侧边栏换订阅：跟随切换标签页、地址变化，或接手转接 */
-  | { kind: 'retarget'; tabId: number; handoff?: IncomingHandoff }
+  /** 侧边栏换订阅：跟随切换标签页、地址变化，或接手转接；conversationId：回到某一页后要显示的对话（决策 098） */
+  | { kind: 'retarget'; tabId: number; handoff?: IncomingHandoff; conversationId?: string }
   /** 小窗点了「转到侧边栏」（已同步 open）；handoff/start 等连接就绪再发 */
   | { kind: 'handoffStarted' }
   | { kind: 'handoffSent' }
@@ -468,6 +474,8 @@ export function floatReducer(state: FloatState, action: FloatAction): FloatState
         targetConfirmed: false,
         targetSeq: state.targetSeq + 1,
         subscribeHandoff: action.handoff ?? null,
+        subscribeConversation: action.conversationId ?? (sameTab ? state.subscribeConversation : null),
+        ...(action.conversationId === undefined ? {} : { freshConversation: false }),
         incomingHandoff: null,
       };
       // 换了标签页：立刻清掉旧标签页的内容，不让它在新订阅回来之前冒充新页面的对话
@@ -718,6 +726,11 @@ function applySubscribed(state: FloatState, msg: SubscribedMsg): FloatState {
       ? state.job
       : createJobView(msg.job.jobId, msg.job.messageId)
     : null;
+  // 回到某一页要显示的对话已经订阅上了：之后的再订阅（地址变化）不必再带它
+  const subscribeConversation =
+    msg.conversationId !== undefined && msg.conversationId === state.subscribeConversation
+      ? null
+      : state.subscribeConversation;
   if (state.target === null || state.targetConfirmed) {
     // 用户刚点过「新对话」：重连补发的旧对话不再接回来
     if (state.freshConversation) return state;
@@ -727,6 +740,7 @@ function applySubscribed(state: FloatState, msg: SubscribedMsg): FloatState {
       job: job ?? state.job,
       conversationId,
       messages: keptMessages(state, conversationId, job),
+      subscribeConversation,
     };
   }
   if (state.freshConversation) return { ...state, targetConfirmed: true, quote: null, notice: null };
@@ -740,6 +754,7 @@ function applySubscribed(state: FloatState, msg: SubscribedMsg): FloatState {
     notice: null,
     messages: keptMessages(state, conversationId, job),
     convHint: null,
+    subscribeConversation,
   };
 }
 
@@ -839,10 +854,11 @@ export function subscribeMessage(job: JobView | null): ClientToBackground {
 export function panelSubscribeMessage(state: FloatState): ClientToBackground | null {
   if (state.target === null) return null;
   const h = state.subscribeHandoff;
+  const conversationId = h?.conversationId ?? state.subscribeConversation ?? undefined;
   return {
     type: 'conv/subscribe',
     tabId: state.target,
-    ...(h?.conversationId === undefined ? {} : { conversationId: h.conversationId }),
+    ...(conversationId === undefined ? {} : { conversationId }),
     ...(h ? { handoffId: h.handoffId } : {}),
   };
 }

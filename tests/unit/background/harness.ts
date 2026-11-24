@@ -133,6 +133,8 @@ export function makeHarness(
     askConnectTimeoutMs?: number;
     /** 覆盖叫醒侧边栏后等它握手的上限（毫秒），不必真的等 1.5 秒 */
     panelWakeMs?: number;
+    /** 覆盖工具栏「存」为取锚点读页面的等待上限（毫秒）；默认 30，单测里一般没人应答 page/read */
+    anchorWaitMs?: number;
   } = {},
 ) {
   const instance = ++instances;
@@ -259,6 +261,8 @@ export function makeHarness(
       pageMessages.push(msg);
     }),
     db,
+    // 工具栏「存」为取锚点读页面的等待上限：单测里没人应答 page/read，缩短到几十毫秒
+    anchorWaitMs: opts.anchorWaitMs ?? 30,
     ...(opts.askConnectTimeoutMs !== undefined ? { askConnectTimeoutMs: opts.askConnectTimeoutMs } : {}),
     ...(opts.panelWakeMs !== undefined ? { panelWakeMs: opts.panelWakeMs } : {}),
   };

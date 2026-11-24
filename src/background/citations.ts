@@ -7,6 +7,7 @@
 // | 算锚点 | 快照（7 天内）里有块文本：逐字引用在块里找原文，要点编号用整块；快照过期只能按引用原文，且原文须在回答里核对过 |
 // | 发给谁 | 标签页顶层框架、注入阅读器时拿到的那个文档（documentId）；结果只认同一标签页、顶层、同一文档发来的（规则 7） |
 // | 高亮样式 | 每个文档注入一次 ::highlight 样式（scripting.insertCSS，不改网页 DOM） |
+import type { Anchor } from '@/core/anchor/anchor';
 import { citationAnchor, citationInText, normalizeCitationNumber } from '@/core/anchor/citations';
 import { toPageKey } from '@/core/context/page-key';
 import { segmentsText } from '@/core/domain/conversation';
@@ -68,6 +69,48 @@ export function createCitations(deps: BackgroundDeps, jobs: Pick<Jobs, 'settled'
     });
   }
 
+  /**
+   * 注入阅读器、给文档补上高亮样式、让阅读器定位并高亮（引用跳回与收藏回原文共用）。
+   * 锚点缺省时只靠块号（页面没变才有用）；注入不了返回 ok: false
+   */
+  async function locateIn(
+    tabId: number,
+    req: { anchor: Anchor | undefined; blockId?: string; contentVersion?: string },
+  ): Promise<{ ok: true; level: Level; back: boolean } | { ok: false }> {
+    let documentId: string;
+    try {
+      documentId = await deps.injectReader(tabId);
+    } catch {
+      return { ok: false };
+    }
+    if (!styled.has(documentId)) {
+      styled.add(documentId);
+      await deps.insertCss?.(tabId, documentId, HIGHLIGHT_CSS).catch((e: unknown) => {
+        styled.delete(documentId);
+        deps.log('citation/styleFailed', { error: e instanceof Error ? e.name : 'unknown' });
+      });
+    }
+    lastDoc.set(tabId, documentId);
+    const r = await askReader(tabId, documentId, {
+      // 快照过期又没有原文：只能靠块号（页面没变时阅读器直接用它），锚点留空
+      anchor: req.anchor
+        ? { ...req.anchor, headingPath: [...req.anchor.headingPath] }
+        : {
+            exact: '',
+            prefix: '',
+            suffix: '',
+            blockDigest: '',
+            headingPath: [],
+            scrollRatio: 0,
+            offsetInBlock: 0,
+          },
+      highlight: true,
+      ...(req.blockId === undefined ? {} : { blockId: req.blockId }),
+      ...(req.contentVersion === undefined ? {} : { contentVersion: req.contentVersion }),
+    });
+    return { ok: true, ...r };
+  }
+
   return {
     /**
      * citation/locate。tabId 由对话端口给出（小窗：令牌绑定的标签页；侧边栏：所订阅、且仍在本窗口的标签页），
@@ -112,41 +155,22 @@ export function createCitations(deps: BackgroundDeps, jobs: Pick<Jobs, 'settled'
         scrollRatio: 0,
       });
 
-      let documentId: string;
-      try {
-        documentId = await deps.injectReader(tabId);
-      } catch {
-        return fail('unavailable');
-      }
-      if (!styled.has(documentId)) {
-        styled.add(documentId);
-        await deps.insertCss?.(tabId, documentId, HIGHLIGHT_CSS).catch((e: unknown) => {
-          styled.delete(documentId);
-          deps.log('citation/styleFailed', { error: e instanceof Error ? e.name : 'unknown' });
-        });
-      }
-      lastDoc.set(tabId, documentId);
       const contentVersion = live?.contentVersion ?? plan.contentVersion;
-      const r = await askReader(tabId, documentId, {
-        // 快照过期又没有原文：只能靠块号（页面没变时阅读器直接用它），锚点留空
-        anchor: anchor
-          ? { ...anchor, headingPath: [...anchor.headingPath] }
-          : {
-              exact: '',
-              prefix: '',
-              suffix: '',
-              blockDigest: '',
-              headingPath: [],
-              scrollRatio: 0,
-              offsetInBlock: 0,
-            },
-        highlight: true,
+      const r = await locateIn(tabId, {
+        anchor,
         blockId,
         ...(contentVersion === undefined ? {} : { contentVersion }),
       });
+      if (!r.ok) return fail('unavailable');
       if (r.level === 'none') return fail(anchor ? 'notFound' : 'expired');
       done(r.level, r.back ? { back: true } : {});
     },
+
+    /**
+     * 让所给标签页顶层的阅读器定位并高亮一个锚点（引用跳回与收藏「回到原文」共用，决策 098）。
+     * 调用方负责先核对站点策略、页面身份。注入不了（浏览器内部页面等）返回 ok: false；阅读器没应答、找不到按 level: none
+     */
+    locateAnchor: (tabId: number, anchor: Anchor) => locateIn(tabId, { anchor }),
 
     /** citation/back：回到上次跳转前的阅读位置。这个标签页没定位过就拒绝 */
     async back(tabId: number): Promise<boolean> {

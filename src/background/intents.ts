@@ -46,6 +46,9 @@ interface ContentSender {
 
 const errName = (e: unknown) => (e instanceof Error ? e.message.slice(0, 200) : 'unknown');
 
+/** 工具栏「存」为取锚点读一次页面，最多等这么久（读取本身最长 5 秒；页面没读成就不带锚点存） */
+export const SAVE_ANCHOR_WAIT_MS = 2500;
+
 export function createIntents(
   deps: BackgroundDeps,
   store: Store,
@@ -157,7 +160,20 @@ export function createIntents(
     const pageKey = pageUrl === undefined ? undefined : toPageKey(pageUrl);
     if (pageKey === undefined || pageUrl === undefined) return refuse('invalid', { type: msg.type });
     const siteLevel = frameSiteLevel(topUrl, s.url, settings.sites);
-    const anchor = siteLevel === 'noRead' ? undefined : pages.anchorFor(s.tabId, msg.selectionRevision);
+    let anchor = siteLevel === 'noRead' ? undefined : pages.anchorFor(s.tabId, msg.selectionRevision);
+    // 选区的锚点要等页面被读过才有（阅读器读页面时随 selection/anchored 一起发）。存的时候还没读过就读一次
+    // （只在本地算锚点，不发给模型）：没有锚点，收藏的「回到原文」就无处可定位（决策 098）。读不成不影响保存
+    if (anchor === undefined && siteLevel !== 'noRead') {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([
+        pages.currentVersion(s.tabId, settings).catch(() => undefined),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, deps.anchorWaitMs ?? SAVE_ANCHOR_WAIT_MS);
+        }),
+      ]);
+      clearTimeout(timer);
+      anchor = pages.anchorFor(s.tabId, msg.selectionRevision);
+    }
     const r = await favorites.addFromSelection({ pageKey, url: pageUrl, text: msg.text, anchor });
     if (!r.ok) return refuse('storageFailed', { type: msg.type });
     return { ok: true, favoriteId: r.favoriteId };
